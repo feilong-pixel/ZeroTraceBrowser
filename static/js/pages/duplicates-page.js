@@ -251,6 +251,7 @@ function chooseInitialMethod(payload, currentMethod) {
 function strictDuplicateItems(state) {
   if (state.methodFilter !== "strict") return [];
 
+  // Server pagination means this intentionally returns only the current page.
   return filteredGroups(state).flatMap((group) =>
     (group.items || [])
       .filter((item) => item.exists !== false && item.role === "duplicate" && item.path)

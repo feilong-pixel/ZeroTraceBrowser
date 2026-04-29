@@ -80,6 +80,9 @@ function setBusyState(els, state, isBusy) {
   if (els.archiveRecycleLogsButton) {
     els.archiveRecycleLogsButton.disabled = isBusy;
   }
+  if (els.clearRecycleButton) {
+    els.clearRecycleButton.disabled = isBusy || els.clearRecycleButton.disabled;
+  }
   if (els.recycleLogFilter) {
     els.recycleLogFilter.disabled = isBusy;
   }
@@ -176,9 +179,10 @@ function setRecyclePaginationVisible(els, visible) {
 }
 
 function clearRecycleConfirmMessage(state) {
+  const count = state.recycle.length;
   return state.systemRecycleSupported
-    ? t("recycle.confirmClear.messageSystemRecycle")
-    : t("recycle.confirmClear.messagePermanent");
+    ? t("recycle.confirmClear.messageSystemRecycle", count)
+    : t("recycle.confirmClear.messagePermanent", count);
 }
 
 function purgeConfirmMessage(state, deletedTo) {
@@ -196,8 +200,10 @@ function renderRecycleItems(els, state) {
   setText(els.summaryRecycleCount, String(total));
   setText(els.recyclePageInfo, t("recycle.pageInfo", state.page, totalPages));
   if (els.clearRecycleButton) {
-    els.clearRecycleButton.disabled = state.isBusy || total === 0;
-    els.clearRecycleButton.title = total === 0 ? t("recycle.noRecycleItems") : "";
+    els.clearRecycleButton.disabled = state.isBusy || state.recycle.length === 0;
+    els.clearRecycleButton.title = state.recycle.length === 0
+      ? t("recycle.noRecycleItems")
+      : t("recycle.clearCurrentPageTitle", state.recycle.length);
   }
   if (els.prevRecyclePageButton) {
     els.prevRecyclePageButton.disabled = state.isBusy || state.page <= 1;
@@ -387,6 +393,13 @@ async function loadRecyclePage(els, state) {
     const recyclePayload = await fetchJson(recyclePageUrl(state));
     state.recycle = recyclePayload.items || [];
     state.recycleTotal = Number(recyclePayload.count || state.recycle.length);
+    const totalPages = totalRecyclePages(state);
+    if (!state.recycle.length && state.recycleTotal > 0 && state.page > totalPages) {
+      state.page = totalPages;
+      const fallbackPayload = await fetchJson(recyclePageUrl(state));
+      state.recycle = fallbackPayload.items || [];
+      state.recycleTotal = Number(fallbackPayload.count || state.recycle.length);
+    }
     renderRecycleItems(els, state);
     setStatus(els, t("recycle.ready"));
   } finally {
@@ -431,6 +444,8 @@ async function restoreItem(els, state, deletedTo) {
 
 async function clearRecycleBin(els, state) {
   if (state.isBusy) return;
+  const items = [...state.recycle];
+  if (!items.length) return;
 
   const confirmed = await showConfirm(
     clearRecycleConfirmMessage(state),
@@ -447,20 +462,20 @@ async function clearRecycleBin(els, state) {
   setStatus(els, t("recycle.loading"));
 
   try {
-    const result = await fetchJson("/api/recycle-bin/clear", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirm: true }),
-    });
+    let removedCount = 0;
+    for (const item of items) {
+      const result = await fetchJson("/api/recycle-bin/purge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleted_to: item.deleted_to }),
+      });
+      removedCount += 1;
+      state.itemStatuses[item.deleted_to] = "purged";
+      setStatus(els, t("recycle.purged", result.deleted_to));
+    }
 
-    await loadAll(els, state);
-    const archive = result.log_archive;
-    setStatus(
-      els,
-      archive?.archived
-        ? t("recycle.clearedAndArchived", result.removed_count || 0, archive.archive_path)
-        : t("recycle.cleared", result.removed_count || 0),
-    );
+    renderRecycleItems(els, state);
+    setStatus(els, t("recycle.cleared", removedCount));
   } finally {
     setBusyState(els, state, false);
     renderRecycleItems(els, state);
