@@ -9,7 +9,8 @@ const VIRTUAL_GAP = 14;
 const VIRTUAL_CARD_HEIGHT = 238;
 const VIRTUAL_HEADER_HEIGHT = 38;
 const VIRTUAL_OVERSCAN_ROWS = 2;
-const LOAD_MORE_THRESHOLD_ROWS = 8;
+const LOAD_MORE_THRESHOLD_PAGES = 2;
+const LOAD_MORE_RECHECK_DELAY_MS = 220;
 const IMAGE_PAGE_SIZE = 48;
 const THUMBNAIL_CONCURRENCY = 3;
 
@@ -74,6 +75,7 @@ function createIndexState() {
     refreshScanTimer: 0,
     backgroundScanTimer: 0,
     uiRefreshTimer: 0,
+    loadMoreRecheckTimer: 0,
     hasPendingUiRefresh: false,
     timelineIndexEntries: [],
     virtual: {
@@ -425,6 +427,14 @@ function getVirtualColumnCount(els) {
   return Math.max(1, Math.floor((width + VIRTUAL_GAP) / (minCardWidth + VIRTUAL_GAP)));
 }
 
+function getLoadMoreThreshold(els, state) {
+  const pageRows = Math.ceil(IMAGE_PAGE_SIZE / Math.max(1, state.virtual.columns || getVirtualColumnCount(els)));
+  const pageHeight = pageRows * (VIRTUAL_CARD_HEIGHT + VIRTUAL_GAP);
+  const viewportHeight = els.galleryScroller?.clientHeight || window.innerHeight;
+
+  return Math.max(viewportHeight * 2, pageHeight * LOAD_MORE_THRESHOLD_PAGES);
+}
+
 function runThumbnailQueue(state) {
   while (
     state.virtual.activeThumbnailLoads < THUMBNAIL_CONCURRENCY &&
@@ -488,9 +498,10 @@ function resetLazyThumbnailObserver(state) {
 function queueLazyThumbnail(els, state, thumb, src) {
   thumb.dataset.src = src;
   thumb.removeAttribute("src");
+  thumb.loading = "eager";
 
   if ("fetchPriority" in thumb) {
-    thumb.fetchPriority = "low";
+    thumb.fetchPriority = "auto";
   }
 
   on(thumb, "load", () => {
@@ -505,13 +516,9 @@ function queueLazyThumbnail(els, state, thumb, src) {
     finishThumbnailLoad(state);
   });
 
-  const observer = getLazyThumbnailObserver(els, state);
-  if (observer) {
-    observer.observe(thumb);
-    return;
-  }
-
-  loadLazyThumbnail(state, thumb);
+  window.requestAnimationFrame(() => {
+    loadLazyThumbnail(state, thumb);
+  });
 }
 
 function createGalleryCard(els, state, item) {
@@ -1112,6 +1119,23 @@ async function fetchImagesPage(offset, options = {}) {
   return fetchJson(`/api/images?${params.toString()}`);
 }
 
+function clearLoadMoreRecheck(state) {
+  if (!state.loadMoreRecheckTimer) return;
+
+  window.clearTimeout(state.loadMoreRecheckTimer);
+  state.loadMoreRecheckTimer = 0;
+}
+
+function scheduleLoadMoreRecheck(els, state) {
+  if (!state.hasMoreImages || state.nextImagesOffset === null) return;
+  if (state.loadMoreRecheckTimer) return;
+
+  state.loadMoreRecheckTimer = window.setTimeout(() => {
+    state.loadMoreRecheckTimer = 0;
+    maybeLoadMoreImages(els, state);
+  }, LOAD_MORE_RECHECK_DELAY_MS);
+}
+
 async function fetchImagesByTimelineGroup(groupKey) {
   const params = new URLSearchParams({ group_key: groupKey });
   return fetchJson(`/api/images/by-group?${params.toString()}`);
@@ -1142,6 +1166,7 @@ function updateImagePaginationState(state, data) {
       : null;
   if (!state.hasMoreImages) {
     state.lastLoadMoreOffset = null;
+    clearLoadMoreRecheck(state);
   }
 }
 
@@ -1165,6 +1190,7 @@ async function loadTimelineGroup(els, state, groupKey) {
     window.clearTimeout(state.uiRefreshTimer);
     state.uiRefreshTimer = 0;
   }
+  clearLoadMoreRecheck(state);
 
   try {
     const data = await fetchImagesByTimelineGroup(groupKey);
@@ -1202,6 +1228,7 @@ async function loadImages(els, state) {
     window.clearTimeout(state.uiRefreshTimer);
     state.uiRefreshTimer = 0;
   }
+  clearLoadMoreRecheck(state);
   state.hasPendingUiRefresh = false;
   state.items = [];
   state.totalImageCount = null;
@@ -1351,7 +1378,7 @@ function maybeLoadMoreImages(els, state) {
     els.galleryScroller.scrollTop -
     els.galleryScroller.clientHeight;
 
-  if (remaining < VIRTUAL_CARD_HEIGHT * LOAD_MORE_THRESHOLD_ROWS) {
+  if (remaining < getLoadMoreThreshold(els, state)) {
     if (state.nextImagesOffset === state.lastLoadMoreOffset) return;
 
     state.lastLoadMoreOffset = state.nextImagesOffset;
@@ -1360,6 +1387,9 @@ function maybeLoadMoreImages(els, state) {
         state.lastLoadMoreOffset = null;
       }
       updateStickyHeader(els, state);
+      if (loaded) {
+        scheduleLoadMoreRecheck(els, state);
+      }
     });
   }
 }
