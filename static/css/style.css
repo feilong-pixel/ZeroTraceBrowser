@@ -676,6 +676,7 @@ button:disabled:hover {
   overflow-x: hidden;
   padding-right: 2px;
   scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 .gallery-sticky-header {

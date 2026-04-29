@@ -123,6 +123,13 @@ def main():
         )
         duplicate_stats = None
         if args.duplicates_json_path:
+            merge_existing_methods = None
+            if args.rebuild_hash_db_mode == "append":
+                merge_existing_methods = (
+                    {"strict", "phash"}
+                    if args.rebuild_hash_method == "both"
+                    else {args.rebuild_hash_method}
+                )
             duplicate_stats = rebuild_duplicate_results_json(
                 root_dir,
                 os.path.abspath(args.duplicates_json_path),
@@ -134,6 +141,7 @@ def main():
                 group_progress_callback=lambda count: emit_progress(
                     texts["rebuild_duplicates_group_progress"].format(count=count)
                 ),
+                merge_existing_methods=merge_existing_methods,
             )
         print(
             texts["rebuild_hash_db_done"].format(

@@ -434,3 +434,50 @@ def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) ->
         "2026/04/16/a.jpg",
         "2026/04/16/a_dup1.jpg",
     ]
+
+
+def test_rebuild_duplicate_results_json_append_phash_keeps_existing_strict_groups(work_dir: Path) -> None:
+    root = work_dir / "organized"
+    json_path = work_dir / "duplicates.json"
+    create_media_file(root / "2026" / "04" / "16" / "strict_a.jpg", content="same")
+    create_media_file(root / "2026" / "04" / "16" / "strict_a_dup1.jpg", content="same")
+    create_image_file(root / "2026" / "04" / "17" / "visual_a.jpg", color=(32, 96, 160))
+    create_image_file(root / "2026" / "04" / "17" / "visual_a_dup1.jpg", color=(32, 96, 160))
+
+    json_path.write_text(
+        json.dumps(
+            {
+                "generated_at": datetime.now().isoformat(),
+                "destination_root": str(root.resolve()),
+                "group_count": 1,
+                "groups": [
+                    {
+                        "group_id": "dup_0001",
+                        "reason": "strict",
+                        "hash": "strict_hash",
+                        "kept_path": "2026/04/16/strict_a.jpg",
+                        "items": [
+                            {"role": "kept", "path": "2026/04/16/strict_a.jpg"},
+                            {"role": "duplicate", "path": "2026/04/16/strict_a_dup1.jpg"},
+                        ],
+                        "source_files": [],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    stats = rebuild_duplicate_results_json(
+        str(root),
+        str(json_path),
+        hash_method="phash",
+        phash_threshold=0,
+        merge_existing_methods={"phash"},
+    )
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+
+    assert stats["duplicate_group_count"] == 2
+    assert payload["group_count"] == 2
+    assert [group["reason"] for group in payload["groups"]] == ["strict", "phash"]

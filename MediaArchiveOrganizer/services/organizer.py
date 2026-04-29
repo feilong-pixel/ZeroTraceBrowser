@@ -270,7 +270,7 @@ def write_duplicate_json(json_path: str, dst_dir: str, rows: list[dict[str, str]
         json.dump(payload, file_obj, indent=2, ensure_ascii=False)
 
 
-def write_duplicate_groups_json(json_path: str, dst_dir: str, groups: list[dict]) -> None:
+def build_duplicate_payload_groups(dst_dir: str, groups: list[dict]) -> list[dict]:
     payload_groups = []
 
     for index, group in enumerate(groups, start=1):
@@ -296,6 +296,98 @@ def write_duplicate_groups_json(json_path: str, dst_dir: str, groups: list[dict]
             }
         )
 
+    return payload_groups
+
+
+def load_mergeable_duplicate_groups(
+    json_path: str,
+    dst_dir: str,
+    replace_methods: set[str],
+) -> list[dict]:
+    if not os.path.exists(json_path):
+        return []
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as file_obj:
+            payload = json.load(file_obj)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    if os.path.abspath(str(payload.get("destination_root", ""))) != os.path.abspath(dst_dir):
+        return []
+
+    groups = payload.get("groups", [])
+    if not isinstance(groups, list):
+        return []
+
+    kept_groups = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        reason = str(group.get("reason", "")).strip().lower()
+        if reason in replace_methods:
+            continue
+
+        items = group.get("items", [])
+        if not isinstance(items, list) or len(items) < 2:
+            continue
+
+        normalized_items = []
+        for item_index, item in enumerate(items):
+            if not isinstance(item, dict) or not item.get("path"):
+                continue
+            normalized_items.append(
+                {
+                    "role": str(item.get("role") or ("kept" if item_index == 0 else "duplicate")),
+                    "path": str(item["path"]),
+                }
+            )
+
+        if len(normalized_items) < 2:
+            continue
+
+        kept_groups.append(
+            {
+                "group_id": "",
+                "reason": group.get("reason", "-"),
+                "hash": str(group.get("hash", "")),
+                "kept_path": str(group.get("kept_path") or normalized_items[0]["path"]),
+                "items": normalized_items,
+                "source_files": group.get("source_files", []) if isinstance(group.get("source_files"), list) else [],
+            }
+        )
+
+    return kept_groups
+
+
+def merge_duplicate_payload_groups(existing_groups: list[dict], new_groups: list[dict]) -> list[dict]:
+    merged = []
+    seen = set()
+
+    for group in [*existing_groups, *new_groups]:
+        item_paths = tuple(sorted(str(item.get("path", "")) for item in group.get("items", [])))
+        key = (str(group.get("reason", "")).strip().lower(), item_paths)
+        if not item_paths or key in seen:
+            continue
+
+        seen.add(key)
+        copied = {**group, "group_id": f"dup_{len(merged) + 1:04d}"}
+        merged.append(copied)
+
+    return merged
+
+
+def write_duplicate_groups_json(
+    json_path: str,
+    dst_dir: str,
+    groups: list[dict],
+    merge_existing_methods: set[str] | None = None,
+) -> int:
+    payload_groups = build_duplicate_payload_groups(dst_dir, groups)
+    if merge_existing_methods:
+        existing_groups = load_mergeable_duplicate_groups(json_path, dst_dir, merge_existing_methods)
+        payload_groups = merge_duplicate_payload_groups(existing_groups, payload_groups)
+
     payload = {
         "generated_at": datetime.now().isoformat(),
         "destination_root": os.path.abspath(dst_dir),
@@ -306,6 +398,7 @@ def write_duplicate_groups_json(json_path: str, dst_dir: str, groups: list[dict]
     os.makedirs(os.path.dirname(json_path), exist_ok=True)
     with open(json_path, "w", encoding="utf-8") as file_obj:
         json.dump(payload, file_obj, indent=2, ensure_ascii=False)
+    return len(payload_groups)
 
 
 
@@ -438,6 +531,7 @@ def rebuild_duplicate_results_json(
     phash_threshold: int = 4,
     scan_progress_callback: ProgressCallback | None = None,
     group_progress_callback: ProgressCallback | None = None,
+    merge_existing_methods: set[str] | None = None,
 ) -> dict[str, int | str]:
     root_abs = os.path.abspath(root_dir)
     strict_records: dict[str, list[str]] = {}
@@ -477,12 +571,12 @@ def rebuild_duplicate_results_json(
         )
 
     save_hash_cache(hash_cache)
-    write_duplicate_groups_json(json_path, root_abs, groups)
+    duplicate_group_count = write_duplicate_groups_json(json_path, root_abs, groups, merge_existing_methods)
     return {
         "root_dir": root_abs,
         "json_path": os.path.abspath(json_path),
         "scanned_files": scanned_files,
-        "duplicate_group_count": len(groups),
+        "duplicate_group_count": duplicate_group_count,
     }
 
 

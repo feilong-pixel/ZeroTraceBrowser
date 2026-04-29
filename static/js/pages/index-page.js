@@ -9,6 +9,7 @@ const VIRTUAL_GAP = 14;
 const VIRTUAL_CARD_HEIGHT = 238;
 const VIRTUAL_HEADER_HEIGHT = 38;
 const VIRTUAL_OVERSCAN_ROWS = 2;
+const LOAD_MORE_THRESHOLD_ROWS = 8;
 const IMAGE_PAGE_SIZE = 48;
 const THUMBNAIL_CONCURRENCY = 3;
 
@@ -65,6 +66,7 @@ function createIndexState() {
     hasMoreImages: false,
     imageScanComplete: false,
     previewOnly: false,
+    lastLoadMoreOffset: null,
     totalImageCount: null,
     totalImageCountUpdatedAt: "",
     timelineActiveGroupKey: "",
@@ -80,6 +82,7 @@ function createIndexState() {
       totalHeight: 0,
       columns: 1,
       activeIndexKey: "",
+      activeTimelineButtonKey: "",
       renderFrame: 0,
       lazyObserver: null,
       thumbnailQueue: [],
@@ -371,6 +374,46 @@ function getTimelineTickLabel(label) {
   return label.replace("-", "");
 }
 
+function findFirstVirtualRowIndex(rows, y) {
+  let low = 0;
+  let high = rows.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const row = rows[mid];
+
+    if (row.y + row.height < y) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+function findActiveTimelineGroup(groups, y) {
+  if (!groups.length) return null;
+
+  let low = 0;
+  let high = groups.length - 1;
+  let active = groups[0];
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const group = groups[mid];
+
+    if (group.y <= y) {
+      active = group;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return active;
+}
+
 function getGalleryMinCardWidth(els) {
   return els.galleryScroller?.clientWidth <= 720 ? 150 : 170;
 }
@@ -650,10 +693,17 @@ function renderTimelineIndex(els, state) {
     button.dataset.indexKey = entry.key;
     button.title = entry.label;
     button.setAttribute("aria-label", entry.label);
+    button.classList.toggle("is-active", entry.key === state.virtual.activeTimelineButtonKey);
 
     on(button, "click", (event) => {
       event.preventDefault();
       state.timelineIndexUserScrollUntil = 0;
+
+      if (state.virtual.renderFrame) {
+        window.cancelAnimationFrame(state.virtual.renderFrame);
+        state.virtual.renderFrame = 0;
+      }
+
       if (entry.y === null && entry.groupKey) {
         loadTimelineGroup(els, state, entry.groupKey).catch((error) => {
           setStatus(els, error.message, true);
@@ -696,12 +746,16 @@ function updateStickyHeader(els, state) {
   if (!els.galleryStickyHeader || !els.galleryScroller) return;
 
   const scrollTop = els.galleryScroller.scrollTop;
-  const activeGroup = state.virtual.groups
-    .filter((group) => group.y <= scrollTop + VIRTUAL_HEADER_HEIGHT)
-    .at(-1) || state.virtual.groups[0];
+  const activeGroup = findActiveTimelineGroup(
+    state.virtual.groups,
+    scrollTop + VIRTUAL_HEADER_HEIGHT,
+  );
 
   els.galleryStickyHeader.classList.toggle("is-hidden", !activeGroup);
-  els.galleryStickyHeader.textContent = activeGroup?.label || "";
+  const activeLabel = activeGroup?.label || "";
+  if (els.galleryStickyHeader.textContent !== activeLabel) {
+    els.galleryStickyHeader.textContent = activeLabel;
+  }
   state.virtual.activeIndexKey = activeGroup?.key || "";
 
   if (!els.galleryIndex) return;
@@ -710,11 +764,23 @@ function updateStickyHeader(els, state) {
     ? `group:${state.timelineActiveGroupKey || activeGroup?.key || ""}`
     : (activeGroup ? `group:${activeGroup.key}` : "");
 
-  els.galleryIndex.querySelectorAll(".gallery-index-button").forEach((button) => {
-    const key = button.dataset.indexKey || "";
-    button.classList.toggle("is-active", key === activeGroupKey);
-  });
-  centerTimelineIndexOnActive(els, state, activeGroupKey);
+  if (state.virtual.activeTimelineButtonKey !== activeGroupKey) {
+    const previousButton = state.virtual.activeTimelineButtonKey
+      ? els.galleryIndex.querySelector(
+          `.gallery-index-button[data-index-key="${CSS.escape(state.virtual.activeTimelineButtonKey)}"]`,
+        )
+      : null;
+    const activeButton = activeGroupKey
+      ? els.galleryIndex.querySelector(
+          `.gallery-index-button[data-index-key="${CSS.escape(activeGroupKey)}"]`,
+        )
+      : null;
+
+    previousButton?.classList.remove("is-active");
+    activeButton?.classList.add("is-active");
+    state.virtual.activeTimelineButtonKey = activeGroupKey;
+    centerTimelineIndexOnActive(els, state, activeGroupKey);
+  }
 }
 
 function renderVirtualGalleryViewport(els, state) {
@@ -743,9 +809,11 @@ function renderVirtualGalleryViewport(els, state) {
   const start = Math.max(0, scrollTop - (VIRTUAL_CARD_HEIGHT + VIRTUAL_GAP) * VIRTUAL_OVERSCAN_ROWS);
   const end = scrollTop + viewportHeight + (VIRTUAL_CARD_HEIGHT + VIRTUAL_GAP) * VIRTUAL_OVERSCAN_ROWS;
   const fragment = document.createDocumentFragment();
+  const startIndex = findFirstVirtualRowIndex(state.virtual.rows, start);
 
-  for (const row of state.virtual.rows) {
-    if (row.y + row.height < start || row.y > end) continue;
+  for (let index = startIndex; index < state.virtual.rows.length; index += 1) {
+    const row = state.virtual.rows[index];
+    if (row.y > end) break;
 
     if (row.type === "header") {
       const header = document.createElement("div");
@@ -1072,6 +1140,9 @@ function updateImagePaginationState(state, data) {
     data.has_more && data.next_offset !== null && data.next_offset !== undefined
       ? data.next_offset
       : null;
+  if (!state.hasMoreImages) {
+    state.lastLoadMoreOffset = null;
+  }
 }
 
 async function loadTimelineGroup(els, state, groupKey) {
@@ -1085,6 +1156,7 @@ async function loadTimelineGroup(els, state, groupKey) {
   state.nextImagesOffset = null;
   state.previewOnly = false;
   state.hasPendingUiRefresh = false;
+  state.lastLoadMoreOffset = null;
   if (state.backgroundScanTimer) {
     window.clearTimeout(state.backgroundScanTimer);
     state.backgroundScanTimer = 0;
@@ -1100,6 +1172,7 @@ async function loadTimelineGroup(els, state, groupKey) {
     state.isImageListLoading = false;
     applyFilter(els, state);
     setStatus(els, t("browser.status.loadedImages", state.filtered.length));
+
     if (els.galleryScroller) {
       els.galleryScroller.scrollTop = 0;
       renderVirtualGalleryViewport(els, state);
@@ -1120,6 +1193,7 @@ async function loadImages(els, state) {
   state.hasMoreImages = false;
   state.imageScanComplete = false;
   state.previewOnly = false;
+  state.lastLoadMoreOffset = null;
   if (state.backgroundScanTimer) {
     window.clearTimeout(state.backgroundScanTimer);
     state.backgroundScanTimer = 0;
@@ -1208,15 +1282,15 @@ function scheduleUiRefresh(els, state, immediate = false) {
 
 async function loadMoreImages(els, state, options = {}) {
   const { background = false, refreshUi = true } = options;
-  if (!state.hasMoreImages || state.nextImagesOffset === null) return;
-  if (state.isImageListLoading || state.isLoadingMoreImages) return;
+  if (!state.hasMoreImages || state.nextImagesOffset === null) return false;
+  if (state.isImageListLoading || state.isLoadingMoreImages) return false;
 
   state.isLoadingMoreImages = true;
   const loadToken = state.imagesLoadToken;
 
   try {
     const data = await fetchImagesPage(state.nextImagesOffset);
-    if (loadToken !== state.imagesLoadToken) return;
+    if (loadToken !== state.imagesLoadToken) return false;
 
     mergeImageItems(state, data.items || []);
     updateImagePaginationState(state, data);
@@ -1224,12 +1298,11 @@ async function loadMoreImages(els, state, options = {}) {
       scheduleUiRefresh(els, state, !state.hasMoreImages);
     } else if (refreshUi) {
       refreshGalleryFromBackground(els, state);
-      if (state.hasMoreImages) {
-        window.setTimeout(() => maybeLoadMoreImages(els, state), 0);
-      }
     }
+    return true;
   } catch (error) {
     setStatus(els, error.message, true);
+    return false;
   } finally {
     state.isLoadingMoreImages = false;
   }
@@ -1271,14 +1344,21 @@ function scheduleBackgroundImageRefresh(els, state) {
 function maybeLoadMoreImages(els, state) {
   if (shouldUseTimelineGroupMode(state)) return;
   if (!els.galleryScroller || !state.hasMoreImages) return;
+  if (state.isImageListLoading || state.isLoadingMoreImages) return;
 
   const remaining =
     els.galleryScroller.scrollHeight -
     els.galleryScroller.scrollTop -
     els.galleryScroller.clientHeight;
 
-  if (remaining < VIRTUAL_CARD_HEIGHT * 4) {
-    loadMoreImages(els, state).then(() => {
+  if (remaining < VIRTUAL_CARD_HEIGHT * LOAD_MORE_THRESHOLD_ROWS) {
+    if (state.nextImagesOffset === state.lastLoadMoreOffset) return;
+
+    state.lastLoadMoreOffset = state.nextImagesOffset;
+    loadMoreImages(els, state).then((loaded) => {
+      if (!loaded) {
+        state.lastLoadMoreOffset = null;
+      }
       updateStickyHeader(els, state);
     });
   }

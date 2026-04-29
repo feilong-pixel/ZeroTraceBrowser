@@ -313,7 +313,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="ZeroTraceBrowser", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="ZeroTraceBrowser", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=trusted_hosts_from_env(),
@@ -324,7 +324,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 class StaticNoCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
