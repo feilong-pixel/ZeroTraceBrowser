@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser Tasks</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="css/style.css?v=20260424-io9" />
+  </head>
+  <body>
+    <main class="tasks-page">
+      <section class="tasks-main">
+        <section class="tasks-page-header">
+          <div>
+            <h1 data-i18n="tasks.pageTitle">MediaArchiveOrganizer Tasks</h1>
+            <p class="intro" data-i18n="tasks.pageIntro">Run organizer jobs and generate logs, CSV, and duplicates.json.</p>
+          </div>
+        </section>
+
+        <section class="panel task-config-panel task-focus-panel">
+          <header class="task-panel-head">
+            <h2 data-i18n="tasks.taskConfig">Task Config</h2>
+          </header>
+          <div class="task-config-groups">
+            <div class="task-path-grid">
+              <label for="srcInput" data-i18n="tasks.sourceDir">Source Directory</label>
+              <input id="srcInput" type="text" />
+              <button id="openSrcDirButton" type="button" class="ghost path-open-button" data-path-input="srcInput" data-i18n="tasks.openDirectory">Open</button>
+
+              <label for="dstInput" data-i18n="tasks.destDir">Destination Directory</label>
+              <input id="dstInput" type="text" />
+              <button id="openDstDirButton" type="button" class="ghost path-open-button" data-path-input="dstInput" data-i18n="tasks.openDirectory">Open</button>
+            </div>
+
+            <div class="task-options-grid">
+              <div>
+                <label for="modeSelect" data-i18n="tasks.mode">Mode</label>
+                <select id="modeSelect">
+                  <option value="copy">copy</option>
+                  <option value="move">move</option>
+                </select>
+              </div>
+              <div>
+                <label for="duplicateSelect" data-i18n="tasks.duplicateDetection">Duplicate Detection</label>
+                <select id="duplicateSelect">
+                  <option value="strict">strict</option>
+                  <option value="phash">phash</option>
+                </select>
+              </div>
+              <div>
+                <label for="thresholdInput" data-i18n="tasks.phashThreshold">pHash Threshold</label>
+                <input id="thresholdInput" type="number" min="0" value="4" />
+              </div>
+              <div>
+                <label for="langSelect" data-i18n="tasks.language">Language</label>
+                <select id="langSelect" disabled>
+                  <option value="en">en</option>
+                  <option value="zh">zh</option>
+                  <option value="ja">ja</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="action-stack">
+            <button id="runTaskButton" type="button" class="primary-button" data-i18n="tasks.runTask">Start Organizer Task</button>
+          </div>
+        </section>
+
+        <section class="panel task-output-panel">
+          <header class="task-output-header">
+            <div>
+              <h2 data-i18n="tasks.liveOutput">Live Output</h2>
+            </div>
+            <strong id="liveOutputStatus" class="task-output-status">idle</strong>
+          </header>
+          <div id="taskLog" class="log-box" data-i18n-empty="noTaskStarted">No task started.</div>
+        </section>
+      </section>
+
+      <aside class="sidebar gallery-sidebar tasks-sidebar">
+        <header class="sidebar-header sidebar-header-minimal">
+          <div class="sidebar-header-actions">
+            <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="tasks.backToGallery">Back To Gallery</a>
+          </div>
+        </header>
+
+        <section class="panel">
+          <h2 data-i18n="tasks.maintenanceTools">Maintenance Tools</h2>
+          <button id="toggleMaintenanceButton" type="button" class="ghost" data-i18n="tasks.showHashMaintenance">Show Hash DB Maintenance</button>
+          <div id="maintenancePanel" class="maintenance-panel is-hidden">
+            <div class="task-grid compact-grid">
+              <div class="full">
+                <label for="rebuildRootInput" data-i18n="tasks.rebuildRoot">Rebuild Root</label>
+                <input id="rebuildRootInput" type="text" />
+              </div>
+              <div>
+                <label for="rebuildModeSelect" data-i18n="tasks.rebuildMode">Rebuild Mode</label>
+                <select id="rebuildModeSelect">
+                  <option value="replace">replace</option>
+                  <option value="append">append</option>
+                </select>
+              </div>
+              <div>
+                <label for="hashMethodSelect" data-i18n="tasks.hashMethod">Hash Method</label>
+                <select id="hashMethodSelect">
+                  <option value="both">both</option>
+                  <option value="strict">strict</option>
+                  <option value="phash">phash</option>
+                </select>
+              </div>
+            </div>
+            <div class="action-stack">
+              <button id="runRebuildButton" type="button" data-i18n="tasks.runRebuildTask">Run Hash DB Rebuild</button>
+            </div>
+          </div>
+        </section>
+        <section class="panel tasks-summary-panel">
+          <h2 data-i18n="tasks.taskSummary">Task Summary</h2>
+          <div id="taskSummary" class="summary-list">
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="system.labels.status">Status</span>
+              <strong id="taskStatus">idle</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="tasks.taskId">Task Id</span>
+              <strong id="taskId">-</strong>
+            </div>
+            <div class="summary-item summary-item-stacked">
+              <span class="summary-label" data-i18n="system.labels.startedAt">Started At</span>
+              <strong id="taskStartedAt">-</strong>
+            </div>
+            <div class="summary-item summary-item-stacked">
+              <span class="summary-label" data-i18n="system.labels.finishedAt">Finished At</span>
+              <strong id="taskFinishedAt">-</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel tasks-summary-panel tasks-outputs-panel">
+          <h2 data-i18n="tasks.outputs">Outputs</h2>
+          <div class="task-output-path-list">
+            <div class="task-output-path-item">
+              <label for="logPath" data-i18n="tasks.logPath">Log Path</label>
+              <div class="task-output-path-row">
+                <input id="logPath" type="text" readonly value="-" />
+                <button id="openLogPathButton" type="button" class="ghost task-output-open-button" data-output-input="logPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+
+            <div class="task-output-path-item">
+              <label for="csvPath" data-i18n="tasks.csvPath">CSV Path</label>
+              <div class="task-output-path-row">
+                <input id="csvPath" type="text" readonly value="-" />
+                <button id="openCsvPathButton" type="button" class="ghost task-output-open-button" data-output-input="csvPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+
+            <div class="task-output-path-item">
+              <label for="jsonPath" data-i18n="tasks.jsonPath">JSON Path</label>
+              <div class="task-output-path-row">
+                <input id="jsonPath" type="text" readonly value="-" />
+                <button id="openJsonPathButton" type="button" class="ghost task-output-open-button" data-output-input="jsonPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+
+            <div class="task-output-path-item">
+              <label for="hashDbPath" data-i18n="tasks.hashDbPath">Hash DB Path</label>
+              <div class="task-output-path-row">
+                <input id="hashDbPath" type="text" readonly value="-" />
+                <button id="openHashDbPathButton" type="button" class="ghost task-output-open-button" data-output-input="hashDbPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+        <div id="dialogMessage" class="dialog-message"></div>
+        <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">
+            Cancel
+          </button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=20260424-io9"></script>
+  </body>
+  </html>

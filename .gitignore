@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+pytest_tmp/
+.pytest_tmp/
+tests_runtime/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Test and coverage artifacts
+.test_runs/
+test_runs/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Runtime data and local state
+logs/
+deleted/
+thumbnails/
+data/
+*.log
+settings.json
+
+# Local scratch/sample folders
+review*_src/
+review*_dst/
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini

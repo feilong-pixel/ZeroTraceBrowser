@@ -1,0 +1,256 @@
+ZeroTraceBrowser
+„   .gitignore
+„   app.py
+„   DISCLAIMER_en.md
+„   ENVIRONMENT.md
+„   favicon.ico
+„   LICENSE
+„   pytest.ini
+„   README.md
+„   README_en.md
+„   requirements.txt
+„   settings.json
+„   start.ps1
+
+„¥„Ÿdata
+„   „¤„Ÿroots
+„       „¥„Ÿc7f5c3e891c83e9c765d8618e52d0ea7435f6fdb
+„       „   „   hash_db.json
+„       „   „   root.json
+„       „   „   
+„       „   „¥„Ÿdeleted
+„       „   „¥„Ÿindexes
+„       „   „¥„Ÿlogs
+„       „   „       copy_log.csv
+„       „   „       delete_log.csv
+„       „   „       
+„       „   „¥„Ÿtasks
+„       „   „   „¤„Ÿ98a13ff6d45b
+„       „   „¤„Ÿthumbnails
+„       „¤„Ÿd6bb520fbc7b007558625d7f778b4d7c86b6be0f
+„           „   duplicates.json
+„           „   hash_db.json
+„           „   root.json
+„           „   
+„           „¥„Ÿdeleted
+„           „   „¥„Ÿ20260427_132920_609522_1142e553fd
+„           „   „       20070331-153722_dup1.JPG
+„           „   „       
+„           „   „¤„Ÿ20260427_132924_965010_0dd380b8a3
+„           „           20070408-142642_dup1.jpg
+„           „           
+„           „¥„Ÿindexes
+„           „       5eb1480b6d163ee1aa0cb3f95d3d97c8983e2b0e.json
+„           „       5eb1480b6d163ee1aa0cb3f95d3d97c8983e2b0e.summary.json
+„           „       5eb1480b6d163ee1aa0cb3f95d3d97c8983e2b0e.timeline.json
+„           „       
+„           „¥„Ÿlogs
+„           „       copy_log.csv
+„           „       delete_log.csv
+„           „       
+„           „¥„Ÿtasks
+„           „   „¥„Ÿ002fbbb08950
+„           „   „       duplicate_report.csv
+„           „   „       organizer.log
+„           „   „       
+„           „   „¥„Ÿ1e5ce79fb78a
+„           „   „       duplicates.json
+„           „   „       duplicate_report.csv
+„           „   „       organizer.log
+„           „   „       
+„           „   „¥„Ÿ38bcf9cb37a4
+„           „   „       duplicates.json
+„           „   „       duplicate_report.csv
+„           „   „       organizer.log
+„           „   „       
+„           „   „¥„Ÿ6c9952527dea
+„           „   „       duplicates.json
+„           „   „       organizer.log
+„           „   „       
+„           „   „¥„Ÿ7949f2547159
+„           „   „¥„Ÿ7dcca49db353
+„           „   „       duplicates.json
+„           „   „       organizer.log
+„           „   „       
+„           „   „¥„Ÿ91f3dfd75e1f
+„           „   „       duplicates.json
+„           „   „       organizer.log
+„           „   „       
+„           „   „¥„Ÿc76fb78743ae
+„           „   „¥„Ÿd075f3815c62
+„           „   „       organizer.log
+„           „   „       
+„           „   „¤„Ÿd32728f3402a
+„           „           duplicate_report.csv
+„           „           organizer.log
+„           „           
+„           „¤„Ÿthumbnails
+„               „¥„Ÿ00
+„               „   „¥„Ÿ3d
+„               „   „       003dea2a55298e2d06f1c641c952124b5406ee30.jpg
+„               „   „       
+„               „   „¥„Ÿ8d
+„               „   „       008db100c1b244d2ad74412de036820e3dfe4634.jpg
+„               „   „       
+„               „   „¤„Ÿd0
+„               „           00d0123cd8323fa85de0a22293df8c1589af5f8e.jpg
+„               „           
+„ 
+„¥„Ÿdocs
+„   „¤„Ÿscreenshots
+„       „¥„Ÿen
+„       „       duplicates.png
+„       „       index.png
+„       „       recycle.png
+„       „       settings.png
+„       „       tasks.png
+„       „       viewer.png
+„       „       
+„       „¥„Ÿja
+„       „       duplicates.png
+„       „       index.png
+„       „       recycle.png
+„       „       settings.png
+„       „       tasks.png
+„       „       viewer.png
+„       „       
+„       „¤„Ÿzh
+„               duplicates.png
+„               index.png
+„               recycle.png
+„               settings.png
+„               tasks.png
+„               viewer.png
+„               
+„¥„Ÿlogs
+„   „   copy_log.csv
+„   „   delete_log.csv
+„   „   delete_log_20260422_174225.csv
+„   „   delete_log_20260422_194054.csv
+„   „   delete_log_20260423_165106.csv
+„   „   delete_log_20260423_180835.csv
+„   „   delete_log_20260423_190748.csv
+„   „   delete_log_20260423_192024.csv
+„   „   
+„   „¤„Ÿtasks
+„       „   duplicates.json
+„       „   duplicate_report.csv
+„       „   organizer_05762506a67e.log
+„       „   organizer_0cbc0e8b5d46.log
+„       „   
+„       „¥„Ÿ1ad93dadb3bb
+„       „¥„Ÿ4b75f9dc2a59
+„       „       duplicate_report.csv
+„       „       organizer.log
+„       „       
+„       „¥„Ÿ71f8c9771c7e
+„       „       duplicates.json
+„       „       hash_db.json
+„       „       organizer.log
+„       „       
+„       „¥„Ÿ87b310be5bb6
+„       „       duplicates.json
+„       „       hash_db.json
+„       „       
+„       „¥„Ÿac5c16a08b2a
+„       „       organizer.log
+„       „       
+„       „¥„Ÿbbfda6aa8f56
+„       „       organizer.log
+„       „       
+„       „¤„Ÿ_indexes
+„               duplicates_by_root.json
+„               hash_db_by_root.json
+„               
+„¥„ŸMediaArchiveOrganizer
+„   „   .gitignore
+„   „   main.py
+„   „   pytest.ini
+„   „   README.md
+„   „   README_ja.md
+„   „   README_zh.md
+„   „   
+„   „¥„Ÿcore
+„   „   „   date_classifier.py
+„   „   „   duplicate_detector.py
+„   „   „   exif_reader.py
+„   „   „   hash_db.py
+„   „   „   
+„   „           
+„   „¥„Ÿdata
+„   „       hash_db.json
+„   „       
+„   „¥„Ÿlocales
+„   „   „   en.py
+„   „   „   ja.py
+„   „   „   zh.py
+„   „   „   __init__.py
+„   „   „   
+„   „           
+„   „¥„Ÿservices
+„   „   „   organizer.py
+„   „   „   
+„   „           
+„   „¥„Ÿtests
+„   „   „   test_image_organizer.py
+„           
+„¥„Ÿstatic
+„   „   duplicates.html
+„   „   index.html
+„   „   recycle.html
+„   „   settings.html
+„   „   tasks.html
+„   „   viewer.html
+„   „   
+„   „¥„Ÿcss
+„   „       style.css
+„   „       
+„   „¤„Ÿjs
+„       „   app.js
+„       „   
+„       „¥„Ÿcore
+„       „       common_elements.js
+„       „       dialog.js
+„       „       dom.js
+„       „       events.js
+„       „       format.js
+„       „       
+„       „¥„Ÿlocales
+„       „       en.js
+„       „       i18n.js
+„       „       ja.js
+„       „       zh.js
+„       „       
+„       „¤„Ÿpages
+„               duplicates-page.js
+„               index-page.js
+„               recycle-page.js
+„               settings-page.js
+„               tasks-page.js
+„               viewer-page.js
+„               
+„¥„Ÿtests
+„   „   conftest.py
+„   „   test_api_boundaries.py
+„   „   test_api_duplicates.py
+„   „   test_api_tasks.py
+„   „   test_api_user_flow.py
+„   „   __init__.py
+„   „   
+„           
+„¥„Ÿztb
+„   „   file_service.py
+„   „   recycle_service.py
+„   „   schemas.py
+„   „   security.py
+„   „   settings_service.py
+„   „   task_service.py
+„   „   __init__.py
+„   „   
+„   „¥„Ÿroutes
+„   „   „   duplicates.py
+„   „   „   images.py
+„   „   „   recycle.py
+„   „   „   settings.py
+„   „   „   tasks.py
+„   „   „   __init__.py

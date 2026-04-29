@@ -1,0 +1,436 @@
+# SPDX-License-Identifier: MIT
+
+import csv
+import json
+import os
+import shutil
+import sys
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+from core.hash_db import load_hash_db
+from core.date_classifier import build_date_path, get_target_date
+from core.exif_reader import get_exif_datetime
+from locales import get_texts
+from main import validate_paths
+from services.organizer import (
+    apply_windows_file_times,
+    organize_images,
+    read_windows_file_times,
+    rebuild_duplicate_results_json,
+    rebuild_hash_db,
+    transfer_file,
+)
+
+
+def create_media_file(path: Path, content: str = "demo") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def create_image_file(path: Path, color: tuple[int, int, int]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (32, 32), color=color).save(path)
+    return path
+
+
+def create_image_file_with_exif_date(path: Path, exif_date: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (32, 32), color=(32, 96, 160))
+    exif = Image.Exif()
+    exif[36867] = exif_date
+    image.save(path, format="JPEG", exif=exif)
+    return path
+
+
+def expected_target_path(src_file: Path, dst_dir: Path) -> Path:
+    target_date = get_target_date(str(src_file))
+    return Path(build_date_path(str(dst_dir), target_date)) / src_file.name
+
+
+def expected_target_dir(src_file: Path, dst_dir: Path) -> Path:
+    target_date = get_target_date(str(src_file))
+    return Path(build_date_path(str(dst_dir), target_date))
+
+
+def windows_filetime_from_unix(timestamp: float) -> tuple[int, int]:
+    filetime = int((timestamp + 11644473600) * 10000000)
+    return filetime & 0xFFFFFFFF, filetime >> 32
+
+
+def set_windows_creation_time(path: Path, timestamp: float) -> None:
+    if not sys.platform.startswith("win"):
+        return
+    current_times = read_windows_file_times(str(path))
+    assert current_times is not None
+    apply_windows_file_times(str(path), (windows_filetime_from_unix(timestamp), current_times[1], current_times[2]))
+
+
+def assert_windows_creation_time(path: Path, expected: float) -> None:
+    if not sys.platform.startswith("win"):
+        return
+    assert abs(path.stat().st_ctime - expected) < 2
+
+
+@pytest.fixture
+def work_dir() -> Path:
+    base_dir = Path.cwd() / "tests_runtime"
+    base_dir.mkdir(exist_ok=True)
+    temp_dir = base_dir / f"run_{uuid.uuid4().hex}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        yield temp_dir
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def hash_db_path(work_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB", str(work_dir / "hash_db.json"))
+
+
+def test_copy_mode_organizes_and_keeps_source(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "copy.log"
+    src_file = create_media_file(src_dir / "a.jpg")
+
+    target_path = expected_target_path(src_file, dst_dir)
+
+    organize_images(str(src_dir), str(dst_dir), str(log_path), mode="copy")
+
+    assert src_file.exists()
+    assert target_path.exists()
+    assert "OK | COPY" in log_path.read_text(encoding="utf-8")
+
+
+def test_move_mode_organizes_and_removes_source(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "move.log"
+    src_file = create_media_file(src_dir / "a.jpg")
+
+    target_path = expected_target_path(src_file, dst_dir)
+
+    organize_images(str(src_dir), str(dst_dir), str(log_path), mode="move")
+
+    assert not src_file.exists()
+    assert target_path.exists()
+    assert "OK | MOVE" in log_path.read_text(encoding="utf-8")
+
+
+def test_target_date_uses_exif_datetime_original(work_dir: Path) -> None:
+    src_file = create_image_file_with_exif_date(work_dir / "src" / "photo.jpg", "2019:02:03 04:05:06")
+
+    exif_datetime = get_exif_datetime(str(src_file))
+    target_datetime = get_target_date(str(src_file))
+
+    assert exif_datetime == datetime(2019, 2, 3, 4, 5, 6)
+    assert target_datetime == datetime(2019, 2, 3, 4, 5, 6)
+
+
+def test_target_date_without_exif_uses_file_modified_time(work_dir: Path) -> None:
+    src_file = create_media_file(work_dir / "src" / "a.jpg")
+    expected_timestamp = datetime(2020, 1, 2, 3, 4, 5).timestamp()
+    os.utime(src_file, (expected_timestamp, expected_timestamp))
+
+    target_datetime = get_target_date(str(src_file))
+
+    assert target_datetime == datetime.fromtimestamp(expected_timestamp)
+
+
+def test_transfer_file_preserves_windows_creation_time(work_dir: Path) -> None:
+    src_file = create_media_file(work_dir / "src" / "a.jpg")
+    copy_target = work_dir / "dst" / "copy.jpg"
+    move_target = work_dir / "dst" / "move.jpg"
+    copy_target.parent.mkdir(parents=True, exist_ok=True)
+    original_created_at = 1577934245.0
+    set_windows_creation_time(src_file, original_created_at)
+
+    transfer_file(str(src_file), str(copy_target), "copy")
+
+    assert src_file.exists()
+    assert copy_target.exists()
+    assert_windows_creation_time(copy_target, original_created_at)
+
+    transfer_file(str(src_file), str(move_target), "move")
+
+    assert not src_file.exists()
+    assert move_target.exists()
+    assert_windows_creation_time(move_target, original_created_at)
+
+
+def test_validate_paths_rejects_missing_source(work_dir: Path) -> None:
+    texts = get_texts("en")
+    missing_src = work_dir / "missing"
+    dst_dir = work_dir / "dst"
+
+    with pytest.raises(ValueError, match="Source directory does not exist"):
+        validate_paths(str(missing_src), str(dst_dir), texts)
+
+
+def test_validate_paths_rejects_destination_inside_source(work_dir: Path) -> None:
+    texts = get_texts("en")
+    src_dir = work_dir / "src"
+    nested_dst = src_dir / "nested" / "dst"
+    src_dir.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="Destination directory must not be"):
+        validate_paths(str(src_dir), str(nested_dst), texts)
+
+
+def test_duplicate_names_get_numeric_suffix(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "duplicate.log"
+    src_file_1 = create_media_file(src_dir / "camera1" / "same.jpg", content="first")
+    src_file_2 = create_media_file(src_dir / "camera2" / "same.jpg", content="second")
+
+    target_dir = Path(build_date_path(str(dst_dir), get_target_date(str(src_file_1))))
+
+    organize_images(str(src_dir), str(dst_dir), str(log_path), mode="copy")
+
+    first_target = target_dir / "same.jpg"
+    second_target = target_dir / "same_1.jpg"
+
+    assert first_target.exists()
+    assert second_target.exists()
+    assert first_target.read_text(encoding="utf-8") == "first"
+    assert second_target.read_text(encoding="utf-8") == "second"
+
+
+def test_strict_duplicate_detection_keeps_duplicates_within_current_destination(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    first_file = create_media_file(src_dir / "camera1" / "same.jpg", content="first")
+    create_media_file(src_dir / "camera2" / "same.jpg", content="first")
+    target_dir = expected_target_dir(first_file, dst_dir)
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "DUP | strict=" in log_text
+    assert (target_dir / "same.jpg").exists()
+    assert (target_dir / "same_dup1.jpg").exists()
+
+
+def test_duplicate_report_csv_is_written_for_detected_duplicates(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    first_file = create_media_file(src_dir / "camera1" / "same_name.jpg", content="first")
+    create_media_file(src_dir / "camera2" / "different_name.jpg", content="first")
+    target_dir = expected_target_dir(first_file, dst_dir)
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+    )
+
+    report_path = work_dir / "duplicate_report.csv"
+    assert report_path.exists()
+
+    with report_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
+        rows = list(csv.DictReader(csv_file))
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["original_name"] == "different_name.jpg"
+    assert row["original_path"].endswith(str(Path("camera2") / "different_name.jpg"))
+    assert row["kept_path"].endswith(str(target_dir / "same_name.jpg"))
+    assert row["duplicate_method"] == "strict"
+    assert row["hash"]
+    assert row["duplicate_path"].endswith(str(target_dir / "same_name_dup1.jpg"))
+
+
+def test_duplicates_json_is_written_for_detected_duplicates(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    first_file = create_media_file(src_dir / "camera1" / "same_name.jpg", content="first")
+    create_media_file(src_dir / "camera2" / "different_name.jpg", content="first")
+    target_dir = expected_target_dir(first_file, dst_dir)
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+    )
+
+    json_path = work_dir / "duplicates.json"
+    assert json_path.exists()
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    expected_kept_path = (target_dir / "same_name.jpg").relative_to(dst_dir).as_posix()
+    expected_duplicate_path = (target_dir / "same_name_dup1.jpg").relative_to(dst_dir).as_posix()
+    assert payload["destination_root"] == str(dst_dir.resolve())
+    assert payload["group_count"] == 1
+    assert len(payload["groups"]) == 1
+
+    group = payload["groups"][0]
+    assert group["group_id"] == "dup_0001"
+    assert group["reason"] == "strict"
+    assert group["kept_path"] == expected_kept_path
+    assert len(group["items"]) == 2
+    assert group["items"][0]["role"] == "kept"
+    assert group["items"][0]["path"] == expected_kept_path
+    assert group["items"][1]["role"] == "duplicate"
+    assert group["items"][1]["path"] == expected_duplicate_path
+
+
+def test_duplicate_names_follow_kept_file_name_sequence(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    first_file = create_media_file(src_dir / "camera1" / "first_name.jpg", content="first")
+    create_media_file(src_dir / "camera2" / "second_name.jpg", content="first")
+    create_media_file(src_dir / "camera3" / "third_name.jpg", content="first")
+    target_dir = expected_target_dir(first_file, dst_dir)
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+    )
+
+    assert (target_dir / "first_name.jpg").exists()
+    assert (target_dir / "first_name_dup1.jpg").exists()
+    assert (target_dir / "first_name_dup2.jpg").exists()
+
+    payload = json.loads((work_dir / "duplicates.json").read_text(encoding="utf-8"))
+    assert payload["group_count"] == 1
+    group = payload["groups"][0]
+    assert [item["path"] for item in group["items"]] == [
+        (target_dir / "first_name.jpg").relative_to(dst_dir).as_posix(),
+        (target_dir / "first_name_dup1.jpg").relative_to(dst_dir).as_posix(),
+        (target_dir / "first_name_dup2.jpg").relative_to(dst_dir).as_posix(),
+    ]
+
+
+def test_hash_db_does_not_redirect_files_outside_current_destination(work_dir: Path) -> None:
+    first_src = work_dir / "src_first"
+    first_dst = work_dir / "dst_first"
+    second_src = work_dir / "src_second"
+    second_dst = work_dir / "dst_second"
+    first_log = work_dir / "first.log"
+    second_log = work_dir / "second.log"
+
+    create_media_file(first_src / "same.jpg", content="identical")
+    second_file = create_media_file(second_src / "same.jpg", content="identical")
+    second_target_dir = expected_target_dir(second_file, second_dst)
+
+    organize_images(
+        str(first_src),
+        str(first_dst),
+        str(first_log),
+        mode="copy",
+        duplicate_detection="strict",
+    )
+    organize_images(
+        str(second_src),
+        str(second_dst),
+        str(second_log),
+        mode="copy",
+        duplicate_detection="strict",
+    )
+
+    second_log_text = second_log.read_text(encoding="utf-8")
+    assert "DUP | strict=" not in second_log_text
+    assert "OK | COPY" in second_log_text
+    assert (second_target_dir / "same.jpg").exists()
+
+
+def test_phash_duplicate_detection_uses_distance_threshold(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "phash.log"
+    create_image_file(src_dir / "camera1" / "same.png", color=(255, 0, 0))
+    create_image_file(src_dir / "camera2" / "same.png", color=(255, 0, 0))
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="phash",
+        phash_threshold=0,
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "DUP | phash=" in log_text
+
+
+def test_rebuild_hash_db_replace_rebuilds_only_target_root(work_dir: Path) -> None:
+    root_a = work_dir / "organized_a"
+    root_b = work_dir / "organized_b"
+    create_media_file(root_a / "2026" / "04" / "16" / "a.jpg", content="first")
+    create_media_file(root_b / "2026" / "04" / "16" / "b.jpg", content="second")
+
+    stats = rebuild_hash_db(str(root_a), rebuild_mode="replace", hash_method="strict")
+    db = load_hash_db()
+
+    assert stats["scanned_files"] == 1
+    assert stats["strict_indexed"] == 1
+    assert stats["phash_indexed"] == 0
+    strict_paths = [path for paths in db["strict"].values() for path in paths]
+    assert len(strict_paths) == 1
+    assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
+
+
+def test_rebuild_hash_db_append_keeps_existing_records(work_dir: Path) -> None:
+    root_a = work_dir / "organized_a"
+    root_b = work_dir / "organized_b"
+    create_media_file(root_a / "2026" / "04" / "16" / "a.jpg", content="first")
+    create_media_file(root_b / "2026" / "04" / "16" / "b.jpg", content="second")
+
+    rebuild_hash_db(str(root_a), rebuild_mode="replace", hash_method="strict")
+    stats = rebuild_hash_db(str(root_b), rebuild_mode="append", hash_method="strict")
+    db = load_hash_db()
+
+    assert stats["scanned_files"] == 1
+    assert stats["strict_indexed"] == 1
+    strict_paths = sorted(path for paths in db["strict"].values() for path in paths)
+    assert len(strict_paths) == 2
+    assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
+    assert strict_paths[1].endswith(str(Path("organized_b") / "2026" / "04" / "16" / "b.jpg"))
+
+
+def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) -> None:
+    root = work_dir / "organized"
+    json_path = work_dir / "duplicates.json"
+    create_media_file(root / "2026" / "04" / "16" / "a.jpg", content="same")
+    create_media_file(root / "2026" / "04" / "16" / "a_dup1.jpg", content="same")
+    create_media_file(root / "2026" / "04" / "16" / "b.jpg", content="different")
+
+    stats = rebuild_duplicate_results_json(str(root), str(json_path), hash_method="strict")
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+
+    assert stats["duplicate_group_count"] == 1
+    assert payload["destination_root"] == str(root.resolve())
+    assert payload["group_count"] == 1
+    group = payload["groups"][0]
+    assert group["reason"] == "strict"
+    assert [item["role"] for item in group["items"]] == ["kept", "duplicate"]
+    assert [item["path"] for item in group["items"]] == [
+        "2026/04/16/a.jpg",
+        "2026/04/16/a_dup1.jpg",
+    ]

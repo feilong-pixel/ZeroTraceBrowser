@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroTraceBrowser Viewer</title>
+  <style>html.i18n-pending body{visibility:hidden}</style>
+  <link rel="stylesheet" href="./css/style.css?v=20260424-io9" />
+</head>
+
+<body>
+  <main class="viewer-page">
+    <section class="viewer-main-page">
+      <div id="viewerCanvas" class="viewer-canvas viewer-canvas-page">
+        <img id="viewerImage" alt="Preview image" />
+      </div>
+    </section>
+
+    <aside class="sidebar gallery-sidebar viewer-sidebar-page">
+      <section class="sidebar-header sidebar-header-minimal">
+        <div class="sidebar-header-actions viewer-header-actions">
+          <button id="backToGalleryButton" type="button" data-i18n="viewer.buttons.backToGallery">
+            Back To Gallery
+          </button>
+        </div>
+      </section>
+
+      <button id="toggleViewerSidebarButton" type="button" class="ghost sidebar-toggle" aria-label="Hide action sidebar"
+        title="Hide action sidebar">
+        &gt;&lt;
+      </button>
+
+      <section class="panel">
+        <h2 data-i18n="viewer.labels.info">Image Info</h2>
+
+        <div class="info-grid">
+          <div id="viewerName" class="viewer-title">-</div>
+          <div id="viewerPath" class="muted">-</div>
+          <div id="viewerZoom" class="muted">-</div>
+        </div>
+
+        <div class="action-stack viewer-side-actions">
+          <div class="viewer-button-row">
+            <button id="viewerPrevButton" type="button" aria-label="Previous">←</button>
+            <button id="viewerNextButton" type="button" aria-label="Next">→</button>
+          </div>
+
+          <div class="viewer-button-row viewer-zoom-row">
+            <button id="viewerZoomOutButton" type="button">-</button>
+            <button id="viewerZoomResetButton" type="button">Fit</button>
+            <button id="viewerZoomInButton" type="button">+</button>
+          </div>
+
+          <div class="viewer-button-row">
+            <button id="viewerRotateLeftButton" type="button" aria-label="Rotate left" title="Rotate left">↺</button>
+            <button id="viewerRotateRightButton" type="button" aria-label="Rotate right" title="Rotate right">↻</button>
+          </div>
+        </div>
+
+        <div class="selection-hint muted" data-i18n="viewer.hint">
+          Tip: Use left and right to switch images. Delete actions move files to the recycle bin.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 data-i18n="viewer.labels.actions">Actions</h2>
+        <div class="action-stack">
+          <button id="viewerCopyButton" type="button" class="primary-button" data-i18n="viewer.buttons.copySelected">
+            Copy
+          </button>
+
+          <button id="viewerDeleteButton" type="button" class="danger" data-i18n="viewer.buttons.deleteSelected">
+            Delete
+          </button>
+
+          <button id="viewerOpenEditorButton" type="button" data-i18n="viewer.buttons.openEditor">
+            Open in Paint
+          </button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 data-i18n="viewer.labels.exifInfo">EXIF Info</h2>
+        <div id="viewerExifBox" class="muted" data-i18n="viewer.exif.empty">
+          Select an image to show capture details.
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 data-i18n="viewer.labels.status">Status</h2>
+        <div id="statusMessage" class="muted">Ready.</div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+    <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+      <div id="dialogMessage" class="dialog-message"></div>
+      <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">
+          Cancel
+        </button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js?v=20260424-io9"></script>
+</body>
+
+</html>

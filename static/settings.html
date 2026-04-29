@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser - Settings</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="./css/style.css?v=20260424-io9" />
+</head>
+
+<body>
+    <main class="settings-page">
+        <div class="content settings-main">
+
+            <!-- Header -->
+            <section class="settings-header">
+                <div class="settings-header-main">
+                    <h1 data-i18n="settings.title">Settings</h1>
+                    <p class="intro" data-i18n="settings.intro">
+                        Manage image roots, the default copy target, and interface language.
+                    </p>
+                </div>
+
+                <div class="settings-header-actions">
+                    <a href="/index.html" class="button-link" data-i18n="settings.buttons.backToGallery">Back To Gallery</a>
+                </div>
+            </section>
+
+            <div class="settings-layout">
+                <div class="settings-primary">
+                    <!-- Root Management -->
+                    <section class="panel settings-roots-panel settings-focus-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.roots">Image Roots</h2>
+                        </div>
+
+                        <div class="action-stack">
+                            <label for="rootSelect" data-i18n="settings.labels.rootSelect">Loaded Roots</label>
+                            <select id="rootSelect"></select>
+
+                            <div class="inline-row">
+                                <button id="switchRootButton" type="button" class="primary-button"
+                                    data-i18n="settings.buttons.switchRoot">
+                                    Switch Current Root
+                                </button>
+
+                                <button id="removeRootButton" type="button" class="ghost"
+                                    data-i18n="settings.buttons.removeRoot">
+                                    Remove Current Root
+                                </button>
+                            </div>
+
+                            <label for="newRootInput" data-i18n="settings.labels.newRootInput">Add Root</label>
+                            <div class="settings-add-root-row">
+                                <input id="newRootInput" type="text" placeholder="D:\\Images" autocomplete="off"
+                                    data-i18n-placeholder="settings.placeholders.newRoot" />
+                                <button id="addRootButton" type="button" data-i18n="settings.buttons.addRoot">
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Default Copy Target -->
+                    <section class="panel settings-copy-target-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.copyTarget">Copy Target</h2>
+                        </div>
+
+                        <div class="action-stack">
+                            <label for="copyTargetInput" data-i18n="settings.labels.copyTargetInput">Default Copy Target</label>
+                            <input id="copyTargetInput" type="text" placeholder="Backend default is used when empty" autocomplete="off"
+                                data-i18n-placeholder="settings.placeholders.copyTarget" />
+
+                            <div class="inline-row">
+                                <button id="saveCopyTargetButton" type="button" class="primary-button"
+                                    data-i18n="settings.buttons.saveCopyTarget">
+                                    Save Copy Target
+                                </button>
+
+                                <button id="clearCopyTargetButton" type="button" class="ghost"
+                                    data-i18n="settings.buttons.clearCopyTarget">
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <aside class="settings-secondary">
+                    <!-- Overview -->
+                    <section class="panel settings-overview-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.overview">Overview</h2>
+                        </div>
+
+                        <div class="settings-overview-grid">
+                            <div class="meta-card">
+                                <span data-i18n="settings.labels.activeRoot">Current Root</span>
+                                <strong id="settingsActiveRoot">-</strong>
+                            </div>
+
+                            <div class="meta-card">
+                                <span data-i18n="settings.labels.copyTarget">Default Copy Target</span>
+                                <strong id="settingsCopyTarget">-</strong>
+                            </div>
+
+                            <div class="meta-card">
+                                <span data-i18n="settings.labels.language">Interface Language</span>
+                                <strong id="settingsLanguage">-</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Language -->
+                    <section class="panel settings-language-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.language">Language</h2>
+                        </div>
+
+                        <div class="action-stack">
+                            <label for="languageSelect" data-i18n="settings.labels.languageSelect">Interface Language</label>
+                            <select id="languageSelect">
+                                <option value="en">English</option>
+                                <option value="zh">中文</option>
+                                <option value="ja">日本語</option>
+                            </select>
+
+                            <button id="saveLanguageButton" type="button" class="primary-button"
+                                data-i18n="settings.buttons.saveLanguage">
+                                Save Language
+                            </button>
+                        </div>
+                    </section>
+
+                    <!-- Status -->
+                    <section class="panel settings-status-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.status">Status</h2>
+                        </div>
+                        <div id="statusMessage" class="muted" aria-live="polite">
+                            Ready.
+                        </div>
+                    </section>
+
+                    <!-- Advanced -->
+                    <section class="panel settings-advanced-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.advanced">Advanced Settings</h2>
+                        </div>
+                        <div class="muted" data-i18n="settings.advanced.placeholder">
+                            Thumbnail size, default sorting, and Viewer defaults can be added here later.
+                        </div>
+                    </section>
+                </aside>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+        <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+            <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+            <div id="dialogMessage" class="dialog-message"></div>
+            <div class="dialog-actions">
+                <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">
+                    Cancel
+                </button>
+                <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=20260424-io9"></script>
+</body>
+
+</html>

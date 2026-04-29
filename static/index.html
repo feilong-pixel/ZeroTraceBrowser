@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="./css/style.css?v=20260424-io9" />
+</head>
+
+<body>
+    <main class="gallery-page">
+
+        <!-- ================= Main Area ================= -->
+        <div class="content gallery-main" aria-label="Image browser">
+
+            <!-- Header Info -->
+            <section class="gallery-header">
+                <div class="gallery-toolbar">
+                    <div class="gallery-search">
+                        <label for="searchInput" class="visually-hidden" data-i18n="browser.labels.search">Search</label>
+                        <input id="searchInput" type="search" placeholder="Filter by file name" autocomplete="off"
+                            data-i18n-placeholder="browser.placeholders.search" />
+                    </div>
+                    <button id="dateFilterToggle" type="button" class="ghost date-filter-toggle" aria-expanded="false"
+                        aria-controls="dateFilterPanel" data-i18n="browser.buttons.dateFilter">
+                        Date
+                    </button>
+                    <div id="dateFilterPanel" class="date-filter-panel is-hidden">
+                        <div class="date-filter-field">
+                            <label for="dateStartInput" data-i18n="browser.labels.startDate">Start date</label>
+                            <input id="dateStartInput" type="text" inputmode="numeric" autocomplete="off"
+                                placeholder="YYYY-MM-DD / YYYY/MM/DD" data-i18n-placeholder="browser.placeholders.date" />
+                        </div>
+
+                        <div class="date-filter-field">
+                            <label for="dateEndInput" data-i18n="browser.labels.endDate">End date</label>
+                            <input id="dateEndInput" type="text" inputmode="numeric" autocomplete="off"
+                                placeholder="YYYY-MM-DD / YYYY/MM/DD" data-i18n-placeholder="browser.placeholders.date" />
+                        </div>
+
+                        <button id="clearDateFilterButton" type="button" class="ghost"
+                            data-i18n="browser.buttons.clearDateFilter">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="gallery-meta">
+                    <div class="meta-card">
+                        <span data-i18n="browser.labels.currentRoot">Current Root</span>
+                        <strong id="imageRoot">-</strong>
+                    </div>
+
+                    <div class="meta-card">
+                        <span data-i18n="browser.labels.imageCount">Images</span>
+                        <div class="meta-card-inline-value">
+                            <strong id="imageCount">0</strong>
+                            <span id="imageCountUpdatedAt" class="meta-inline-note muted">-</span>
+                        </div>
+                    </div>
+
+                    <div class="meta-card">
+                        <span data-i18n="browser.labels.status">Status</span>
+                        <strong id="statusMessage" class="meta-status">Ready.</strong>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Gallery -->
+            <div class="view-panel">
+                <div id="galleryScroller" class="gallery-scroller">
+                    <div id="galleryStickyHeader" class="gallery-sticky-header is-hidden" aria-hidden="true"></div>
+                    <div id="gallery" class="gallery" role="list"></div>
+                </div>
+                <nav id="galleryIndex" class="gallery-index is-hidden" aria-label="Timeline index"></nav>
+            </div>
+        </div>
+
+        <!-- Sidebar Toggle -->
+        <button id="toggleSidebarButton" type="button" class="ghost sidebar-toggle" aria-label="Hide action sidebar" title="Hide action sidebar">
+            &gt;&lt;
+        </button>
+
+        <!-- ================= Right Sidebar ================= -->
+        <aside id="gallerySidebar" class="sidebar gallery-sidebar" aria-label="Action sidebar">
+
+            <!-- Header -->
+            <section class="sidebar-header sidebar-header-minimal">
+                <h1 data-i18n="app.title">ZeroTraceBrowser</h1>
+                <p class="intro" data-i18n="app.intro">Lightweight image browsing and controlled actions.</p>
+            </section>
+
+            <!-- Tools -->
+            <section class="panel tools-panel">
+                <h2 data-i18n="browser.labels.tools">Tools</h2>
+                <div class="sidebar-header-actions">
+                    <a href="/tasks.html" class="button-link subtle-link" data-i18n="browser.buttons.tasksTool">
+                        Organizer and Duplicate Tool
+                    </a>
+
+                    <a href="/recycle.html" class="button-link subtle-link" data-i18n="browser.buttons.recycleTool">
+                        Recycle Bin Manager
+                    </a>
+
+                    <a href="/settings.html" class="button-link subtle-link" data-i18n="browser.buttons.settingsTool">
+                        Settings
+                    </a>
+                </div>
+            </section>
+
+            <!-- Selection -->
+            <section class="panel selection-panel">
+                <h2 data-i18n="browser.labels.selection">Selection</h2>
+
+                <div class="selection-summary selection-summary-compact">
+                    <div id="selectionCount" class="selection-count">No image selected</div>
+
+                    <strong id="selectionDetail" class="selection-file-name">
+                        Select an image first
+                    </strong>
+                </div>
+
+                <div class="selection-context selection-context-compact">
+                    <div class="selection-meta-line">
+                        <span class="selection-meta-prefix">→</span>
+                        <span class="selection-context-label" data-i18n="browser.labels.copyTargetShort">Copy Target</span>
+                        <strong id="selectionCopyTarget">Use default directory</strong>
+                    </div>
+
+                    <div class="selection-meta-line">
+                        <span class="selection-meta-prefix">→</span>
+                        <span class="selection-context-label" data-i18n="browser.labels.deleteMode">Delete Mode</span>
+                        <strong id="selectionDeleteMode">Move to recycle bin</strong>
+                    </div>
+                </div>
+
+                <div class="selection-primary-action">
+                    <button id="copySelectedButton" type="button" class="primary-button" disabled
+                        data-i18n="browser.buttons.copySelected">
+                        Copy Selected
+                    </button>
+                </div>
+
+                <div class="selection-secondary-actions">
+                    <button id="previewSelectedButton" type="button" disabled
+                        data-i18n="browser.buttons.previewSelected">
+                        Preview
+                    </button>
+
+                    <button id="clearSelectionButton" type="button" class="ghost" disabled
+                        data-i18n="browser.buttons.clearSelection">
+                        Clear Selection
+                    </button>
+                </div>
+
+                <div class="selection-tertiary-actions">
+                    <button id="invertSelectionButton" type="button" class="ghost"
+                        data-i18n="browser.buttons.invertSelection">
+                        Invert Selection
+                    </button>
+
+                    <button id="deleteSelectedButton" type="button" class="danger" disabled
+                        data-i18n="browser.buttons.deleteSelected">
+                        Delete
+                    </button>
+                </div>
+
+                <div id="selectionHint" class="selection-hint muted" aria-live="polite">
+                    Tip: Delete actions move files to the recycle bin
+                </div>
+            </section>
+
+            <!-- Duplicates -->
+            <section class="panel duplicates-panel">
+                <h2 data-i18n="browser.labels.duplicates">Duplicates</h2>
+                <div id="duplicatesBox" class="muted" aria-live="polite" data-i18n="browser.duplicates.empty">
+                    No available duplicates.json result was found.
+                </div>
+            </section>
+
+        </aside>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+        <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+            <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+            <div id="dialogMessage" class="dialog-message"></div>
+            <div class="dialog-actions">
+                <button id="dialogCancelButton" type="button" class="ghost"
+                    data-i18n="dialog.buttons.cancel">Cancel</button>
+                <button id="dialogConfirmButton" type="button" class="primary-button"
+                    data-i18n="dialog.buttons.ok">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Template -->
+    <template id="cardTemplate">
+        <article class="card" tabindex="0" role="listitem">
+            <div class="selection-indicator"></div>
+            <img class="thumb" alt="" loading="lazy" decoding="async" width="320" height="320" />
+            <div class="card-body">
+                <strong class="file-name"></strong>
+                <span class="file-path"></span>
+            </div>
+        </article>
+    </template>
+
+    <script type="module" src="./js/app.js?v=20260429-timeline2"></script>
+</body>
+
+</html>

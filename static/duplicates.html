@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroTraceBrowser Duplicates</title>
+  <style>html.i18n-pending body{visibility:hidden}</style>
+  <link rel="stylesheet" href="css/style.css?v=20260424-io10" />
+</head>
+
+<body>
+  <main class="tasks-page duplicates-page">
+    <section class="tasks-main">
+      <section class="tasks-page-header duplicates-page-header">
+        <div>
+          <h1 data-i18n="duplicates.pageTitle">Duplicate Results</h1>
+          <p class="intro" data-i18n="duplicates.pageIntro">Browse duplicate groups with pagination and handle duplicate files directly on this page.</p>
+        </div>
+      </section>
+
+      <section class="panel duplicates-results-panel">
+        <header class="duplicates-toolbar">
+          <div class="duplicates-toolbar-heading">
+            <div class="duplicates-title-row">
+              <h2 class="duplicates-toolbar-title" data-i18n="duplicates.groups">Groups</h2>
+              <div id="duplicatesSummary" class="duplicates-toolbar-summary">-</div>
+            </div>
+            <select id="duplicateMethodFilter" class="duplicates-method-filter" aria-label="Detection Method">
+              <option value="strict" data-i18n="duplicates.methodStrict">Strict</option>
+              <option value="phash" data-i18n="duplicates.methodPhash">pHash</option>
+            </select>
+          </div>
+          <div class="duplicates-actions">
+            <button id="bulkDeleteDuplicatesButton" type="button" class="danger"
+              data-i18n="duplicates.bulkMoveToRecycle" disabled>Bulk Move To Recycle</button>
+            <button id="refreshDuplicatesButton" type="button" class="ghost"
+              data-i18n="duplicates.refresh">Refresh</button>
+          </div>
+        </header>
+        <div id="duplicatesState" class="muted"></div>
+        <div id="duplicatesList" class="duplicates-list"></div>
+        <footer id="duplicatesPagination" class="duplicates-pagination">
+          <button id="prevPageButton" type="button" class="ghost" data-i18n="duplicates.prevPage">Prev Page</button>
+          <span id="pageInfo" class="duplicates-active">-</span>
+          <button id="nextPageButton" type="button" class="ghost" data-i18n="duplicates.nextPage">Next Page</button>
+        </footer>
+      </section>
+    </section>
+
+    <aside class="sidebar gallery-sidebar duplicates-sidebar">
+      <header class="sidebar-header sidebar-header-minimal">
+        <div class="sidebar-header-actions">
+          <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="duplicates.backToGallery">
+            Back To Gallery
+          </a>
+          <a id="openTasksToolLink" href="/tasks.html" class="button-link" data-i18n="duplicates.openTasksTool">
+            Open Organizer Tool
+          </a>
+        </div>
+      </header>
+
+      <section class="panel duplicates-summary-panel">
+        <h2 data-i18n="system.labels.summary">Summary</h2>
+        <div class="summary-list">
+          <div class="summary-item">
+            <span class="summary-label" data-i18n="duplicates.groups">Groups</span>
+            <strong id="summaryGroupCount">0</strong>
+          </div>
+          <div class="summary-item summary-item-stacked">
+            <span class="summary-label" data-i18n="system.labels.generatedAt">Generated At</span>
+            <strong id="summaryGeneratedAt">-</strong>
+          </div>
+          <div class="summary-item summary-item-stacked">
+            <span class="summary-label" data-i18n="duplicates.resultRoot">Result Root</span>
+            <div class="summary-result-root-row">
+              <input id="summaryResultRoot" class="summary-path-input" type="text" value="-" readonly
+                aria-label="Result Root" />
+              <button id="openResultRootButton" type="button" class="summary-more-button" title="Open Result Root"
+                aria-label="Open Result Root">...</button>
+            </div>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label" data-i18n="system.labels.status">Status</span>
+            <strong id="summaryDuplicatesStatus" class="summary-status-label">-</strong>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+    <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+      <div id="dialogMessage" class="dialog-message"></div>
+      <div class="dialog-actions">
+        <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+        <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js?v=20260424-io10"></script>
+</body>
+
+</html>

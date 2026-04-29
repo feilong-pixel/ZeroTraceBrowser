@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser Recycle Bin</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="css/style.css?v=20260424-io9" />
+  </head>
+  <body>
+    <main class="tasks-page recycle-page">
+      <section class="tasks-main">
+        <section class="tasks-page-header recycle-page-header">
+          <div>
+            <h1 data-i18n="recycle.pageTitle">Recycle Bin Manager</h1>
+            <p class="intro" data-i18n="recycle.pageIntro">Review safely deleted files, restore items, confirm cleanup, and inspect delete logs.</p>
+          </div>
+        </section>
+
+        <section class="panel recycle-results-panel">
+          <header class="recycle-toolbar">
+            <div class="recycle-toolbar-heading">
+              <div class="recycle-title-row">
+                <h2 class="recycle-toolbar-title" data-i18n="recycle.recycleItems">Recycle Items</h2>
+                <div id="recycleCount" class="muted">0</div>
+              </div>
+            </div>
+            <div class="recycle-actions">
+              <button id="refreshRecycleButton" type="button" class="ghost" data-i18n="recycle.refresh">Refresh</button>
+              <button id="clearRecycleButton" type="button" class="danger" data-i18n="recycle.clearRecycle">Clear Recycle Bin</button>
+            </div>
+          </header>
+          <div id="recycleList" class="recycle-list muted" data-i18n-empty="noRecycleItems">Recycle bin is empty.</div>
+          <footer id="recyclePagination" class="recycle-pagination is-hidden">
+            <button id="prevRecyclePageButton" type="button" class="ghost" data-i18n="recycle.prevPage">Prev Page</button>
+            <span id="recyclePageInfo" class="recycle-active">-</span>
+            <button id="nextRecyclePageButton" type="button" class="ghost" data-i18n="recycle.nextPage">Next Page</button>
+          </footer>
+        </section>
+
+        <section class="panel recycle-logs-panel">
+          <header class="recycle-toolbar">
+            <div class="recycle-toolbar-heading">
+              <div class="recycle-title-row">
+                <h2 class="recycle-toolbar-title" data-i18n="recycle.deleteLogs">Delete Logs</h2>
+                <span id="recycleLogSummary" class="recycle-log-summary">-</span>
+              </div>
+              <select id="recycleLogFilter" class="recycle-log-filter" aria-label="Filter delete logs">
+                <option value="all" data-i18n="recycle.logFilters.all">All</option>
+                <option value="deleted" data-i18n="recycle.logFilters.deleted">Deleted</option>
+                <option value="restored" data-i18n="recycle.logFilters.restored">Restored</option>
+                <option value="purged" data-i18n="recycle.logFilters.purged">Purged</option>
+              </select>
+            </div>
+            <div class="recycle-actions">
+              <button id="archiveRecycleLogsButton" type="button" class="ghost" data-i18n="recycle.archiveLogs">Archive Logs</button>
+            </div>
+          </header>
+
+          <div id="recycleLogs" class="log-box" data-i18n-empty="noLogs">No delete logs yet.</div>
+        </section>
+      </section>
+
+      <aside class="sidebar gallery-sidebar recycle-sidebar">
+        <header class="sidebar-header sidebar-header-minimal">
+          <div class="sidebar-header-actions">
+            <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="recycle.backToGallery">Back To Gallery</a>
+          </div>
+        </header>
+
+        <section class="panel recycle-summary-panel">
+          <h2 data-i18n="system.labels.summary">Summary</h2>
+          <div class="summary-list">
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="recycle.recycleItems">Recycle Items</span>
+              <strong id="summaryRecycleCount">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="recycle.logEntries">Log Entries</span>
+              <strong id="summaryLogCount">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="system.labels.status">Status</span>
+              <strong id="recycleStatus">-</strong>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+        <div id="dialogMessage" class="dialog-message"></div>
+        <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=20260424-io9"></script>
+  </body>
+  </html>
