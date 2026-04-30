@@ -5,10 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
-import sys
 import threading
 import time
+import warnings
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -16,26 +15,16 @@ from typing import Any, Iterable
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from PIL import Image
-from PIL.ExifTags import TAGS
+from MediaArchiveOrganizer.core.date_classifier import get_target_date_with_source
+from MediaArchiveOrganizer.core.file_transfer import transfer_file
 
-EXIF_DATETIME_TAG_ORDER = (
-    ("DateTimeOriginal",),
-    ("CreateDate", "DateTimeDigitized"),
-    ("ModifyDate", "DateTime"),
-)
-EXIF_IFD_TAG_ID = 34665
 IMAGE_LIST_CACHE_TTL_SECONDS = 5.0
 IMAGE_LIST_CACHE: dict[tuple[str, tuple[str, ...], tuple[str, ...]], tuple[float, list[dict[str, Any]]]] = {}
 IMAGE_SCAN_CACHE: dict[tuple[str, tuple[str, ...], tuple[str, ...]], dict[str, Any]] = {}
 IMAGE_SCAN_LOCK = threading.Lock()
 IMAGE_INDEX_REFRESH_DELAY_SECONDS = 0.0
 IMAGE_INDEX_PREVIEW_LIMIT = 240
-WindowsFileTime = tuple[int, int]
-WindowsFileTimes = tuple[WindowsFileTime, WindowsFileTime, WindowsFileTime]
 
-from MediaArchiveOrganizer.core.file_transfer import transfer_file
-from MediaArchiveOrganizer.core.date_classifier import get_target_date, get_target_date_with_source
 
 def replace_with_retry(source: Path, target: Path, attempts: int = 3) -> None:
     for attempt in range(attempts):
@@ -132,55 +121,6 @@ def iter_image_files(root: Path, supported_extensions: set[str], excluded_scan_d
     return scan(root)
 
 
-def parse_exif_datetime(value: Any) -> datetime | None:
-    if not value:
-        return None
-
-    if isinstance(value, bytes):
-        value = value.decode(errors="ignore")
-
-    normalized = str(value).strip()
-    for pattern in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-        try:
-            return datetime.strptime(normalized, pattern)
-        except ValueError:
-            continue
-
-    return None
-
-
-def preferred_exif_datetime_from_map(exif_map: dict[str, Any]) -> datetime | None:
-    for aliases in EXIF_DATETIME_TAG_ORDER:
-        for alias in aliases:
-            parsed = parse_exif_datetime(exif_map.get(alias))
-            if parsed:
-                return parsed
-
-    return None
-
-
-def exif_map_from_raw(raw_exif: Any) -> dict[str, Any]:
-    exif_map = {TAGS.get(tag_id, str(tag_id)): value for tag_id, value in raw_exif.items()}
-
-    try:
-        exif_ifd = raw_exif.get_ifd(EXIF_IFD_TAG_ID)
-    except Exception:
-        exif_ifd = {}
-
-    exif_map.update({TAGS.get(tag_id, str(tag_id)): value for tag_id, value in exif_ifd.items()})
-    return exif_map
-
-import warnings
-
-def read_preferred_exif_datetime(file_path: Path) -> datetime | None:
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return get_target_date(file_path)
-    except Exception:
-        return None
-
-
 def timeline_metadata_from_path(file_path: Path) -> tuple[datetime, int, str]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -248,10 +188,6 @@ def with_image_exists(root: Path, item: dict[str, Any]) -> dict[str, Any]:
             exists = False
     enriched = ensure_image_timeline_metadata(root, item) if exists else item
     return {**enriched, "exists": exists}
-
-
-def image_item_exists(root: Path, item: dict[str, Any]) -> bool:
-    return bool(with_image_exists(root, item)["exists"])
 
 
 def list_lightweight_image_metadata(
@@ -350,6 +286,17 @@ def timeline_index_cache_path(
 
 
 def timeline_group_key_for_item(item: dict[str, Any]) -> str:
+    timeline_time = str(item.get("timeline_time", "")).strip()
+    if (
+        len(timeline_time) >= 7
+        and timeline_time[4] == "-"
+        and timeline_time[:4].isdigit()
+        and timeline_time[5:7].isdigit()
+    ):
+        month = int(timeline_time[5:7])
+        if 1 <= month <= 12:
+            return timeline_time[:7]
+
     timestamp = get_image_timestamp_for_sort(item)
     if timestamp is None:
         return "unknown"
@@ -658,17 +605,29 @@ def scan_lightweight_image_metadata_into_cache(
 ) -> None:
     time.sleep(IMAGE_INDEX_REFRESH_DELAY_SECONDS)
     refreshed_items: list[dict[str, Any]] = []
+    refreshed_paths: set[str] = set()
+    live_paths: set[str] | None = None
     wrote_preview_summary = False
     try:
         for file_path in iter_image_files(root, supported_extensions, excluded_scan_dirs):
             item = image_metadata_from_path(root, file_path, include_exif=True)
+            relative_path = str(item.get("relative_path", ""))
             preview_items: list[dict[str, Any]] = []
             with IMAGE_SCAN_LOCK:
                 state = IMAGE_SCAN_CACHE.get(cache_key)
                 if state is None:
                     return
                 if state.get("from_cache"):
+                    if live_paths is None:
+                        live_paths = {
+                            str(cached_item.get("relative_path", ""))
+                            for cached_item in state["items"]
+                        }
                     refreshed_items.append(item)
+                    refreshed_paths.add(relative_path)
+                    if relative_path and relative_path not in live_paths:
+                        state["items"].append(item)
+                        live_paths.add(relative_path)
                 else:
                     state["items"].append(item)
                     if len(state["items"]) >= IMAGE_INDEX_PREVIEW_LIMIT and not wrote_preview_summary:
@@ -717,10 +676,11 @@ def ensure_image_scan_started(
         state = IMAGE_SCAN_CACHE.get(cache_key)
         if state is None:
             cached_items, cached_total, cached_generated_at = load_image_index_cache(index_dir, cache_key)
+            cached_preview_only = isinstance(cached_total, int) and cached_total > len(cached_items)
             state = {
                 "items": cached_items,
-                "complete": bool(cached_items) and not refresh,
-                "scanning": refresh or not cached_items,
+                "complete": bool(cached_items) and not refresh and not cached_preview_only,
+                "scanning": refresh or not cached_items or cached_preview_only,
                 "from_cache": bool(cached_items),
                 "total": cached_total,
                 "generated_at": cached_generated_at,

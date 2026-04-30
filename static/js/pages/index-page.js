@@ -11,6 +11,7 @@ const VIRTUAL_HEADER_HEIGHT = 38;
 const VIRTUAL_OVERSCAN_ROWS = 2;
 const LOAD_MORE_THRESHOLD_PAGES = 2;
 const LOAD_MORE_RECHECK_DELAY_MS = 220;
+const LOAD_MORE_EMPTY_RECHECK_DELAY_MS = 1600;
 const IMAGE_PAGE_SIZE = 48;
 const THUMBNAIL_CONCURRENCY = 3;
 
@@ -70,7 +71,6 @@ function createIndexState() {
     lastLoadMoreOffset: null,
     totalImageCount: null,
     totalImageCountUpdatedAt: "",
-    timelineActiveGroupKey: "",
     timelineIndexUserScrollUntil: 0,
     refreshScanTimer: 0,
     backgroundScanTimer: 0,
@@ -86,7 +86,6 @@ function createIndexState() {
       activeIndexKey: "",
       activeTimelineButtonKey: "",
       renderFrame: 0,
-      lazyObserver: null,
       thumbnailQueue: [],
       activeThumbnailLoads: 0,
     },
@@ -116,10 +115,6 @@ async function postJson(url, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-}
-
-function formatTemplate(value, params = {}) {
-  return String(value ?? "").replace(/\{(\w+)\}/g, (_, key) => params[key] ?? "");
 }
 
 function getSelectedItems(state) {
@@ -272,11 +267,6 @@ function getImageTimestamp(item) {
   return Number.isFinite(item?.timeline_ts) ? item.timeline_ts : null;
 }
 
-function parseImageDate(item) {
-  const timestamp = getImageTimestamp(item);
-  return timestamp === null ? null : new Date(timestamp * 1000);
-}
-
 function compareImagesByTime(left, right) {
   const safeLeft = getImageTimestamp(left) ?? 0;
   const safeRight = getImageTimestamp(right) ?? 0;
@@ -348,26 +338,15 @@ function updateDateFilterToggle(els) {
   els.dateFilterToggle.textContent = label;
 }
 
-function getMonthLabel(date) {
-  if (!date) return "Unknown date";
-
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function getGroupKey(item) {
-  const date = parseImageDate(item);
-  return date ? getMonthLabel(date) : "unknown";
-}
-
-function getGroupLabel(item) {
-  return getMonthLabel(parseImageDate(item));
+function getTimelineMonthLabel(item) {
+  const value = String(item?.timeline_time || "");
+  const match = value.match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : "Unknown date";
 }
 
 function getTimelineGroupKey(item) {
-  const date = parseImageDate(item);
-  if (!date) return "unknown";
-
-  return getMonthLabel(date);
+  const label = getTimelineMonthLabel(item);
+  return label === "Unknown date" ? "unknown" : label;
 }
 
 function getTimelineTickLabel(label) {
@@ -466,32 +445,7 @@ function loadLazyThumbnail(state, thumb) {
   runThumbnailQueue(state);
 }
 
-function getLazyThumbnailObserver(els, state) {
-  if (!("IntersectionObserver" in window)) return null;
-
-  if (!state.virtual.lazyObserver) {
-    state.virtual.lazyObserver = new IntersectionObserver(
-      (entries, observer) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-
-          observer.unobserve(entry.target);
-          loadLazyThumbnail(state, entry.target);
-        }
-      },
-      {
-        root: els.galleryScroller || null,
-        rootMargin: "240px 0px",
-        threshold: 0.01,
-      },
-    );
-  }
-
-  return state.virtual.lazyObserver;
-}
-
-function resetLazyThumbnailObserver(state) {
-  state.virtual.lazyObserver?.disconnect();
+function pruneThumbnailQueue(state) {
   state.virtual.thumbnailQueue = state.virtual.thumbnailQueue.filter((thumb) => thumb.isConnected);
 }
 
@@ -587,7 +541,7 @@ function buildVirtualGalleryLayout(els, state) {
     if (!currentItems.length) return;
 
     const firstItem = currentItems[0];
-    const label = getGroupLabel(firstItem);
+    const label = getTimelineMonthLabel(firstItem);
     const groupTop = y;
 
     groups.push({
@@ -719,7 +673,6 @@ function renderTimelineIndex(els, state) {
       }
 
       if (!els.galleryScroller || entry.y === null) return;
-      state.timelineActiveGroupKey = "";
       els.galleryScroller.scrollTo({ top: entry.y, behavior: "smooth" });
       updateStickyHeader(els, state);
     });
@@ -767,9 +720,7 @@ function updateStickyHeader(els, state) {
 
   if (!els.galleryIndex) return;
 
-  const activeGroupKey = shouldUseTimelineGroupMode(state)
-    ? `group:${state.timelineActiveGroupKey || activeGroup?.key || ""}`
-    : (activeGroup ? `group:${activeGroup.key}` : "");
+  const activeGroupKey = activeGroup ? `group:${activeGroup.key}` : "";
 
   if (state.virtual.activeTimelineButtonKey !== activeGroupKey) {
     const previousButton = state.virtual.activeTimelineButtonKey
@@ -791,7 +742,7 @@ function updateStickyHeader(els, state) {
 }
 
 function renderVirtualGalleryViewport(els, state) {
-  resetLazyThumbnailObserver(state);
+  pruneThumbnailQueue(state);
   els.gallery.innerHTML = "";
 
   if (!state.filtered.length) {
@@ -1094,17 +1045,6 @@ async function loadTimelineIndex(state) {
   }
 }
 
-function shouldUseTimelineGroupMode(state) {
-  return (
-    Boolean(state.timelineActiveGroupKey) &&
-    !state.query &&
-    !state.dateStart &&
-    !state.dateEnd &&
-    !state.activeDuplicateGroupId &&
-    state.timelineIndexEntries.length > 0
-  );
-}
-
 async function fetchImagesPage(offset, options = {}) {
   const { refreshScan = offset > 0, includeTotal = offset === 0 } = options;
   const params = new URLSearchParams({
@@ -1126,14 +1066,29 @@ function clearLoadMoreRecheck(state) {
   state.loadMoreRecheckTimer = 0;
 }
 
-function scheduleLoadMoreRecheck(els, state) {
+function scheduleLoadMoreRecheck(els, state, delay = LOAD_MORE_RECHECK_DELAY_MS) {
   if (!state.hasMoreImages || state.nextImagesOffset === null) return;
   if (state.loadMoreRecheckTimer) return;
 
   state.loadMoreRecheckTimer = window.setTimeout(() => {
     state.loadMoreRecheckTimer = 0;
     maybeLoadMoreImages(els, state);
-  }, LOAD_MORE_RECHECK_DELAY_MS);
+  }, delay);
+}
+
+function clearImageRefreshTimers(state) {
+  if (state.backgroundScanTimer) {
+    window.clearTimeout(state.backgroundScanTimer);
+    state.backgroundScanTimer = 0;
+  }
+
+  if (state.uiRefreshTimer) {
+    window.clearTimeout(state.uiRefreshTimer);
+    state.uiRefreshTimer = 0;
+  }
+
+  clearLoadMoreRecheck(state);
+  state.hasPendingUiRefresh = false;
 }
 
 async function fetchImagesByTimelineGroup(groupKey) {
@@ -1174,35 +1129,27 @@ async function loadTimelineGroup(els, state, groupKey) {
   if (!groupKey) return;
 
   setStatus(els, t("browser.status.loadingImages"));
-  state.timelineActiveGroupKey = groupKey;
   state.isImageListLoading = true;
   state.isLoadingMoreImages = false;
-  state.hasMoreImages = false;
-  state.nextImagesOffset = null;
-  state.previewOnly = false;
-  state.hasPendingUiRefresh = false;
   state.lastLoadMoreOffset = null;
-  if (state.backgroundScanTimer) {
-    window.clearTimeout(state.backgroundScanTimer);
-    state.backgroundScanTimer = 0;
-  }
-  if (state.uiRefreshTimer) {
-    window.clearTimeout(state.uiRefreshTimer);
-    state.uiRefreshTimer = 0;
-  }
-  clearLoadMoreRecheck(state);
+  clearImageRefreshTimers(state);
 
   try {
     const data = await fetchImagesByTimelineGroup(groupKey);
-    state.items = data.items || [];
+    mergeImageItems(state, data.items || []);
     state.isImageListLoading = false;
     applyFilter(els, state);
     setStatus(els, t("browser.status.loadedImages", state.filtered.length));
 
     if (els.galleryScroller) {
-      els.galleryScroller.scrollTop = 0;
-      renderVirtualGalleryViewport(els, state);
+      const targetGroup = state.virtual.groups.find((group) => group.key === groupKey);
+      if (targetGroup) {
+        els.galleryScroller.scrollTo({ top: targetGroup.y, behavior: "smooth" });
+      }
+      updateStickyHeader(els, state);
     }
+
+    scheduleBackgroundImageRefresh(els, state);
   } finally {
     state.isImageListLoading = false;
   }
@@ -1220,16 +1167,7 @@ async function loadImages(els, state) {
   state.imageScanComplete = false;
   state.previewOnly = false;
   state.lastLoadMoreOffset = null;
-  if (state.backgroundScanTimer) {
-    window.clearTimeout(state.backgroundScanTimer);
-    state.backgroundScanTimer = 0;
-  }
-  if (state.uiRefreshTimer) {
-    window.clearTimeout(state.uiRefreshTimer);
-    state.uiRefreshTimer = 0;
-  }
-  clearLoadMoreRecheck(state);
-  state.hasPendingUiRefresh = false;
+  clearImageRefreshTimers(state);
   state.items = [];
   state.totalImageCount = null;
   state.totalImageCountUpdatedAt = "";
@@ -1316,27 +1254,34 @@ async function loadMoreImages(els, state, options = {}) {
   const loadToken = state.imagesLoadToken;
 
   try {
+    const previousItemCount = state.items.length;
+    const requestedOffset = state.nextImagesOffset;
     const data = await fetchImagesPage(state.nextImagesOffset);
     if (loadToken !== state.imagesLoadToken) return false;
 
     mergeImageItems(state, data.items || []);
     updateImagePaginationState(state, data);
-    if (background && refreshUi) {
-      scheduleUiRefresh(els, state, !state.hasMoreImages);
-    } else if (refreshUi) {
-      refreshGalleryFromBackground(els, state);
+    const addedItemCount = state.items.length - previousItemCount;
+    const advancedOffset = state.nextImagesOffset !== requestedOffset;
+    const shouldRefreshUi = refreshUi && (addedItemCount > 0 || !state.hasMoreImages);
+
+    if (shouldRefreshUi) {
+      if (background) {
+        scheduleUiRefresh(els, state, !state.hasMoreImages);
+      } else {
+        refreshGalleryFromBackground(els, state);
+      }
     }
-    return true;
+    return addedItemCount > 0 || !state.hasMoreImages || advancedOffset;
   } catch (error) {
     setStatus(els, error.message, true);
-    return false;
+    return null;
   } finally {
     state.isLoadingMoreImages = false;
   }
 }
 
 function scheduleBackgroundImageRefresh(els, state) {
-  if (shouldUseTimelineGroupMode(state)) return;
   if (state.backgroundScanTimer) return;
 
   if (state.imageScanComplete) return;
@@ -1348,10 +1293,14 @@ function scheduleBackgroundImageRefresh(els, state) {
     if (state.isImageListLoading || state.isLoadingMoreImages) return;
 
     try {
-      const data = await fetchImagesPage(state.items.length, { refreshScan: true });
+      const previousItemCount = state.items.length;
+      const offset = state.nextImagesOffset ?? state.items.length;
+      const data = await fetchImagesPage(offset, { refreshScan: true });
       mergeImageItems(state, data.items || []);
       updateImagePaginationState(state, data);
-      scheduleUiRefresh(els, state, !state.hasMoreImages);
+      if (state.items.length > previousItemCount || !state.hasMoreImages) {
+        scheduleUiRefresh(els, state, !state.hasMoreImages);
+      }
 
       if (state.imageScanComplete) {
         await loadTimelineIndex(state);
@@ -1369,7 +1318,6 @@ function scheduleBackgroundImageRefresh(els, state) {
 
 
 function maybeLoadMoreImages(els, state) {
-  if (shouldUseTimelineGroupMode(state)) return;
   if (!els.galleryScroller || !state.hasMoreImages) return;
   if (state.isImageListLoading || state.isLoadingMoreImages) return;
 
@@ -1383,27 +1331,18 @@ function maybeLoadMoreImages(els, state) {
 
     state.lastLoadMoreOffset = state.nextImagesOffset;
     loadMoreImages(els, state).then((loaded) => {
-      if (!loaded) {
+      if (loaded !== true) {
         state.lastLoadMoreOffset = null;
       }
       updateStickyHeader(els, state);
-      if (loaded) {
-        scheduleLoadMoreRecheck(els, state);
+      if (loaded !== null && state.hasMoreImages) {
+        scheduleLoadMoreRecheck(
+          els,
+          state,
+          loaded ? LOAD_MORE_RECHECK_DELAY_MS : LOAD_MORE_EMPTY_RECHECK_DELAY_MS,
+        );
       }
     });
-  }
-}
-
-async function refreshPage(els, state, message = null) {
-  await loadConfig(els, state);
-  if (state.activeDuplicateGroupId) {
-    await loadDuplicates(state);
-  }
-  await loadTimelineIndex(state);
-  translatePage(els, state);
-  await loadImages(els, state);
-  if (message) {
-    setStatus(els, message);
   }
 }
 
@@ -1726,9 +1665,9 @@ function bindIndexEvents(els, state) {
 
 async function initializeIndexPage(els, state) {
   const params = new URLSearchParams(window.location.search);
-  const query = params.get("q");
-  const startDate = params.get("from");
-  const endDate = params.get("to");
+  const query = params.get("q") || "";
+  const startDate = params.get("from") || "";
+  const endDate = params.get("to") || "";
   const selected = params.get("selected");
   const duplicateGroupId = params.get("dup_group");
 
@@ -1740,20 +1679,7 @@ async function initializeIndexPage(els, state) {
   }
   await loadTimelineIndex(state);
 
-  if (query) {
-    state.query = query.trim().toLowerCase();
-  }
-  if (startDate) {
-    state.dateStart = startDate;
-  }
-  if (endDate) {
-    state.dateEnd = endDate;
-  }
-
-  translatePage(els, state);
-  await loadImages(els, state);
-
-  if (query) {
+  if (query && els.searchInput) {
     els.searchInput.value = query;
   }
 
@@ -1769,9 +1695,8 @@ async function initializeIndexPage(els, state) {
     els.dateFilterPanel?.classList.remove("is-hidden");
   }
 
-  if (query || startDate || endDate) {
-    applyFilter(els, state);
-  }
+  translatePage(els, state);
+  await loadImages(els, state);
 
   if (
     selected &&

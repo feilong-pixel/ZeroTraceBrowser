@@ -1,0 +1,43 @@
+[project]
+name = "zerotracebrowser"
+version = "0.1.0"
+description = "Local-first image browser and organizer with controlled file operations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+authors = [
+  { name = "feilong-pixel" }
+]
+
+keywords = [
+  "image-browser",
+  "photo-organizer",
+  "duplicate-detection",
+  "local-first",
+  "fastapi"
+]
+
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "pydantic>=2.0,<3.0",
+  "uvicorn[standard]>=0.29,<1.0",
+  "Pillow>=11.0,<12.0",
+  "exifread>=3.0,<4.0",
+  "pywin32>=306; platform_system == 'Windows'"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<10.0",
+  "httpx>=0.27,<1.0"
+]
+
+[project.urls]
+Homepage = "https://zerotracephoto.com/"
+Repository = "https://github.com/feilong-pixel/ZeroTraceBrowser"
+Issues = "https://github.com/feilong-pixel/ZeroTraceBrowser/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

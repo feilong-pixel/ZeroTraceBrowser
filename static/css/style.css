@@ -133,8 +133,7 @@ p {
 
 .intro,
 .muted,
-.file-path,
-.preview-meta span {
+.file-path {
   color: var(--muted);
 }
 
@@ -146,6 +145,11 @@ p {
 #viewerZoom,
 #statusMessage {
   overflow-wrap: anywhere;
+}
+
+#statusMessage {
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* =========================================================
@@ -614,7 +618,7 @@ button:hover {
 }
 
 button:disabled,
-.button-link.is-disabled {
+button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
   transform: none;
@@ -1036,7 +1040,6 @@ button:disabled:hover {
 
 .viewer-sidebar-page #statusMessage {
   max-width: 100%;
-  line-height: 1.6;
   word-break: break-word;
 }
 
@@ -1063,6 +1066,7 @@ button:disabled:hover {
 .viewer-side-actions {
   margin-top: var(--panel-gap);
   margin-bottom: var(--panel-gap);
+  gap: 8px;
 }
 
 .viewer-button-row {
@@ -1079,6 +1083,61 @@ button:disabled:hover {
 .action-stack button,
 .sidebar-toggle {
   min-height: var(--control-height);
+}
+
+.viewer-button-row button,
+.viewer-sidebar-page button {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.viewer-sidebar-page .primary-button {
+  min-height: 38px;
+  font-size: 13px;
+}
+
+.viewer-sidebar-page .panel {
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.viewer-sidebar-page .panel h2 {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.viewer-sidebar-page .selection-hint {
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+#viewerPath,
+#viewerZoom,
+#viewerExifBox {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+#viewerPath,
+#viewerZoom {
+  line-height: 1.4;
+}
+
+#viewerDeleteButton {
+  background: rgba(163, 58, 42, 0.08);
+  border: 1px solid rgba(163, 58, 42, 0.46);
+  color: var(--danger);
+  font-weight: 700;
+}
+
+#viewerDeleteButton:hover {
+  background: rgba(163, 58, 42, 0.14);
+  border-color: var(--danger);
+}
+
+#viewerDeleteButton:active {
+  background: rgba(163, 58, 42, 0.2);
 }
 
 .sidebar-toggle {
@@ -1943,12 +2002,6 @@ button:disabled:hover {
   white-space: nowrap;
 }
 
-.summary-path {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  line-height: 1.45;
-}
-
 .summary-result-root-row {
   min-width: 0;
   display: grid;
@@ -2366,7 +2419,7 @@ button:disabled:hover {
 }
 
 /* =========================================================
-   12.5 Compact Refinements
+   12.5 Index Sidebar Compact Refinements
    ========================================================= */
 .tools-panel .button-link {
   min-height: 36px;
@@ -2407,69 +2460,6 @@ button:disabled:hover {
 #duplicatesBox .duplicates-results-button:focus-visible {
   border-color: var(--accent);
   transform: translateY(-1px);
-}
-
-.viewer-sidebar-page .panel h2 {
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-
-#viewerPath,
-#viewerZoom {
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.viewer-sidebar-page .panel {
-  padding: 10px;
-  margin-top: 10px;
-}
-
-.viewer-button-row button,
-.viewer-sidebar-page button {
-  min-height: 34px;
-  padding: 6px 8px;
-  font-size: 12px;
-}
-
-.viewer-sidebar-page .primary-button {
-  min-height: 38px;
-  font-size: 13px;
-}
-
-#viewerExifBox {
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-#statusMessage {
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.viewer-sidebar-page .selection-hint {
-  font-size: 10.5px;
-  line-height: 1.4;
-}
-
-.viewer-side-actions {
-  gap: 8px;
-}
-
-#viewerDeleteButton {
-  background: rgba(163, 58, 42, 0.08);
-  border: 1px solid rgba(163, 58, 42, 0.46);
-  color: var(--danger);
-  font-weight: 700;
-}
-
-#viewerDeleteButton:hover {
-  background: rgba(163, 58, 42, 0.14);
-  border-color: var(--danger);
-}
-
-#viewerDeleteButton:active {
-  background: rgba(163, 58, 42, 0.2);
 }
 
 /* =========================================================

@@ -9,11 +9,11 @@ from pathlib import Path
 from PIL import Image
 
 import app as ztb_app
+import ztb.file_service as file_service
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
 from ztb.file_service import (
     build_timeline_index_entries,
     image_scan_cache_key,
-    preferred_exif_datetime_from_map,
     save_image_index_cache,
     save_image_index_summary,
     save_timeline_index_cache,
@@ -86,25 +86,6 @@ def test_images_use_exif_datetime_priority(api_client) -> None:
     assert item["timeline_source"] == "exif"
 
 
-def test_preferred_exif_datetime_falls_back_in_order() -> None:
-    create_date = preferred_exif_datetime_from_map(
-        {
-            "DateTimeDigitized": "2021:02:03 04:05:06",
-            "DateTime": "2020:01:02 03:04:05",
-        }
-    )
-    modify_date = preferred_exif_datetime_from_map(
-        {
-            "DateTime": "2020:01:02 03:04:05",
-        }
-    )
-
-    assert create_date is not None
-    assert create_date.isoformat() == "2021-02-03T04:05:06"
-    assert modify_date is not None
-    assert modify_date.isoformat() == "2020-01-02T03:04:05"
-
-
 def test_images_lightweight_page_returns_without_total(api_client) -> None:
     client, workspace, image_root, copy_target = api_client
     for index in range(3):
@@ -155,6 +136,155 @@ def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> N
     payload = response.json()
     assert payload["total"] == 123
     assert isinstance(payload["total_generated_at"], str)
+    assert payload["scan_complete"] is False
+    assert payload["has_more"] is True
+
+
+def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "image_indexes")
+    monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
+
+    for index in range(3):
+        create_test_image(image_root / f"photo_{index}.jpg")
+
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.EXCLUDED_SCAN_DIRS,
+    )
+    save_image_index_summary(
+        ztb_app.IMAGE_INDEX_DIR,
+        cache_key,
+        [indexed_image("photo_0.jpg", "2024-01-01T00:00:00")],
+        total=3,
+    )
+
+    started_threads = []
+
+    class RecordingThread:
+        def __init__(self, target, args=(), daemon=None):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+        def start(self) -> None:
+            started_threads.append(self)
+
+    monkeypatch.setattr(file_service.threading, "Thread", RecordingThread)
+
+    response = client.get(
+        "/api/images",
+        params={
+            "offset": 0,
+            "limit": 48,
+            "include_exif": "false",
+            "async_scan": "true",
+            "refresh_scan": "false",
+            "include_total": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(started_threads) == 1
+    assert payload["scan_complete"] is False
+    assert payload["has_more"] is True
+    assert payload["total"] == 3
+    assert [item["path"] for item in payload["items"]] == ["photo_0.jpg"]
+
+    started_threads[0].target(*started_threads[0].args)
+
+    next_response = client.get(
+        "/api/images",
+        params={
+            "offset": 1,
+            "limit": 48,
+            "include_exif": "false",
+            "async_scan": "true",
+            "refresh_scan": "false",
+            "include_total": "true",
+        },
+    )
+
+    assert next_response.status_code == 200
+    next_payload = next_response.json()
+    assert next_payload["scan_complete"] is True
+    assert next_payload["has_more"] is False
+    assert next_payload["total"] == 3
+    assert [item["path"] for item in next_payload["items"]] == [
+        "photo_1.jpg",
+        "photo_2.jpg",
+    ]
+
+
+def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "image_indexes")
+    monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
+
+    create_test_image(image_root / "photo_1.jpg")
+
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.EXCLUDED_SCAN_DIRS,
+    )
+    save_image_index_summary(
+        ztb_app.IMAGE_INDEX_DIR,
+        cache_key,
+        [
+            indexed_image("missing.jpg", "2024-01-02T00:00:00"),
+            indexed_image("photo_1.jpg", "2024-01-01T00:00:00"),
+        ],
+        total=3,
+    )
+
+    started_threads = []
+
+    class RecordingThread:
+        def __init__(self, target, args=(), daemon=None):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+        def start(self) -> None:
+            started_threads.append(self)
+
+    monkeypatch.setattr(file_service.threading, "Thread", RecordingThread)
+
+    response = client.get(
+        "/api/images",
+        params={
+            "offset": 0,
+            "limit": 48,
+            "include_exif": "false",
+            "async_scan": "true",
+            "refresh_scan": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["path"] for item in response.json()["items"]] == ["photo_1.jpg"]
+    assert len(started_threads) == 1
+
+    started_threads[0].target(*started_threads[0].args)
+
+    refreshed_response = client.get(
+        "/api/images",
+        params={
+            "offset": 0,
+            "limit": 48,
+            "include_exif": "false",
+            "async_scan": "true",
+            "refresh_scan": "false",
+        },
+    )
+
+    assert refreshed_response.status_code == 200
+    refreshed_payload = refreshed_response.json()
+    assert refreshed_payload["scan_complete"] is True
+    assert [item["path"] for item in refreshed_payload["items"]] == ["photo_1.jpg"]
 
 
 def test_images_async_scan_marks_stale_cached_items_missing(api_client, monkeypatch) -> None:
@@ -267,6 +397,38 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
             indexed_image("2023/01/02/newyear.jpg", "2023-01-02T08:00:00"),
         ]
     )
+
+
+def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "timeline_indexes")
+    create_test_image(image_root / "edge.jpg")
+
+    edge_item = indexed_image("edge.jpg", "2024-02-01T00:30:00")
+    edge_item["timeline_ts"] = int(datetime(2024, 1, 31, 15, 30, 0).timestamp())
+
+    assert build_timeline_index_entries([edge_item]) == [
+        {"key": "2024-02", "label": "2024-02", "index_label": "202402"}
+    ]
+
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.EXCLUDED_SCAN_DIRS,
+    )
+    save_image_index_cache(ztb_app.IMAGE_INDEX_DIR, cache_key, [edge_item])
+
+    index_response = client.get("/api/timeline-index")
+    assert index_response.status_code == 200
+    assert index_response.json()["entries"] == [
+        {"key": "2024-02", "label": "2024-02", "index_label": "202402"}
+    ]
+
+    group_response = client.get("/api/images/by-group", params={"group_key": "2024-02"})
+    assert group_response.status_code == 200
+    group_payload = group_response.json()
+    assert group_payload["count"] == 1
+    assert group_payload["items"][0]["relative_path"] == "edge.jpg"
 
 
 def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
