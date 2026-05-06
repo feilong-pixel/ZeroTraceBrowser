@@ -114,7 +114,7 @@ def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> N
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_summary(
         index_dir,
@@ -154,7 +154,7 @@ def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_cl
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_summary(
         index_dir,
@@ -231,7 +231,7 @@ def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, m
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_summary(
         index_dir,
@@ -296,7 +296,7 @@ def test_images_async_scan_marks_stale_cached_items_missing(api_client, monkeypa
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_summary(
         index_dir,
@@ -366,7 +366,7 @@ def test_legacy_root_thumbnail_indexes_are_migrated_to_root_indexes(api_client) 
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_cache(
         legacy_index_dir,
@@ -388,12 +388,12 @@ def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> No
     old_cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        {*ztb_app.EXCLUDED_SCAN_DIRS, "__pycache__", "venv"},
+        {*ztb_app.SKIP_SCAN_DIR_NAMES, "legacy_skip_dir"},
     )
     current_cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     old_summary_path = image_index_summary_path(index_dir, old_cache_key)
     current_summary_path = image_index_summary_path(index_dir, current_cache_key)
@@ -433,7 +433,7 @@ def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeyp
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_cache(
         index_dir,
@@ -463,7 +463,7 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
 
     save_image_index_summary(
@@ -518,7 +518,7 @@ def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> 
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.EXCLUDED_SCAN_DIRS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     save_image_index_cache(index_dir, cache_key, [edge_item])
 

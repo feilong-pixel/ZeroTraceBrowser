@@ -51,7 +51,7 @@ def cleanup_root_related_data(root: str | Path) -> dict[str, Any]:
         "root_workspace_dirs": 0,
     }
 
-    cache_key = image_scan_cache_key(Path(normalized_root), SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    cache_key = image_scan_cache_key(Path(normalized_root), SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     root_index_dir = root_image_index_dir(normalized_root)
     thumbnail_relative_paths = {
         str(item.get("relative_path", "")).strip()

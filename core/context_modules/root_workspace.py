@@ -48,7 +48,7 @@ def root_duplicates_path(root: str | Path) -> Path:
 
 def migrate_legacy_image_indexes(root: str | Path) -> None:
     normalized = Path(root).expanduser().resolve()
-    cache_key = image_scan_cache_key(normalized, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    cache_key = image_scan_cache_key(normalized, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     legacy_dir = IMAGE_INDEX_DIR
     scoped_dir = root_image_index_dir(normalized)
     if legacy_dir.resolve() == scoped_dir.resolve() or not legacy_dir.exists():
@@ -107,7 +107,7 @@ def canonicalize_root_image_indexes(root: str | Path) -> None:
     if not index_dir.exists():
         return
 
-    cache_key = image_scan_cache_key(Path(normalized), SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    cache_key = image_scan_cache_key(Path(normalized), SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     current_paths = {
         "full": image_index_cache_path_service(index_dir, cache_key),
         "summary": image_index_summary_path_service(index_dir, cache_key),

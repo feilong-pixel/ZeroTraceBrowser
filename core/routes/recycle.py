@@ -13,33 +13,6 @@ from core.schemas import ClearDeletedRequest, ClearRecycleLogsRequest, PurgeDele
 from core.services.file_service import clear_image_list_cache, move_file_preserve_times
 
 
-def prepare_system_recycle_path(ctx: Any, deleted_path: Path, log_row: dict[str, str] | None) -> tuple[Path, Path]:
-    thumb_path = ctx.deleted_thumbnail_path_for(deleted_path)
-    original_name = Path(log_row.get("relative_path", "")).name if log_row else ""
-    if not original_name or deleted_path.name == original_name:
-        return deleted_path, thumb_path
-
-    restored_name_path = deleted_path.parent / original_name
-    if restored_name_path.exists():
-        return deleted_path, thumb_path
-
-    move_file_preserve_times(deleted_path, restored_name_path)
-    return restored_name_path, thumb_path
-
-
-def ensure_system_recycle_supported(ctx: Any) -> None:
-    if not ctx.is_windows():
-        raise HTTPException(status_code=501, detail="System recycle bin is only supported on Windows")
-
-
-def dispose_recycle_file(ctx: Any, path: Path) -> None:
-    if ctx.is_windows():
-        ctx.move_to_system_recycle_bin(path)
-        return
-
-    path.unlink()
-
-
 def create_recycle_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
@@ -124,8 +97,8 @@ def create_recycle_router(ctx: Any) -> APIRouter:
             raise HTTPException(status_code=404, detail="Deleted file not found")
 
         log_row = next((row for row in reversed(ctx.read_delete_log_rows()) if row["deleted_to"] == str(deleted_path)), None)
-        recycle_path, thumb_path = prepare_system_recycle_path(ctx, deleted_path, log_row)
-        dispose_recycle_file(ctx, recycle_path)
+        recycle_path, thumb_path = ctx.prepare_system_recycle_path(deleted_path, log_row)
+        ctx.dispose_recycle_file(recycle_path)
         if thumb_path.exists():
             thumb_path.unlink()
         ctx.remove_empty_deleted_parent(recycle_path)
@@ -153,8 +126,8 @@ def create_recycle_router(ctx: Any) -> APIRouter:
             if not file_path.exists() or not file_path.is_file() or file_path.name == ".gitkeep":
                 continue
             log_row = next((row for row in reversed(ctx.read_delete_log_rows()) if row["deleted_to"] == str(file_path)), None)
-            recycle_path, thumb_path = prepare_system_recycle_path(ctx, file_path, log_row)
-            dispose_recycle_file(ctx, recycle_path)
+            recycle_path, thumb_path = ctx.prepare_system_recycle_path(file_path, log_row)
+            ctx.dispose_recycle_file(recycle_path)
             if thumb_path.exists():
                 thumb_path.unlink()
             ctx.remove_empty_deleted_parent(recycle_path)

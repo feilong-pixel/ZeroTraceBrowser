@@ -25,6 +25,7 @@ class RouteContext:
             "ARTIFACT_INDEX_DIR",
             "DEFAULT_IMAGE_ROOT",
             "DEFAULT_COPY_TARGET",
+            "SKIP_SCAN_DIR_NAMES",
             "move_to_system_recycle_bin",
             "open_path_in_file_manager",
             "open_image_in_system_editor",

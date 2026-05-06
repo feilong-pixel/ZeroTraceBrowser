@@ -94,7 +94,7 @@ def summarize_task_root(task: dict[str, Any]) -> None:
         root_image_index_dir(root),
         root,
         SUPPORTED_EXTENSIONS,
-        EXCLUDED_SCAN_DIRS,
+        SKIP_SCAN_DIR_NAMES,
         image_count,
         duplicate_group_count,
         generated_at,

@@ -9,22 +9,22 @@ def resolve_under_root(root: Path, candidate: str) -> Path:
 
 
 def list_images(root: Path) -> list[dict[str, Any]]:
-    return list_images_service(root, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    return list_images_service(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
 
 
 def list_images_page(root: Path, offset: int = 0, limit: int | None = None, include_exif: bool = True) -> dict[str, Any]:
-    return list_images_page_service(root, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS, offset, limit, include_exif)
+    return list_images_page_service(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES, offset, limit, include_exif)
 
 
 def list_images_cached_page(root: Path, offset: int = 0, limit: int = 48, refresh: bool = True, include_total: bool = False) -> dict[str, Any]:
     ensure_root_workspace(root)
     index_dir = root_image_index_dir(root) if refresh else image_index_dir_for_read(root)
-    return list_images_cached_page_service(index_dir, root, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS, offset, limit, refresh, include_total)
+    return list_images_cached_page_service(index_dir, root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES, offset, limit, refresh, include_total)
 
 
 def get_timeline_index(root: Path) -> dict[str, Any]:
     ensure_root_workspace(root)
-    return get_timeline_index_service(image_index_dir_for_read(root), root, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    return get_timeline_index_service(image_index_dir_for_read(root), root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
 
 
 def get_images_for_timeline_group(root: Path, group_key: str) -> dict[str, Any]:
@@ -33,7 +33,7 @@ def get_images_for_timeline_group(root: Path, group_key: str) -> dict[str, Any]:
         image_index_dir_for_read(root),
         root,
         SUPPORTED_EXTENSIONS,
-        EXCLUDED_SCAN_DIRS,
+        SKIP_SCAN_DIR_NAMES,
         group_key,
     )
 
@@ -51,7 +51,7 @@ def move_file_preserve_times(src: Path, dst: Path) -> None:
 
 
 def iter_image_files(root: Path) -> Iterable[Path]:
-    return iter_image_files_service(root, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    return iter_image_files_service(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
 
 
 def thumbnail_path_for(root: Path, relative_path: str) -> Path:

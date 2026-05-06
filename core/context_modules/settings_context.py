@@ -37,7 +37,7 @@ def serialize_settings(settings: dict[str, Any]) -> dict[str, Any]:
 def get_root_summary(root: str | Path) -> dict[str, Any]:
     from .root_workspace import root_image_index_dir
     normalized_root = Path(root).expanduser().resolve()
-    cache_key = image_scan_cache_key(normalized_root, SUPPORTED_EXTENSIONS, EXCLUDED_SCAN_DIRS)
+    cache_key = image_scan_cache_key(normalized_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     metadata = load_image_index_summary_metadata_service(root_image_index_dir(normalized_root), cache_key)
     if not (
         isinstance(metadata.get("total"), int)

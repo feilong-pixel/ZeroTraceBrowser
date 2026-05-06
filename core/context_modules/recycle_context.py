@@ -3,6 +3,28 @@ from .settings_context import get_active_image_root
 from .root_workspace import ensure_root_workspace, ensure_log_file, root_log_dir, root_deleted_dir
 
 
+def prepare_system_recycle_path(deleted_path: Path, log_row: dict[str, str] | None) -> tuple[Path, Path]:
+    thumb_path = deleted_thumbnail_path_for(deleted_path)
+    original_name = Path(log_row.get("relative_path", "")).name if log_row else ""
+    if not original_name or deleted_path.name == original_name:
+        return deleted_path, thumb_path
+
+    restored_name_path = deleted_path.parent / original_name
+    if restored_name_path.exists():
+        return deleted_path, thumb_path
+
+    move_file_preserve_times_service(deleted_path, restored_name_path)
+    return restored_name_path, thumb_path
+
+
+def dispose_recycle_file(path: Path) -> None:
+    if is_windows():
+        move_to_system_recycle_bin(path)
+        return
+
+    path.unlink()
+
+
 def append_log(log_name: str, *values: str) -> None:
     root_value = values[1] if len(values) >= 2 and str(values[1]).strip() else str(get_active_image_root())
     log_dir = root_log_dir(root_value)

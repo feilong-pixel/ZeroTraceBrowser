@@ -17,15 +17,22 @@ DEFAULT_COPY_TARGET = os.getenv("ZTB_DEFAULT_COPY_TARGET", "")
 
 THUMBNAIL_SIZE = (384, 384)
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
-EXCLUDED_SCAN_DIRS = {
+SKIP_SCAN_DIR_NAMES = {
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    "tests_runtime",
+    "venv",
+    ".venv",
+    "env",
+    "ENV",
     "static",
-    # "templates",
-    # "thumbnails",
-    # "deleted",
-    # "logs",
-    # "__pycache__",
-    # "venv",
+    "data",
+    "deleted",
+    "thumbnails",
+    "logs",
 }
+EXCLUDED_SCAN_DIRS = SKIP_SCAN_DIR_NAMES
 SUPPORTED_LANGUAGES = {"zh", "en", "ja"}
 
 # Legacy paths are read only for migration/compatibility. New runtime data must
