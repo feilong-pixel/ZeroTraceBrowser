@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from core.schemas import CopyRequest, FileActionRequest
+from core.domain.root_proxy import build_root_proxy
 from core.services.file_operations import resolve_under_root
 from core.use_cases.copy_image import CopyImageRequest, CopyImageUseCase
 from core.use_cases.delete_image import DeleteImageRequest, DeleteImageUseCase
@@ -105,16 +106,10 @@ def create_images_router(ctx: Any) -> APIRouter:
     @router.post("/api/delete")
     def delete_image(payload: FileActionRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
-
-        class _DeleteRootProxy:
-            root = active_root
-            deleted_dir = ctx.root_deleted_dir(active_root)
-            logs_dir = ctx.root_log_dir(active_root)
-            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
-
+        root_context = build_root_proxy(ctx, active_root)
         use_case = DeleteImageUseCase(
-            root_context=_DeleteRootProxy(),
-            thumbnails_dir=_DeleteRootProxy.thumbnails_dir,
+            root_context=root_context,
+            thumbnails_dir=root_context.thumbnails_dir,
             thumbnail_size=ctx.THUMBNAIL_SIZE,
         )
         req = DeleteImageRequest(relative_path=payload.relative_path)
@@ -124,15 +119,9 @@ def create_images_router(ctx: Any) -> APIRouter:
     def copy_image(payload: CopyRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
         active_root = Path(settings["active_root"])
-
-        class _CopyRootProxy:
-            root = active_root
-            deleted_dir = ctx.root_deleted_dir(active_root)
-            logs_dir = ctx.root_log_dir(active_root)
-            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
-
+        root_context = build_root_proxy(ctx, active_root)
         use_case = CopyImageUseCase(
-            root_context=_CopyRootProxy(),
+            root_context=root_context,
             default_copy_target=settings.get("default_copy_target", ""),
         )
         req = CopyImageRequest(
