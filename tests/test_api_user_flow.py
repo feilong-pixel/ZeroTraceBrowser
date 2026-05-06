@@ -14,6 +14,7 @@ import core.services.file_service as file_service
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
 from core.services.file_service import (
     build_timeline_index_entries,
+    image_index_summary_path,
     image_scan_cache_key,
     save_image_index_cache,
     save_image_index_summary,
@@ -393,8 +394,8 @@ def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> No
         ztb_app.SUPPORTED_EXTENSIONS,
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
-    old_summary_path = ztb_app.image_index_summary_path_service(index_dir, old_cache_key)
-    current_summary_path = ztb_app.image_index_summary_path_service(index_dir, current_cache_key)
+    old_summary_path = image_index_summary_path(index_dir, old_cache_key)
+    current_summary_path = image_index_summary_path(index_dir, current_cache_key)
 
     save_image_index_summary(
         old_summary_path.parent,

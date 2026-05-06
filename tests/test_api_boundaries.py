@@ -8,6 +8,12 @@ from pathlib import Path
 import pytest
 
 import app as ztb_app
+from core.services.file_service import (
+    image_index_cache_path,
+    image_index_summary_path,
+    image_scan_cache_key,
+    timeline_index_cache_path,
+)
 
 
 def test_config_uses_local_cors_origin(api_client) -> None:
@@ -230,11 +236,11 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
     client.post("/api/settings/roots", json={"path": str(other_root)})
     client.post("/api/settings/active-root", json={"path": str(image_root)})
 
-    cache_key = ztb_app.image_scan_cache_key(image_root, ztb_app.SUPPORTED_EXTENSIONS, ztb_app.EXCLUDED_SCAN_DIRS)
+    cache_key = image_scan_cache_key(image_root, ztb_app.SUPPORTED_EXTENSIONS, ztb_app.EXCLUDED_SCAN_DIRS)
     image_index_dir = ztb_app.root_image_index_dir(image_root)
-    image_index_path = ztb_app.image_index_cache_path_service(image_index_dir, cache_key)
-    image_summary_path = ztb_app.image_index_summary_path_service(image_index_dir, cache_key)
-    timeline_path = ztb_app.timeline_index_cache_path_service(image_index_dir, cache_key)
+    image_index_path = image_index_cache_path(image_index_dir, cache_key)
+    image_summary_path = image_index_summary_path(image_index_dir, cache_key)
+    timeline_path = timeline_index_cache_path(image_index_dir, cache_key)
     index_payload = {"items": [{"relative_path": "photo.jpg", "name": "photo.jpg"}]}
     for path in (image_index_path, image_summary_path, timeline_path):
         path.parent.mkdir(parents=True, exist_ok=True)
