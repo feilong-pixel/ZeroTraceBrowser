@@ -1,4 +1,4 @@
 Set-Location -Path $PSScriptRoot
 
-.\venv\Scripts\python.exe -m pytest -q
+~\.virtualenvs\venv\Scripts\python.exe -m pytest -q
 exit $LASTEXITCODE

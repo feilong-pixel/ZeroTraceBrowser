@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import sys
+import json
 from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
 
 import app as ztb_app
-import ztb.file_service as file_service
+import core.services.file_service as file_service
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
-from ztb.file_service import (
+from core.services.file_service import (
     build_timeline_index_entries,
     image_scan_cache_key,
     save_image_index_cache,
@@ -105,16 +106,16 @@ def test_images_lightweight_page_returns_without_total(api_client) -> None:
 
 
 def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
+    client, _, image_root, _ = api_client
     create_test_image(image_root / "a.jpg")
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "image_indexes")
+    index_dir = ztb_app.root_image_index_dir(image_root)
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
     save_image_index_summary(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [indexed_image("a.jpg", "2024-01-01T00:00:00")],
         total=123,
@@ -141,9 +142,9 @@ def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> N
 
 
 def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "image_indexes")
+    client, _, image_root, _ = api_client
     monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
+    index_dir = ztb_app.root_image_index_dir(image_root)
 
     for index in range(3):
         create_test_image(image_root / f"photo_{index}.jpg")
@@ -154,7 +155,7 @@ def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_cl
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
     save_image_index_summary(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [indexed_image("photo_0.jpg", "2024-01-01T00:00:00")],
         total=3,
@@ -219,9 +220,9 @@ def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_cl
 
 
 def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "image_indexes")
+    client, _, image_root, _ = api_client
     monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
+    index_dir = ztb_app.root_image_index_dir(image_root)
 
     create_test_image(image_root / "photo_1.jpg")
 
@@ -231,7 +232,7 @@ def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, m
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
     save_image_index_summary(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [
             indexed_image("missing.jpg", "2024-01-02T00:00:00"),
@@ -288,15 +289,15 @@ def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, m
 
 
 def test_images_async_scan_marks_stale_cached_items_missing(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "image_indexes")
+    client, _, image_root, _ = api_client
+    index_dir = ztb_app.root_image_index_dir(image_root)
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
     save_image_index_summary(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [indexed_image("missing.jpg", "2024-01-01T00:00:00")],
         total=1,
@@ -320,9 +321,110 @@ def test_images_async_scan_marks_stale_cached_items_missing(api_client, monkeypa
     assert payload["has_more"] is False
 
 
+def test_async_scan_writes_index_under_root_indexes(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    create_test_image(image_root / "photo.jpg")
+
+    started_threads = []
+
+    class RecordingThread:
+        def __init__(self, target, args=(), daemon=None):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+        def start(self) -> None:
+            started_threads.append(self)
+
+    monkeypatch.setattr(file_service.threading, "Thread", RecordingThread)
+
+    response = client.get(
+        "/api/images",
+        params={
+            "offset": 0,
+            "limit": 48,
+            "include_exif": "false",
+            "async_scan": "true",
+            "refresh_scan": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(started_threads) == 1
+    started_threads[0].target(*started_threads[0].args)
+    index_dir = ztb_app.root_data_dir(image_root) / "indexes"
+    assert ztb_app.root_image_index_dir(image_root) == index_dir
+    assert any(index_dir.glob("*.summary.json"))
+    assert not (ztb_app.root_thumbnail_dir(image_root) / "_indexes").exists()
+
+
+def test_legacy_root_thumbnail_indexes_are_migrated_to_root_indexes(api_client) -> None:
+    _, workspace, image_root, _ = api_client
+    legacy_index_dir = workspace / "thumbnails" / "_indexes"
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.EXCLUDED_SCAN_DIRS,
+    )
+    save_image_index_cache(
+        legacy_index_dir,
+        cache_key,
+        [indexed_image("photo.jpg", "2024-01-01T00:00:00")],
+    )
+
+    ztb_app.ensure_root_workspace(image_root)
+
+    scoped_index_dir = ztb_app.root_image_index_dir(image_root)
+    assert any(scoped_index_dir.glob("*.json"))
+    assert not legacy_index_dir.exists()
+    assert not (workspace / "thumbnails").exists()
+
+
+def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> None:
+    _, _, image_root, _ = api_client
+    index_dir = ztb_app.root_image_index_dir(image_root)
+    old_cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        {*ztb_app.EXCLUDED_SCAN_DIRS, "__pycache__", "venv"},
+    )
+    current_cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.EXCLUDED_SCAN_DIRS,
+    )
+    old_summary_path = ztb_app.image_index_summary_path_service(index_dir, old_cache_key)
+    current_summary_path = ztb_app.image_index_summary_path_service(index_dir, current_cache_key)
+
+    save_image_index_summary(
+        old_summary_path.parent,
+        old_cache_key,
+        [indexed_image("old.jpg", "2024-01-01T00:00:00")],
+        total=7,
+        generated_at="2026-05-05T21:50:42",
+        duplicate_group_count=3,
+    )
+    save_image_index_summary(
+        current_summary_path.parent,
+        current_cache_key,
+        [indexed_image("new.jpg", "2024-01-02T00:00:00")],
+        total=7,
+        generated_at="2026-05-06T09:06:42",
+    )
+
+    ztb_app.ensure_root_workspace(image_root)
+
+    assert current_summary_path.exists()
+    with current_summary_path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    assert payload["duplicate_group_count"] == 3
+    assert [item["relative_path"] for item in payload["items"]] == ["old.jpg"]
+    assert not old_summary_path.exists()
+
+
 def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "timeline_indexes")
+    client, _, image_root, _ = api_client
+    index_dir = ztb_app.root_image_index_dir(image_root)
     create_test_image(image_root / "2024" / "12" / "25" / "winter.jpg")
     create_test_image(image_root / "2023" / "01" / "02" / "newyear.jpg")
 
@@ -332,7 +434,7 @@ def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeyp
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
     save_image_index_cache(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [
             indexed_image("2024/12/25/winter.jpg", "2024-12-25T12:00:00"),
@@ -354,8 +456,8 @@ def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeyp
 
 
 def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "timeline_indexes")
+    client, _, image_root, _ = api_client
+    index_dir = ztb_app.root_image_index_dir(image_root)
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
@@ -363,7 +465,7 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
     )
 
     save_image_index_summary(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [
             indexed_image("2024/12/25/winter.jpg", "2024-12-25T12:00:00"),
@@ -373,7 +475,7 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
         generated_at="2026-04-25T15:44:30",
     )
     save_image_index_cache(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [
             indexed_image("2024/12/25/winter.jpg", "2024-12-25T12:00:00"),
@@ -381,7 +483,7 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
         ],
     )
     save_timeline_index_cache(
-        ztb_app.IMAGE_INDEX_DIR,
+        index_dir,
         cache_key,
         [indexed_image("2022/02/03/old.jpg", "2022-02-03T08:00:00")],
         "2020-01-01T00:00:00",
@@ -400,8 +502,8 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
 
 
 def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> None:
-    client, workspace, image_root, _ = api_client
-    monkeypatch.setattr(ztb_app, "IMAGE_INDEX_DIR", workspace / "timeline_indexes")
+    client, _, image_root, _ = api_client
+    index_dir = ztb_app.root_image_index_dir(image_root)
     create_test_image(image_root / "edge.jpg")
 
     edge_item = indexed_image("edge.jpg", "2024-02-01T00:30:00")
@@ -416,7 +518,7 @@ def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> 
         ztb_app.SUPPORTED_EXTENSIONS,
         ztb_app.EXCLUDED_SCAN_DIRS,
     )
-    save_image_index_cache(ztb_app.IMAGE_INDEX_DIR, cache_key, [edge_item])
+    save_image_index_cache(index_dir, cache_key, [edge_item])
 
     index_response = client.get("/api/timeline-index")
     assert index_response.status_code == 200

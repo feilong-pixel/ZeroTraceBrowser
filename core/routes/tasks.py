@@ -12,9 +12,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ztb.schemas import OrganizerTaskRequest, RebuildHashDbTaskRequest
-from ztb.security import require_existing_directory, require_not_same_or_child, resolve_path
-from ztb.settings_service import normalize_task_lang
+from core.schemas import OrganizerTaskRequest, RebuildHashDbTaskRequest
+from core.security import require_existing_directory, require_not_same_or_child, resolve_path
+from core.services.settings_service import normalize_task_lang
 
 
 def create_tasks_router(ctx: Any) -> APIRouter:

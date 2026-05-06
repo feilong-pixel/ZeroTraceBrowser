@@ -42,6 +42,23 @@ def test_config_reports_system_recycle_support(api_client) -> None:
     assert response.json()["system_recycle_supported"] == ztb_app.is_windows()
 
 
+def test_startup_creates_only_root_scoped_runtime_dirs(api_client) -> None:
+    _, workspace, image_root, _ = api_client
+
+    workspace_root = ztb_app.root_data_dir(image_root)
+
+    assert workspace_root.exists()
+    assert (workspace_root / "deleted").exists()
+    assert (workspace_root / "indexes").exists()
+    assert (workspace_root / "logs").exists()
+    assert (workspace_root / "tasks").exists()
+    assert (workspace_root / "thumbnails").exists()
+    assert (ztb_app.ROOT_DATA_DIR / "_indexes").exists()
+    assert not (workspace / "logs" / "copy_log.csv").exists()
+    assert not (workspace / "logs" / "delete_log.csv").exists()
+    assert not (workspace / "thumbnails" / "_indexes").exists()
+
+
 def test_open_path_blocks_unconfigured_location(api_client) -> None:
     client, tmp_path, *_ = api_client
     outside_path = tmp_path / "outside"

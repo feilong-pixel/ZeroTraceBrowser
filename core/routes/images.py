@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from ztb.schemas import CopyRequest, FileActionRequest
+from core.schemas import CopyRequest, FileActionRequest
 
 
 def create_images_router(ctx: Any) -> APIRouter:

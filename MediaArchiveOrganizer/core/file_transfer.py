@@ -123,3 +123,49 @@ def transfer_file(src: Path, dst: Path, mode: str):
             return
 
     apply_windows_file_times(dst, file_times)
+
+
+def transfer_file_safe(src: Path, dst: Path, mode: str):
+    src = Path(src)
+    dst = Path(dst)
+
+    if not src.exists():
+        raise FileNotFoundError(f"Source file does not exist: {src}")
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    file_times = None
+    try:
+        file_times = read_windows_file_times(src)
+    except OSError:
+        file_times = None
+
+    try:
+        if mode == "copy":
+            shutil.copy2(src, dst)
+        elif mode == "move":
+            same_drive = (
+                os.path.splitdrive(str(src))[0].lower()
+                == os.path.splitdrive(str(dst))[0].lower()
+            )
+            shutil.move(str(src), str(dst))
+
+            if same_drive:
+                return
+        else:
+            raise ValueError(f"Unsupported transfer mode: {mode}")
+
+    except PermissionError as exc:
+        raise PermissionError(
+            f"File is locked or permission denied: {src}"
+        ) from exc
+
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Temporary file disappeared during transfer: {src}"
+        ) from exc
+
+    try:
+        apply_windows_file_times(dst, file_times)
+    except OSError:
+        pass

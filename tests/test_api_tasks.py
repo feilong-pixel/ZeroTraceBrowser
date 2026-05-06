@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app as ztb_app
-import ztb.routes.tasks as tasks_routes
+import core.routes.tasks as tasks_routes
 from tests.test_api_duplicates import write_duplicates_json
 from tests.test_api_user_flow import create_test_image
 
