@@ -11,10 +11,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from core.schemas import CopyRequest, FileActionRequest
-from core.services.file_operations import copy_file_preserve_times, move_file_preserve_times, resolve_under_root
-from core.services.image_scan_service import (
-    clear_image_list_cache,
-)
+from core.services.file_operations import resolve_under_root
+from core.use_cases.copy_image import CopyImageRequest, CopyImageUseCase
+from core.use_cases.delete_image import DeleteImageRequest, DeleteImageUseCase
 
 
 def create_images_router(ctx: Any) -> APIRouter:
@@ -105,64 +104,41 @@ def create_images_router(ctx: Any) -> APIRouter:
 
     @router.post("/api/delete")
     def delete_image(payload: FileActionRequest) -> dict[str, Any]:
-        root = ctx.get_active_image_root()
-        image_path = resolve_under_root(root, payload.relative_path)
-        if not image_path.exists() or not image_path.is_file():
-            clear_image_list_cache(root)
-            stale_thumb = ctx.thumbnail_path_for(root, payload.relative_path)
-            if stale_thumb.exists():
-                stale_thumb.unlink()
-            return {"status": "missing", "relative_path": payload.relative_path}
+        active_root = ctx.get_active_image_root()
 
-        deleted_path = ctx.build_deleted_path(root, payload.relative_path)
-        deleted_path.parent.mkdir(parents=True, exist_ok=True)
-        move_file_preserve_times(image_path, deleted_path)
-        clear_image_list_cache(root)
-        ctx.append_log(
-            "delete_log.csv",
-            datetime.now().isoformat(),
-            str(root),
-            payload.relative_path,
-            str(deleted_path),
-            "deleted",
+        class _RootProxy:
+            root = active_root
+            deleted_dir = ctx.root_deleted_dir(active_root)
+            logs_dir = ctx.root_log_dir(active_root)
+            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
+
+        use_case = DeleteImageUseCase(
+            root_context=_RootProxy(),
+            thumbnails_dir=_RootProxy.thumbnails_dir,
+            thumbnail_size=ctx.THUMBNAIL_SIZE,
         )
-
-        stale_thumb = ctx.thumbnail_path_for(root, payload.relative_path)
-        if stale_thumb.exists():
-            stale_thumb.unlink()
-
-        return {"status": "deleted", "deleted_to": str(deleted_path)}
+        req = DeleteImageRequest(relative_path=payload.relative_path)
+        return use_case.execute(req)
 
     @router.post("/api/copy")
     def copy_image(payload: CopyRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
-        root = Path(settings["active_root"])
-        image_path = resolve_under_root(root, payload.relative_path)
-        if not image_path.exists() or not image_path.is_file():
-            raise HTTPException(status_code=404, detail="Image not found")
+        active_root = Path(settings["active_root"])
 
-        target_root_value = payload.target_dir.strip() or settings["default_copy_target"]
-        if not target_root_value:
-            raise HTTPException(status_code=400, detail="No copy target configured")
+        class _RootProxy:
+            root = active_root
+            deleted_dir = ctx.root_deleted_dir(active_root)
+            logs_dir = ctx.root_log_dir(active_root)
+            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
 
-        target_root = Path(target_root_value).expanduser().resolve()
-        target_root.mkdir(parents=True, exist_ok=True)
-        target_path = target_root / image_path.name
-
-        if target_path.exists():
-            stem = target_path.stem
-            suffix = target_path.suffix
-            counter = 1
-            while True:
-                candidate = target_root / f"{stem}_{counter}{suffix}"
-                if not candidate.exists():
-                    target_path = candidate
-                    break
-                counter += 1
-
-        copy_file_preserve_times(image_path, target_path)
-        clear_image_list_cache(root)
-        ctx.append_log("copy_log.csv", datetime.now().isoformat(), str(root), payload.relative_path, str(target_path))
-        return {"status": "copied", "copied_to": str(target_path)}
-
+        use_case = CopyImageUseCase(
+            root_context=_RootProxy(),
+            default_copy_target=settings.get("default_copy_target", ""),
+        )
+        req = CopyImageRequest(
+            relative_path=payload.relative_path,
+            target_dir=payload.target_dir,
+        )
+        return use_case.execute(req)
     return router
+
