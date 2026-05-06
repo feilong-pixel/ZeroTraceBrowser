@@ -1,15 +1,67 @@
-from pydantic import BaseModel
-from typing import List
+# SPDX-License-Identifier: MIT
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class DuplicateItem(BaseModel):
+    """A single item within a duplicate group."""
+
+    role: str = Field(..., description="Role: 'kept' or 'duplicate'")
+    path: str = Field(..., description="Relative path of the file")
+    exists: bool = Field(default=True, description="Whether the file still exists on disk")
 
 
 class DuplicateGroup(BaseModel):
     """
     ZeroTraceBrowser 的重复文件分组。
-    对应 duplicates.json 中的每一组。
+    对应 duplicates.json 中 groups 数组的每一项。
     """
 
-    # 哈希值（重复组的 key）
-    hash: str
+    # 组 ID
+    group_id: str = Field("", description="Unique group identifier")
 
-    # 属于该重复组的所有文件路径（绝对路径）
-    paths: List[str]
+    # 重复检测原因（"strict" 或 "phash"）
+    reason: str = Field("-", description="Duplicate detection method: 'strict' or 'phash'")
+
+    # 哈希值（重复组的 key）
+    hash: str = Field("", description="Hash value that defines the duplicate group")
+
+    # 保留的文件相对路径
+    kept_path: str = Field("", description="Relative path of the kept file")
+
+    # 组内所有文件
+    items: list[DuplicateItem] = Field(default_factory=list, description="Items in the duplicate group")
+
+    # 新增文件数量/可用数量（运行时填充，不持久化）
+    item_count: int = Field(default=0)
+    available_count: int = Field(default=0)
+
+    # --- helpers ---
+
+    @classmethod
+    def from_json_group(cls, data: dict[str, Any]) -> DuplicateGroup:
+        """从 duplicates.json 的组 dict 安全构建。"""
+        raw_items: list[dict[str, Any]] = data.get("items", [])
+        items = []
+        for item in raw_items:
+            if isinstance(item, dict) and item.get("path"):
+                items.append(
+                    DuplicateItem(
+                        role=str(item.get("role", "")),
+                        path=str(item["path"]),
+                        exists=bool(item.get("exists", True)),
+                    )
+                )
+        return cls(
+            group_id=str(data.get("group_id", "")),
+            reason=str(data.get("reason", "-")),
+            hash=str(data.get("hash", "")),
+            kept_path=str(data.get("kept_path", "")),
+            items=items,
+            item_count=len(items),
+            available_count=sum(1 for it in items if it.exists),
+        )
