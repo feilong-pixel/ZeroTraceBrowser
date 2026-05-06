@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
@@ -35,17 +36,25 @@ class RestoreImageUseCase:
         self,
         root_context: object,
         thumbnails_dir: Path,
+        *,
+        resolve_fn: Callable[[str], Path] | None = None,
     ):
         """
         Args:
             root_context: A RootContext-like object, providing ``.root`` (Path),
                 ``.deleted_dir`` (Path), ``.logs_dir`` (Path), and ``.thumbnails_dir`` (Path).
             thumbnails_dir: The root-scoped thumbnails directory.
+            resolve_fn: Optional path resolver for the deleted file (analogous to
+                ``RouteContext.resolve_deleted_file``). If provided, it will be used
+                instead of a strict ``deleted_dir`` containment check. If ``None``
+                (default), the use case enforces that ``deleted_to`` is under
+                ``root_context.deleted_dir``.
         """
         self.ctx = root_context
         self.thumbnails_dir = thumbnails_dir
+        self.resolve_fn = resolve_fn
 
-    def execute(self, req: RestoreImageRequest) -> dict:
+    def execute(self, req: RestoreImageRequest) -> dict[str, Any]:
         """
         Execute the restore workflow.
 
@@ -54,13 +63,15 @@ class RestoreImageUseCase:
         """
         from fastapi import HTTPException
 
-        deleted_path = Path(req.deleted_to).expanduser().resolve()
-
-        # 1. Validate that the deleted path is within the root-scoped deleted dir.
-        try:
-            deleted_path.relative_to(self.ctx.deleted_dir)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid deleted file path") from exc
+        # 1. Resolve and validate the deleted file path.
+        if self.resolve_fn is not None:
+            deleted_path = self.resolve_fn(req.deleted_to)
+        else:
+            deleted_path = Path(req.deleted_to).expanduser().resolve()
+            try:
+                deleted_path.relative_to(self.ctx.deleted_dir)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="Invalid deleted file path") from exc
 
         if not deleted_path.exists() or not deleted_path.is_file():
             raise HTTPException(status_code=404, detail="Deleted file not found")
@@ -88,10 +99,18 @@ class RestoreImageUseCase:
         # 5. Clear in-memory cache for the affected root.
         clear_image_list_cache(restore_root)
 
-        # 6. Remove the stale deleted thumbnail.
+                # 6. Remove stale thumbnails.
+        # 6a. Remove the original-file thumbnail (if one was cached before deletion).
         stale_thumb = thumbnail_path_for(self.thumbnails_dir, restore_root, log_row["relative_path"])
         if stale_thumb.exists():
             stale_thumb.unlink()
+
+        # 6b. Remove the deleted-file thumbnail, matching the original
+        #     route logic (ctx.deleted_thumbnail_path_for).
+        from core.services.thumbnail_service import deleted_thumbnail_path_for as deleted_thumb_fn
+        stale_deleted_thumb = deleted_thumb_fn(self.thumbnails_dir, deleted_path)
+        if stale_deleted_thumb.exists():
+            stale_deleted_thumb.unlink()
 
         # 7. Clean up empty parent directories in the deleted tree.
         remove_empty_deleted_parent(self.ctx.deleted_dir, deleted_path)
@@ -102,17 +121,18 @@ class RestoreImageUseCase:
         return {"status": "restored", "restored_to": str(restore_path)}
 
     def _find_log_row(self, deleted_path: Path) -> dict | None:
-        """Search the delete log for a row matching the deleted file path."""
+        """Search the delete log (in reverse order) for a row matching the deleted file path."""
         log_path = self.ctx.logs_dir / "delete_log.csv"
         if not log_path.exists():
             return None
 
         deleted_path_str = str(deleted_path)
         with log_path.open("r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get("deleted_to", "") == deleted_path_str:
-                    return row
+            rows = list(csv.DictReader(f))
+        # Reverse search to find most recent matching row (matching route behaviour).
+        for row in reversed(rows):
+            if row.get("deleted_to", "") == deleted_path_str:
+                return row
         return None
 
     def _write_log(self, root: Path, relative_path: str, deleted_path: Path) -> None:

@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from core.schemas import ClearDeletedRequest, ClearRecycleLogsRequest, PurgeDeletedRequest, RestoreDeletedRequest
 from core.services.file_operations import move_file_preserve_times
 from core.services.image_scan_service import clear_image_list_cache
+from core.use_cases.restore_image import RestoreImageRequest, RestoreImageUseCase
 
 
 def create_recycle_router(ctx: Any) -> APIRouter:
@@ -53,43 +54,21 @@ def create_recycle_router(ctx: Any) -> APIRouter:
 
     @router.post("/api/recycle-bin/restore")
     def restore_deleted_item(payload: RestoreDeletedRequest) -> dict[str, Any]:
-        deleted_path = ctx.resolve_deleted_file(payload.deleted_to)
-        if not deleted_path.exists() or not deleted_path.is_file():
-            raise HTTPException(status_code=404, detail="Deleted file not found")
+        active_root = ctx.get_active_image_root()
 
-        log_row = next((row for row in reversed(ctx.read_delete_log_rows()) if row["deleted_to"] == str(deleted_path)), None)
-        if not log_row or not log_row.get("root") or not log_row.get("relative_path"):
-            raise HTTPException(status_code=400, detail="No restore target found in delete log")
+        class _RootProxy:
+            root = active_root
+            deleted_dir = ctx.root_deleted_dir(active_root)
+            logs_dir = ctx.root_log_dir(active_root)
+            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
 
-        restore_root = Path(log_row["root"]).expanduser().resolve()
-        restore_path = (restore_root / log_row["relative_path"]).resolve()
-        try:
-            restore_path.relative_to(restore_root)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Restore path escapes original root") from exc
-
-        if restore_path.exists():
-            raise HTTPException(status_code=409, detail="Original path already exists")
-
-        restore_path.parent.mkdir(parents=True, exist_ok=True)
-        move_file_preserve_times(deleted_path, restore_path)
-        clear_image_list_cache(restore_root)
-        thumb_path = ctx.deleted_thumbnail_path_for(deleted_path)
-        if thumb_path.exists():
-            thumb_path.unlink()
-        ctx.remove_empty_deleted_parent(deleted_path)
-        ctx.append_log(
-            "delete_log.csv",
-            datetime.now().isoformat(),
-            str(restore_root),
-            log_row["relative_path"],
-            str(deleted_path),
-            "restored",
+        use_case = RestoreImageUseCase(
+            root_context=_RootProxy(),
+            thumbnails_dir=_RootProxy.thumbnails_dir,
+            resolve_fn=ctx.resolve_deleted_file,
         )
-        return {
-            "status": "restored",
-            "restored_to": str(restore_path),
-        }
+        req = RestoreImageRequest(deleted_to=payload.deleted_to)
+        return use_case.execute(req)
 
     @router.post("/api/recycle-bin/purge")
     def purge_deleted_item(payload: PurgeDeletedRequest) -> dict[str, Any]:
