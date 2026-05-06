@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import app as ztb_app
+import core.context as ztb_context
 from core.services.file_service import (
     image_index_cache_path,
     image_index_summary_path,
@@ -51,7 +52,7 @@ def test_config_reports_system_recycle_support(api_client) -> None:
 def test_startup_creates_only_root_scoped_runtime_dirs(api_client) -> None:
     _, workspace, image_root, _ = api_client
 
-    workspace_root = ztb_app.root_data_dir(image_root)
+    workspace_root = ztb_context.root_data_dir(image_root)
 
     assert workspace_root.exists()
     assert (workspace_root / "deleted").exists()
@@ -128,7 +129,7 @@ def test_delete_image_moves_file_to_local_recycle(api_client) -> None:
 
     assert response.status_code == 200
     deleted_to = Path(response.json()["deleted_to"])
-    assert deleted_to.is_relative_to(ztb_app.root_deleted_dir(image_root))
+    assert deleted_to.is_relative_to(ztb_context.root_deleted_dir(image_root))
     assert deleted_to.name == "photo.jpg"
     assert deleted_to.read_text(encoding="utf-8") == "demo"
     assert not source.exists()
@@ -142,7 +143,7 @@ def test_clear_recycle_bin_clears_active_root_recycle_items(api_client, monkeypa
     delete_response = client.post("/api/delete", json={"relative_path": "photo.jpg"})
     assert delete_response.status_code == 200
     deleted_to = Path(delete_response.json()["deleted_to"])
-    assert deleted_to.is_relative_to(ztb_app.root_deleted_dir(image_root))
+    assert deleted_to.is_relative_to(ztb_context.root_deleted_dir(image_root))
 
     recycled_paths: list[Path] = []
 
@@ -208,7 +209,7 @@ def test_purge_uses_original_filename_for_legacy_recycle_item(api_client, monkey
 
 def test_purge_permanently_deletes_on_non_windows(api_client, monkeypatch: pytest.MonkeyPatch) -> None:
     client, _, image_root, _ = api_client
-    deleted_to = ztb_app.root_deleted_dir(image_root) / "entry" / "photo.jpg"
+    deleted_to = ztb_context.root_deleted_dir(image_root) / "entry" / "photo.jpg"
     deleted_to.parent.mkdir(parents=True, exist_ok=True)
     deleted_to.write_text("demo", encoding="utf-8")
     monkeypatch.setattr(ztb_app, "is_windows", lambda: False)
@@ -237,7 +238,7 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
     client.post("/api/settings/active-root", json={"path": str(image_root)})
 
     cache_key = image_scan_cache_key(image_root, ztb_app.SUPPORTED_EXTENSIONS, ztb_app.EXCLUDED_SCAN_DIRS)
-    image_index_dir = ztb_app.root_image_index_dir(image_root)
+    image_index_dir = ztb_context.root_image_index_dir(image_root)
     image_index_path = image_index_cache_path(image_index_dir, cache_key)
     image_summary_path = image_index_summary_path(image_index_dir, cache_key)
     timeline_path = timeline_index_cache_path(image_index_dir, cache_key)
@@ -250,14 +251,14 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
     thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
     thumbnail_path.write_text("thumb", encoding="utf-8")
 
-    duplicates_path = ztb_app.root_duplicates_path(image_root)
-    hash_db_path = ztb_app.root_hash_db_path(image_root)
+    duplicates_path = ztb_context.root_duplicates_path(image_root)
+    hash_db_path = ztb_context.root_hash_db_path(image_root)
     duplicates_path.parent.mkdir(parents=True, exist_ok=True)
     duplicates_path.write_text("{}", encoding="utf-8")
     hash_db_path.write_text("{}", encoding="utf-8")
     ztb_app.save_root_summary(str(image_root), image_count=3, duplicate_group_count=1, updated_at="2026-04-26T12:00:00")
 
-    deleted_copy = ztb_app.root_deleted_dir(image_root) / "entry" / "photo.jpg"
+    deleted_copy = ztb_context.root_deleted_dir(image_root) / "entry" / "photo.jpg"
     deleted_copy.parent.mkdir(parents=True, exist_ok=True)
     deleted_copy.write_text("demo", encoding="utf-8")
     deleted_thumbnail_path = ztb_app.deleted_thumbnail_path_for(deleted_copy)

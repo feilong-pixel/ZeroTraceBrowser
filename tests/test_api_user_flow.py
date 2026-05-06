@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image
 
 import app as ztb_app
+import core.context as ztb_context
 import core.services.file_service as file_service
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
 from core.services.file_service import (
@@ -109,7 +110,7 @@ def test_images_lightweight_page_returns_without_total(api_client) -> None:
 def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
     create_test_image(image_root / "a.jpg")
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
@@ -145,7 +146,7 @@ def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> N
 def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
     monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
 
     for index in range(3):
         create_test_image(image_root / f"photo_{index}.jpg")
@@ -223,7 +224,7 @@ def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_cl
 def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
     monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
 
     create_test_image(image_root / "photo_1.jpg")
 
@@ -291,7 +292,7 @@ def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, m
 
 def test_images_async_scan_marks_stale_cached_items_missing(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
@@ -353,10 +354,10 @@ def test_async_scan_writes_index_under_root_indexes(api_client, monkeypatch) -> 
     assert response.status_code == 200
     assert len(started_threads) == 1
     started_threads[0].target(*started_threads[0].args)
-    index_dir = ztb_app.root_data_dir(image_root) / "indexes"
-    assert ztb_app.root_image_index_dir(image_root) == index_dir
+    index_dir = ztb_context.root_data_dir(image_root) / "indexes"
+    assert ztb_context.root_image_index_dir(image_root) == index_dir
     assert any(index_dir.glob("*.summary.json"))
-    assert not (ztb_app.root_thumbnail_dir(image_root) / "_indexes").exists()
+    assert not (ztb_context.root_thumbnail_dir(image_root) / "_indexes").exists()
 
 
 def test_legacy_root_thumbnail_indexes_are_migrated_to_root_indexes(api_client) -> None:
@@ -373,9 +374,9 @@ def test_legacy_root_thumbnail_indexes_are_migrated_to_root_indexes(api_client) 
         [indexed_image("photo.jpg", "2024-01-01T00:00:00")],
     )
 
-    ztb_app.ensure_root_workspace(image_root)
+    ztb_context.ensure_root_workspace(image_root)
 
-    scoped_index_dir = ztb_app.root_image_index_dir(image_root)
+    scoped_index_dir = ztb_context.root_image_index_dir(image_root)
     assert any(scoped_index_dir.glob("*.json"))
     assert not legacy_index_dir.exists()
     assert not (workspace / "thumbnails").exists()
@@ -383,7 +384,7 @@ def test_legacy_root_thumbnail_indexes_are_migrated_to_root_indexes(api_client) 
 
 def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> None:
     _, _, image_root, _ = api_client
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
     old_cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
@@ -413,7 +414,7 @@ def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> No
         generated_at="2026-05-06T09:06:42",
     )
 
-    ztb_app.ensure_root_workspace(image_root)
+    ztb_context.ensure_root_workspace(image_root)
 
     assert current_summary_path.exists()
     with current_summary_path.open("r", encoding="utf-8") as handle:
@@ -425,7 +426,7 @@ def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> No
 
 def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
     create_test_image(image_root / "2024" / "12" / "25" / "winter.jpg")
     create_test_image(image_root / "2023" / "01" / "02" / "newyear.jpg")
 
@@ -458,7 +459,7 @@ def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeyp
 
 def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
     cache_key = image_scan_cache_key(
         image_root,
         ztb_app.SUPPORTED_EXTENSIONS,
@@ -504,7 +505,7 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
 
 def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    index_dir = ztb_app.root_image_index_dir(image_root)
+    index_dir = ztb_context.root_image_index_dir(image_root)
     create_test_image(image_root / "edge.jpg")
 
     edge_item = indexed_image("edge.jpg", "2024-02-01T00:30:00")
@@ -554,7 +555,7 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     thumbnail_response = client.get("/api/thumbnail", params={"relative_path": "album/photo.jpg"})
     assert thumbnail_response.status_code == 200
     assert thumbnail_response.headers["content-type"].startswith("image/")
-    assert any(ztb_app.root_thumbnail_dir(added_root).rglob("*.jpg"))
+    assert any(ztb_context.root_thumbnail_dir(added_root).rglob("*.jpg"))
 
     copy_response = client.post("/api/copy", json={"relative_path": "album/photo.jpg", "target_dir": ""})
     assert copy_response.status_code == 200
@@ -567,7 +568,7 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     delete_response = client.post("/api/delete", json={"relative_path": "album/photo.jpg"})
     assert delete_response.status_code == 200
     deleted_to = Path(delete_response.json()["deleted_to"])
-    assert deleted_to.is_relative_to(ztb_app.root_deleted_dir(added_root))
+    assert deleted_to.is_relative_to(ztb_context.root_deleted_dir(added_root))
     assert deleted_to.name == "photo.jpg"
     assert deleted_to.exists()
     assert_windows_creation_time(deleted_to, original_created_at)

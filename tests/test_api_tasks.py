@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import app as ztb_app
+import core.context as ztb_context
 import core.routes.tasks as tasks_routes
 from tests.test_api_duplicates import write_duplicates_json
 from tests.test_api_user_flow import create_test_image
@@ -336,7 +337,7 @@ def test_run_organizer_uses_task_scoped_duplicates_and_shared_hash_db(api_client
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
     assert first_task["outputs"]["duplicates_json_path"].endswith("duplicates.json")
     assert first_task["outputs"]["hash_db_path"].endswith("hash_db.json")
-    assert first_task["outputs"]["duplicates_json_path"] != str(ztb_app.root_duplicates_path(destination))
+    assert first_task["outputs"]["duplicates_json_path"] != str(ztb_context.root_duplicates_path(destination))
     assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB": first_task["outputs"]["hash_db_path"]}
     assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB": second_task["outputs"]["hash_db_path"]}
 
@@ -349,7 +350,7 @@ def test_run_organizer_does_not_overwrite_published_duplicates(api_client, monke
     client, workspace, image_root, _ = api_client
     destination = workspace / "organized"
     destination.mkdir(parents=True, exist_ok=True)
-    published_path = ztb_app.root_duplicates_path(destination)
+    published_path = ztb_context.root_duplicates_path(destination)
     write_duplicates_json(
         published_path,
         destination,
