@@ -4,8 +4,8 @@ from pathlib import Path
 
 class HashCalculator:
     """
-    ZeroTraceBrowser 的文件哈希计算器。
-    用于重复检测（duplicate detection）。
+    File hash calculator for ZeroTraceBrowser.
+    Used for duplicate detection.
     """
 
     def __init__(self, chunk_size: int = 1024 * 1024):
@@ -13,7 +13,7 @@ class HashCalculator:
 
     def compute_hash(self, path: str) -> str:
         """
-        计算文件的 SHA1 哈希。
+        Compute the SHA1 hash of a file.
         """
         h = hashlib.sha1()
         p = Path(path)

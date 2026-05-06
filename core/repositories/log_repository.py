@@ -4,8 +4,8 @@ from pathlib import Path
 
 class LogRepository:
     """
-    ZeroTraceBrowser 操作日志仓库。
-    负责写入：
+    Operation log repository for ZeroTraceBrowser.
+    Responsible for writing:
     - logs/delete_log.csv
     - logs/copy_log.csv
     """
@@ -20,8 +20,8 @@ from pathlib import Path
 
 class LogRepository:
     """
-    ZeroTraceBrowser 操作日志仓库。
-    负责写入：
+    Operation log repository for ZeroTraceBrowser.
+    Responsible for writing:
     - logs/delete_log.csv
     - logs/copy_log.csv
     """
@@ -30,12 +30,12 @@ class LogRepository:
         self.ctx = root_context
 
     # ---------------------------------------------------------
-    # 内部辅助：确保 CSV header 存在
+    # Internal helper: ensure CSV header exists
     # ---------------------------------------------------------
 
     @staticmethod
     def _ensure_header(log_path: Path, headers: list[str]) -> None:
-        """如果文件不存在则写入 header 行。"""
+        """Write the header row if the file does not exist."""
         if log_path.exists():
             return
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -43,7 +43,7 @@ class LogRepository:
             csv.writer(f).writerow(headers)
 
     # ---------------------------------------------------------
-    # 删除日志
+    # Delete log
     # ---------------------------------------------------------
 
     def append_delete_log(
@@ -55,14 +55,14 @@ class LogRepository:
         action: str = "deleted",
     ) -> None:
         """
-        追加一条删除（或 restore / purge）日志。
+        Append a delete (or restore / purge) log entry.
 
         Args:
-            timestamp: ISO 格式时间戳。
-            root: 图片根目录路径。
-            relative_path: 文件相对于 root 的路径。
-            deleted_to: 回收区中的目标路径。
-            action: 操作类型，"deleted"、"restored" 或 "purged"。
+            timestamp: ISO-format timestamp.
+            root: Image root directory path.
+            relative_path: Path of the file relative to the root.
+            deleted_to: Target path in the recycle area.
+            action: Operation type: "deleted", "restored", or "purged".
         """
         log_path = self.ctx.delete_log_file()
         self._ensure_header(log_path, ["timestamp", "root", "relative_path", "deleted_to", "action"])
@@ -72,12 +72,12 @@ class LogRepository:
             writer.writerow([timestamp, root, relative_path, deleted_to, action])
 
     # ---------------------------------------------------------
-    # 复制日志
+    # Copy log
     # ---------------------------------------------------------
 
     def append_copy_log(self, timestamp: str, root: str, src: str, dst: str) -> None:
         """
-        追加一条复制日志。
+        Append a copy operation log entry.
         """
         log_path = self.ctx.copy_log_file()
         self._ensure_header(log_path, ["timestamp", "root", "relative_path", "copied_to"])
@@ -88,7 +88,7 @@ class LogRepository:
         self.ctx = root_context
 
     # ---------------------------------------------------------
-    # 删除日志
+    # Delete log
     # ---------------------------------------------------------
     def append_delete_log(self, timestamp: str, root: str, relative_path: str, deleted_to: str):
         log_path = self.ctx.delete_log_file()
@@ -105,7 +105,7 @@ class LogRepository:
             ])
 
     # ---------------------------------------------------------
-    # 复制日志
+    # Copy log
     # ---------------------------------------------------------
     def append_copy_log(self, timestamp: str, root: str, src: str, dst: str):
         log_path = self.ctx.copy_log_file()

@@ -23,21 +23,21 @@ class IndexRepository:
 
     def build_entry(self, path: Path, meta: dict | None = None) -> ImageEntry:
         """
-        从文件路径和可选的元数据字典构建 ``ImageEntry``。
+        Build an ``ImageEntry`` from a file path and optional metadata dict.
 
-        如果提供了 ``meta``，优先使用其字段（兼容 image_scan_service 的返回格式）。
-        否则从文件系统读取基本信息。
+        When ``meta`` is provided, its fields take priority (compatible with image_scan_service output).
+        Otherwise, read basic info from the filesystem.
         """
         relative_path = str(path.relative_to(self.ctx.root)).replace("\\", "/")
 
         if meta:
-            # 确保 path 和 relative_path 字段完整
+            # Ensure path and relative_path fields are populated
             enriched = dict(meta)
             enriched.setdefault("path", relative_path)
             enriched.setdefault("relative_path", relative_path)
             return ImageEntry.from_scan_item(enriched)
 
-        # 没有 meta 时，从文件系统读取基本信息
+        # Without meta, read basic info from the filesystem
         stat = path.stat()
         return ImageEntry(
             relative_path=relative_path,
@@ -49,7 +49,7 @@ class IndexRepository:
     def build_entries_from_scan(
         self, items: list[dict[str, Any]]
     ) -> list[ImageEntry]:
-        """将一批扫描结果（list[dict]）转为 ``ImageEntry`` 列表。"""
+        """Convert a batch of scan results (list[dict]) to a list of ``ImageEntry``."""
         return [ImageEntry.from_scan_item(item) for item in items]
 
     def compute_root_hash(self, entries: list[ImageEntry]) -> str:
@@ -67,7 +67,7 @@ class IndexRepository:
         )
 
     def load_index(self, root_hash: str) -> list[ImageEntry]:
-        """从 JSON 文件加载并反序列化为 ``ImageEntry`` 列表。"""
+        """Load and deserialize from a JSON file into a list of ``ImageEntry``."""
         path = self.ctx.index_file(root_hash)
         if not path.exists():
             return []

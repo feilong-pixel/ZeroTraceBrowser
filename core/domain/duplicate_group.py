@@ -17,26 +17,26 @@ class DuplicateItem(BaseModel):
 
 class DuplicateGroup(BaseModel):
     """
-    ZeroTraceBrowser 的重复文件分组。
-    对应 duplicates.json 中 groups 数组的每一项。
+    Duplicate file group for ZeroTraceBrowser.
+    Corresponds to each item in the ``groups`` array of ``duplicates.json``.
     """
 
-    # 组 ID
+    # Group identifier
     group_id: str = Field("", description="Unique group identifier")
 
-    # 重复检测原因（"strict" 或 "phash"）
+    # Duplicate detection method ("strict" or "phash")
     reason: str = Field("-", description="Duplicate detection method: 'strict' or 'phash'")
 
-    # 哈希值（重复组的 key）
+    # Hash value (key that defines the duplicate group)
     hash: str = Field("", description="Hash value that defines the duplicate group")
 
-    # 保留的文件相对路径
+    # Relative path of the kept file
     kept_path: str = Field("", description="Relative path of the kept file")
 
-    # 组内所有文件
+    # All items within this duplicate group
     items: list[DuplicateItem] = Field(default_factory=list, description="Items in the duplicate group")
 
-    # 新增文件数量/可用数量（运行时填充，不持久化）
+    # Runtime-only counts (not persisted)
     item_count: int = Field(default=0)
     available_count: int = Field(default=0)
 
@@ -44,7 +44,7 @@ class DuplicateGroup(BaseModel):
 
     @classmethod
     def from_json_group(cls, data: dict[str, Any]) -> DuplicateGroup:
-        """从 duplicates.json 的组 dict 安全构建。"""
+        """Safely build from a group dict in duplicates.json."""
         raw_items: list[dict[str, Any]] = data.get("items", [])
         items = []
         for item in raw_items:

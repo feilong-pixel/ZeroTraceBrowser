@@ -4,8 +4,8 @@ from PIL import Image
 
 class ThumbnailGenerator:
     """
-    生成缩略图（JPEG）。
-    ZeroTraceBrowser 的缩略图路径由 RootContext 决定。
+    Generate JPEG thumbnails.
+    Thumbnail paths are managed by RootContext.
     """
 
     def __init__(self, size=(512, 512), quality=85):
@@ -14,7 +14,7 @@ class ThumbnailGenerator:
 
     def generate(self, src: Path, dst: Path):
         """
-        生成缩略图到 dst。
+        Generate a thumbnail and write it to dst.
         """
         dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -23,5 +23,5 @@ class ThumbnailGenerator:
                 img.thumbnail(self.size)
                 img.convert("RGB").save(dst, "JPEG", quality=self.quality)
         except Exception:
-            # 缩略图生成失败时不抛异常，避免阻塞 index 构建
+            # Do not raise on thumbnail failure to avoid blocking index builds
             pass

@@ -6,7 +6,7 @@ from typing import Optional, Dict
 
 class MetadataReader:
     """
-    读取图像元数据（EXIF、尺寸、时间）。
+    Read image metadata (EXIF, dimensions, timestamps).
     """
 
     def read(self, path: Path) -> Dict:
@@ -14,17 +14,17 @@ class MetadataReader:
             "timestamp": None,
             "width": None,
             "height": None,
-            "hash": None,  # 由 HashCalculator 填充
+            "hash": None,  # Populated by HashCalculator
         }
 
-        # 1. 尺寸
+        # 1. Dimensions
         try:
             with Image.open(path) as img:
                 result["width"], result["height"] = img.size
         except Exception:
             pass
 
-        # 2. EXIF 时间
+        # 2. EXIF datetime
         try:
             with Image.open(path) as img:
                 exif = img._getexif()
@@ -37,7 +37,7 @@ class MetadataReader:
         except Exception:
             pass
 
-        # 3. 文件修改时间（作为 fallback）
+        # 3. File modification time (fallback)
         if not result["timestamp"]:
             ts = os.path.getmtime(path)
             result["timestamp"] = self._format_timestamp(ts)

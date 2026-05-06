@@ -8,7 +8,7 @@ class SettingsRepository:
         self.active_file = self.data_root / "active_root.txt"
 
     # -------------------------
-    # 保存 root.json
+    # Save root.json
     # -------------------------
     def save_root_config(self, config: RootConfig):
         root_dir = self.data_root / config.root_id
@@ -17,20 +17,20 @@ class SettingsRepository:
         path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
 
     # -------------------------
-    # 读取 root.json
+    # Read root.json
     # -------------------------
     def load_root_config(self, root_id: str) -> RootConfig:
         path = self.data_root / root_id / "root.json"
         return RootConfig.model_validate_json(path.read_text(encoding="utf-8"))
 
     # -------------------------
-    # 设置 active root
+    # Set active root
     # -------------------------
     def set_active_root(self, root_id: str):
         self.active_file.write_text(root_id, encoding="utf-8")
 
     # -------------------------
-    # 获取 active root
+    # Get active root
     # -------------------------
     def get_active_root(self) -> str:
         return self.active_file.read_text(encoding="utf-8").strip()

@@ -9,46 +9,46 @@ from pydantic import BaseModel, Field
 
 class ImageEntry(BaseModel):
     """
-    ZeroTraceBrowser 的索引条目，对应 index.json / summary.json 中的每一项。
+    Index entry for ZeroTraceBrowser, corresponding to each item in index.json / summary.json.
 
-    字段对齐 :func:`image_scan_service.image_metadata_from_path` 的返回结构，
-    所有可选字段的默认值与真实代码一致（空字符串或 0 / None）。
+    Fields align with the return structure of :func:`image_scan_service.image_metadata_from_path`,
+    All optional field defaults match the production code (empty string, 0, or None).
     """
 
-    # 相对于 root 的路径（前端展示、删除、恢复都用它）
+    # Path relative to the image root (used by frontend, delete, restore)
     relative_path: str = Field(..., description="Relative path from the image root (forward-slash)")
 
-    # 文件路径（绝对路径或相对路径，与 relative_path 相同值）
+    # File path — same value as relative_path for backward compatibility
     path: str = Field("", description="Same as relative_path for backward compatibility")
 
-    # 文件名
+    # File base name
     name: str = Field("", description="File base name")
 
-    # 文件大小（字节）
+    # File size in bytes
     size: int = Field(0, description="File size in bytes")
 
-    # 拍摄时间（EXIF 或文件时间，ISO 格式）
+    # Capture datetime from EXIF or file timestamp (ISO format)
     captured_at: str = Field("", description="Capture datetime in ISO format, or empty")
 
-    # 文件修改时间（ISO 格式）
+    # File modification datetime in ISO format
     modified_at: str = Field("", description="File modification datetime in ISO format")
 
-    # 时间线展示时间（YYYY-MM-DD HH:MM:SS 格式）
+    # Timeline display time (YYYY-MM-DD HH:MM:SS)
     timeline_time: str = Field("", description="Timeline display time string")
 
-    # 时间线排序时间戳（秒）
+    # Timeline sort timestamp (unix epoch seconds)
     timeline_ts: int = Field(0, description="Timeline sort timestamp (unix epoch seconds)")
 
-    # 时间线来源（"exif" 或 "file"）
+    # Timeline source: "exif" or "file"
     timeline_source: str = Field("", description="Timeline source: 'exif' or 'file'")
 
-    # 文件是否存在（用于缓存标记）
+    # Whether the file still exists on disk (cache marker)
     exists: bool = Field(True, description="Whether the file still exists on disk")
 
-    # 文件的唯一哈希（用于重复检测，仅通过 hash_db 填充）
+    # File content hash for duplicate detection (populated via hash DB)
     hash: str | None = Field(None, description="File content hash (populated by hash DB)")
 
-    # 图像尺寸（仅当读取 EXIF 时可用）
+    # Image dimensions (only available when EXIF is read)
     width: int | None = Field(None, description="Image width in pixels")
     height: int | None = Field(None, description="Image height in pixels")
 
@@ -57,9 +57,9 @@ class ImageEntry(BaseModel):
     @classmethod
     def from_scan_item(cls, item: dict[str, Any]) -> ImageEntry:
         """
-        从 :func:`image_metadata_from_path` 返回的 dict 构建 ImageEntry。
+        Build an ImageEntry from the dict returned by :func:`image_metadata_from_path`.
 
-        自动处理缺失字段、类型转换等边界情况。
+        Automatically handles missing fields, type coercion, and edge cases.
         """
         return cls(
             relative_path=str(item.get("relative_path", "")),
@@ -78,7 +78,7 @@ class ImageEntry(BaseModel):
         )
 
     def to_scan_item(self) -> dict[str, Any]:
-        """将 ImageEntry 转回 dict，兼容 image_scan_service 的返回格式。"""
+        """Convert ImageEntry back to a dict compatible with image_scan_service output."""
         return {
             "relative_path": self.relative_path,
             "path": self.path,

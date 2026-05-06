@@ -262,7 +262,7 @@ def get_timeline_index(
 
     entries, timeline_generated_at = load_timeline_index_cache(index_dir, cache_key)
 
-    # 只要 timeline 和 full index 的生成时间一致，就直接返回旧 timeline
+    # If timeline and full index have the same generation time, return the old timeline
     if entries and summary_generated_at == timeline_generated_at:
         return {
             "root": str(root),
@@ -271,7 +271,7 @@ def get_timeline_index(
             "from_cache": True,
         }
 
-    # 关键：timeline 只允许从完整 index 生成
+    # Critical: timeline must only be generated from a full index
     full_items = load_full_image_index_cache(index_dir, cache_key)
 
     if full_items:
@@ -284,7 +284,7 @@ def get_timeline_index(
             "from_cache": True,
         }
 
-    # 没有完整 index 时，不用 summary_items 生成 timeline
+    # Without a full index, do not generate timeline from summary items
     return {
         "root": str(root),
         "entries": entries if entries else [],
