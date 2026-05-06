@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.app_factory import create_app
-from core.config import (
+from core.app.factory import create_app
+from core.config.app_config import (
     BASE_DIR,
     DATA_DIR,
     STATIC_DIR,
@@ -32,11 +32,3 @@ from core.config import (
 from core.context import *  # noqa: F403 - compatibility exports for tests and scripts
 
 app = create_app()
-
-class RouteContext:
-    def __getattr__(self, name: str):
-        return globals()[name]
-
-
-def build_route_context() -> RouteContext:
-    return RouteContext()

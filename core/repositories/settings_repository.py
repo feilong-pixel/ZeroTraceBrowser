@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from core.domain.root_config import RootConfig
+from core.config.root_config import RootConfig
 
 class SettingsRepository:
     def __init__(self, data_root="data/roots"):

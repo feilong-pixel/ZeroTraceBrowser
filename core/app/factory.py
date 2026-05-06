@@ -4,11 +4,12 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from core.config import STATIC_DIR
-from core.context import build_route_context
-from core.lifespan import lifespan
-from core.middleware import StaticNoCacheMiddleware
-from core.security import cors_origins_from_env, trusted_hosts_from_env
+from core.config.app_config import *
+from core.context import *
+from core.context_modules.route_facade import build_route_context
+from core.app.lifespan import lifespan
+from core.app.middleware import StaticNoCacheMiddleware
+from core.app.security import cors_origins_from_env, trusted_hosts_from_env
 
 from core.routes.duplicates import create_duplicates_router
 from core.routes.images import create_images_router
@@ -53,3 +54,6 @@ def create_app() -> FastAPI:
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
     return app
+
+
+app = create_app()

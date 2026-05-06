@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.domain.root_config import RootConfig, normalize_root_path, root_id_for
+from core.config.root_config import RootConfig, normalize_root_path, root_id_for
 
 
 @dataclass(frozen=True)

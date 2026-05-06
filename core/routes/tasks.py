@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from core.schemas import OrganizerTaskRequest, RebuildHashDbTaskRequest
-from core.security import require_existing_directory, require_not_same_or_child, resolve_path
+from core.app.security import require_existing_directory, require_not_same_or_child, resolve_path
 from core.services.settings_service import normalize_task_lang
 
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from core.domain.root_config import RootConfig
+from core.config.root_config import RootConfig
 
 class SetRootRequest(BaseModel):
     root_path: str

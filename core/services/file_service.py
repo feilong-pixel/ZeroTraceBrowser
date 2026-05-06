@@ -880,13 +880,16 @@ def image_file_response(image_path: Path, thumbnail_path: Path, thumbnail_size: 
 
     if should_refresh:
         thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
-        with image_module.open(image_path) as img:
-            if hasattr(img, "draft"):
-                img.draft("RGB", thumbnail_size)
-            thumb = image_ops_module.exif_transpose(img)
-            thumb.thumbnail(thumbnail_size)
-            if thumb.mode != "RGB":
-                thumb = thumb.convert("RGB")
-            thumb.save(thumbnail_path, format="JPEG", quality=92, optimize=True)
+        try:
+            with image_module.open(image_path) as img:
+                if hasattr(img, "draft"):
+                    img.draft("RGB", thumbnail_size)
+                thumb = image_ops_module.exif_transpose(img)
+                thumb.thumbnail(thumbnail_size)
+                if thumb.mode != "RGB":
+                    thumb = thumb.convert("RGB")
+                thumb.save(thumbnail_path, format="JPEG", quality=92, optimize=True)
+        except (getattr(image_module, "UnidentifiedImageError", OSError), OSError) as exc:
+            raise HTTPException(status_code=415, detail="Unsupported image format") from exc
 
     return FileResponse(thumbnail_path)

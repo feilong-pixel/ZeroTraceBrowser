@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from core.schemas import CopyTargetUpdateRequest, LanguageUpdateRequest, OpenPathRequest, RootAddRequest, RootUpdateRequest
-from core.security import require_existing_directory, require_open_path_allowed, resolve_path
+from core.app.security import require_existing_directory, require_open_path_allowed, resolve_path
 
 
 def create_settings_router(ctx: Any) -> APIRouter:

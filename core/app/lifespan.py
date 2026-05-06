@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from core.config import STATIC_DIR, DATA_DIR, ROOT_DATA_DIR
-from core.context import ensure_directories
+from core.config.app_config import STATIC_DIR, DATA_DIR, ROOT_DATA_DIR
+from core.context_modules.root_workspace import ensure_directories
 
 try:
     from PIL import Image, ImageOps

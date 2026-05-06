@@ -3,7 +3,7 @@ import os
 
 from core.services.task_service import TaskRegistry
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = BASE_DIR / "data"
 ROOT_DATA_DIR = DATA_DIR / "roots"
@@ -19,10 +19,10 @@ THUMBNAIL_SIZE = (384, 384)
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
 EXCLUDED_SCAN_DIRS = {
     "static",
-    "templates",
-    "thumbnails",
-    "deleted",
-    "logs",
+    # "templates",
+    # "thumbnails",
+    # "deleted",
+    # "logs",
     # "__pycache__",
     # "venv",
 }
@@ -30,10 +30,10 @@ SUPPORTED_LANGUAGES = {"zh", "en", "ja"}
 
 # Legacy paths are read only for migration/compatibility. New runtime data must
 # live under data/roots/<root_id>/.
-THUMBNAIL_DIR = BASE_DIR / "thumbnails"
+THUMBNAIL_DIR = DATA_DIR / "thumbnails"
 IMAGE_INDEX_DIR = THUMBNAIL_DIR / "_indexes"
-DELETED_DIR = BASE_DIR / "deleted"
-LOG_DIR = BASE_DIR / "logs"
+DELETED_DIR = DATA_DIR / "deleted"
+LOG_DIR = DATA_DIR / "logs"
 
 # Legacy task-log root kept only for discovering older duplicates results.
 TASK_LOG_DIR = LOG_DIR / "tasks"
