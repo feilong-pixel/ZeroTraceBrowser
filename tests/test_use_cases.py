@@ -15,6 +15,8 @@ from fastapi import HTTPException
 from core.use_cases.copy_image import CopyImageRequest, CopyImageUseCase
 from core.use_cases.delete_image import DeleteImageRequest, DeleteImageUseCase
 from core.use_cases.restore_image import RestoreImageRequest, RestoreImageUseCase
+from core.use_cases.purge_image import PurgeImageRequest, PurgeImageUseCase
+from core.use_cases.clear_recycle import ClearRecycleRequest, ClearRecycleUseCase
 
 
 # ---------------------------------------------------------------------------
@@ -517,3 +519,319 @@ class TestRestoreImageUseCase:
         use_case.execute(req)
 
         assert ctx.root.resolve() in {p.resolve() for p in self.cache_cleared}
+
+
+# ===================================================================
+# PurgeImageUseCase
+# ===================================================================
+
+
+class TestPurgeImageUseCase:
+    """Tests for PurgeImageUseCase.
+
+    Injects a fake ``dispose_fn`` that records what is disposed and
+    deletes the file permanently (simulating the non-Windows path).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _inject_mocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.disposed: list[Path] = []
+
+        def fake_move(src, dst):
+            if Path(src).exists():
+                Path(src).rename(dst)
+
+        monkeypatch.setattr(
+            "core.services.file_operations.move_file_preserve_times", fake_move
+        )
+
+    @pytest.fixture()
+    def ctx(self, workspace: Path) -> FakeRootContext:
+        root = workspace / "photos"
+        root.mkdir()
+        deleted_dir = workspace / "data" / "roots" / "test_root" / "deleted"
+        logs_dir = workspace / "data" / "roots" / "test_root" / "logs"
+        thumbnails_dir = workspace / "data" / "roots" / "test_root" / "thumbnails"
+        return FakeRootContext(root, deleted_dir, logs_dir, thumbnails_dir)
+
+    @pytest.fixture()
+    def use_case(self, ctx: FakeRootContext) -> PurgeImageUseCase:
+        def fake_dispose(p: Path) -> None:
+            self.disposed.append(p)
+            if p.exists():
+                p.unlink()
+
+        return PurgeImageUseCase(
+            root_context=ctx,
+            thumbnails_dir=ctx.thumbnails_dir,
+            dispose_fn=fake_dispose,
+        )
+
+    # ---------------------------------------------------------------
+    # Helper: seed a deleted file with log
+    # ---------------------------------------------------------------
+
+    def _prepare_deleted(
+        self,
+        ctx: FakeRootContext,
+        rel: str = "photo.jpg",
+        content: str = "purge-me",
+    ) -> Path:
+        deleted_path = ctx.deleted_dir / "20260426_a1b2c3d4e5" / Path(rel).name
+        touch(deleted_path, content)
+        log_path = ctx.logs_dir / "delete_log.csv"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
+            w.writerow(["2026-04-26T12:00:00", str(ctx.root), rel, str(deleted_path), "deleted"])
+        return deleted_path
+
+    # ---------------------------------------------------------------
+    # Happy path
+    # ---------------------------------------------------------------
+
+    def test_purge_disposes_file(self, ctx, use_case):
+        deleted_path = self._prepare_deleted(ctx)
+        assert deleted_path.exists()
+
+        req = PurgeImageRequest(deleted_to=str(deleted_path))
+        result = use_case.execute(req)
+
+        assert result["status"] == "purged"
+        assert Path(result["deleted_to"]) == deleted_path.resolve()
+        assert not deleted_path.exists()
+        assert deleted_path in self.disposed
+
+    def test_purge_writes_log(self, ctx, use_case):
+        deleted_path = self._prepare_deleted(ctx)
+
+        req = PurgeImageRequest(deleted_to=str(deleted_path))
+        use_case.execute(req)
+
+        rows = read_csv(ctx.logs_dir / "delete_log.csv")
+        assert len(rows) == 2
+        assert rows[1]["action"] == "purged"
+        assert rows[1]["deleted_to"] == str(deleted_path)
+
+    def test_purge_removes_stale_thumbnail(self, ctx, use_case):
+        deleted_path = self._prepare_deleted(ctx, rel="thumb_test.jpg")
+        from core.services.thumbnail_service import deleted_thumbnail_path_for
+        thumb = deleted_thumbnail_path_for(ctx.thumbnails_dir, deleted_path)
+        touch(thumb, "stale-thumb")
+        assert thumb.exists()
+
+        req = PurgeImageRequest(deleted_to=str(deleted_path))
+        use_case.execute(req)
+
+        assert not thumb.exists()
+
+    def test_purge_renames_to_original_name_before_disposal(self, ctx, use_case):
+        """If the deleted filename is a hash, rename back to original name."""
+        deleted_dir = ctx.deleted_dir / "20260426_x1y2z3"
+        deleted_path = touch(deleted_dir / "a1b2c3d4.jpg", "orig")
+        log_path = ctx.logs_dir / "delete_log.csv"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
+            w.writerow(["2026-04-26T12:00:00", str(ctx.root), "sub/nature.jpg", str(deleted_path), "deleted"])
+
+        req = PurgeImageRequest(deleted_to=str(deleted_path))
+        result = use_case.execute(req)
+
+        assert result["status"] == "purged"
+        renamed_path = deleted_dir / "nature.jpg"
+        assert renamed_path in self.disposed
+        assert not (deleted_dir / "a1b2c3d4.jpg").exists()
+
+    # ---------------------------------------------------------------
+    # Error cases
+    # ---------------------------------------------------------------
+
+    def test_purge_rejects_path_outside_deleted_dir(self, ctx, use_case):
+        outside = ctx.root / "not_deleted.txt"
+        req = PurgeImageRequest(deleted_to=str(outside))
+
+        with pytest.raises(HTTPException) as exc:
+            use_case.execute(req)
+        assert exc.value.status_code == 400
+        assert "Invalid deleted file path" in exc.value.detail
+
+    def test_purge_raises_when_file_missing(self, ctx, use_case):
+        fake = ctx.deleted_dir / "20260426_a1b2c3d4e5" / "missing.jpg"
+        req = PurgeImageRequest(deleted_to=str(fake))
+
+        with pytest.raises(HTTPException) as exc:
+            use_case.execute(req)
+        assert exc.value.status_code == 404
+        assert "Deleted file not found" in exc.value.detail
+
+    def test_purge_handles_missing_log(self, ctx, use_case):
+        deleted_path = ctx.deleted_dir / "20260426_orphan" / "orphan.jpg"
+        touch(deleted_path, "orphan-data")
+
+        req = PurgeImageRequest(deleted_to=str(deleted_path))
+        result = use_case.execute(req)
+
+        assert result["status"] == "purged"
+        assert not deleted_path.exists()
+        rows = read_csv(ctx.logs_dir / "delete_log.csv")
+        assert len(rows) == 1
+        assert rows[0]["action"] == "purged"
+        assert rows[0]["root"] == ""
+        assert rows[0]["relative_path"] == ""
+
+
+# ===================================================================
+# ClearRecycleUseCase
+# ===================================================================
+
+
+class TestClearRecycleUseCase:
+    """Tests for ClearRecycleUseCase.
+
+    Uses real service calls for ``list_recycle_items`` and
+    ``read_delete_log_rows``.  The ``archive_delete_log`` and
+    ``remove_empty_deleted_parent`` helpers are monkeypatched.
+    File disposal is injected via a fake ``dispose_fn``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _inject_mocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.disposed: list[Path] = []
+
+        def fake_archive(log_dir: Path) -> dict:
+            return {
+                "archived": False,
+                "archive_path": "",
+                "archived_count": 0,
+            }
+
+        monkeypatch.setattr(
+            "core.use_cases.clear_recycle.archive_log_service", fake_archive
+        )
+        monkeypatch.setattr(
+            "core.use_cases.clear_recycle.remove_empty_deleted_parent",
+            lambda _deleted_dir, _p: None,
+        )
+
+    @pytest.fixture()
+    def ctx(self, workspace: Path) -> FakeRootContext:
+        root = workspace / "photos"
+        root.mkdir()
+        deleted_dir = workspace / "data" / "roots" / "test_root" / "deleted"
+        logs_dir = workspace / "data" / "roots" / "test_root" / "logs"
+        thumbnails_dir = workspace / "data" / "roots" / "test_root" / "thumbnails"
+        return FakeRootContext(root, deleted_dir, logs_dir, thumbnails_dir)
+
+    @pytest.fixture()
+    def use_case(self, ctx: FakeRootContext) -> ClearRecycleUseCase:
+        def fake_dispose(p: Path) -> None:
+            self.disposed.append(p)
+            if p.exists():
+                p.unlink()
+
+        return ClearRecycleUseCase(
+            root_context=ctx,
+            thumbnails_dir=ctx.thumbnails_dir,
+            dispose_fn=fake_dispose,
+        )
+
+    # ---------------------------------------------------------------
+    # Helper: seed a deleted file
+    # ---------------------------------------------------------------
+
+    def _seed_deleted(self, ctx: FakeRootContext, rel: str, content: str = "data") -> Path:
+        deleted_path = ctx.deleted_dir / "20260426_clear" / Path(rel).name
+        touch(deleted_path, content)
+        log_path = ctx.logs_dir / "delete_log.csv"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if log_path.stat().st_size == 0:
+                w.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
+            w.writerow(["2026-04-26T12:00:00", str(ctx.root), rel, str(deleted_path), "deleted"])
+        return deleted_path
+
+    # ---------------------------------------------------------------
+    # Validation
+    # ---------------------------------------------------------------
+
+    def test_clear_requires_confirmation(self, ctx, use_case):
+        req = ClearRecycleRequest(confirm=False)
+
+        with pytest.raises(HTTPException) as exc:
+            use_case.execute(req)
+        assert exc.value.status_code == 400
+        assert "Confirmation required" in exc.value.detail
+
+    # ---------------------------------------------------------------
+    # Happy path
+    # ---------------------------------------------------------------
+
+    def test_clear_single_item(self, ctx, use_case):
+        deleted_path = self._seed_deleted(ctx, "single.jpg")
+        assert deleted_path.exists()
+
+        req = ClearRecycleRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["status"] == "cleared"
+        assert result["removed_count"] == 1
+        assert not deleted_path.exists()
+        assert deleted_path in self.disposed
+
+    def test_clear_multiple_items(self, ctx, use_case):
+        p1 = self._seed_deleted(ctx, "a.jpg")
+        p2 = self._seed_deleted(ctx, "b.jpg")
+        p3 = self._seed_deleted(ctx, "sub/c.jpg")
+
+        req = ClearRecycleRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["removed_count"] == 3
+        assert all(p in self.disposed for p in (p1, p2, p3))
+        assert all(not p.exists() for p in (p1, p2, p3))
+
+    def test_clear_skips_gitkeep(self, ctx, use_case):
+        self._seed_deleted(ctx, "photo.jpg")
+        gitkeep = ctx.deleted_dir / "20260426_clear" / ".gitkeep"
+        touch(gitkeep, "keep")
+
+        req = ClearRecycleRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["removed_count"] == 1
+        assert gitkeep.exists()
+
+    def test_clear_writes_purge_log_entries(self, ctx, use_case):
+        self._seed_deleted(ctx, "logme.jpg")
+
+        req = ClearRecycleRequest(confirm=True)
+        use_case.execute(req)
+
+        rows = read_csv(ctx.logs_dir / "delete_log.csv")
+        assert len(rows) == 2
+        purged = [r for r in rows if r.get("action") == "purged"]
+        assert len(purged) == 1
+        assert purged[0]["relative_path"] == "logme.jpg"
+
+    def test_clear_empty_recycle_bin(self, ctx, use_case):
+        req = ClearRecycleRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["status"] == "cleared"
+        assert result["removed_count"] == 0
+        assert result["log_archive"]["archived"] is False
+
+    def test_clear_handles_orphan_files(self, ctx, use_case):
+        orphan = ctx.deleted_dir / "20260426_orphan" / "orphan.jpg"
+        touch(orphan, "orphan-data")
+        self._seed_deleted(ctx, "legit.jpg")
+
+        req = ClearRecycleRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["removed_count"] == 2
+        assert not orphan.exists()
