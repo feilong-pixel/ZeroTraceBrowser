@@ -13,28 +13,36 @@ from fastapi import HTTPException
 
 from core.app.security import resolve_path
 from core.domain.root_context import RootContext, normalize_root_path, root_id_for
-from core.services.file_service import (
-    build_deleted_path as build_deleted_path_for_service,
-    clear_image_list_cache as clear_image_list_cache_service,
+from core.services.file_operations import (
     copy_file_preserve_times as copy_file_preserve_times_service,
-    deleted_thumbnail_path_for as deleted_thumbnail_path_for_service,
+    move_file_preserve_times as move_file_preserve_times_service,
+    resolve_under_root as resolve_under_root_service,
+)
+from core.services.image_scan_service import (
+    clear_image_list_cache as clear_image_list_cache_service,
     get_images_for_timeline_group as get_images_for_timeline_group_service,
     get_timeline_index as get_timeline_index_service,
-    image_index_cache_path as image_index_cache_path_service,
-    image_index_summary_path as image_index_summary_path_service,
-    image_file_response,
-    image_scan_cache_key,
     iter_image_files as iter_image_files_service,
     list_images_cached_page as list_images_cached_page_service,
     list_images as list_images_service,
     list_images_page as list_images_page_service,
+)
+from core.services.image_index_service import (
+    image_index_cache_path as image_index_cache_path_service,
+    image_index_summary_path as image_index_summary_path_service,
+    image_scan_cache_key,
     load_full_image_index_cache as load_full_image_index_cache_service,
     load_image_index_summary_metadata as load_image_index_summary_metadata_service,
-    move_file_preserve_times as move_file_preserve_times_service,
-    remove_empty_deleted_parent as remove_empty_deleted_parent_service,
-    resolve_under_root as resolve_under_root_service,
     save_image_index_summary_metadata as save_image_index_summary_metadata_service,
     timeline_index_cache_path as timeline_index_cache_path_service,
+)
+from core.services.recycle_paths import (
+    build_deleted_path as build_deleted_path_for_service,
+    remove_empty_deleted_parent as remove_empty_deleted_parent_service,
+)
+from core.services.thumbnail_service import (
+    deleted_thumbnail_path_for as deleted_thumbnail_path_for_service,
+    image_file_response,
     thumbnail_path_for as thumbnail_path_for_service,
 )
 from core.services.recycle_service import (

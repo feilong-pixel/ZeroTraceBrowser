@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from core.schemas import ClearDeletedRequest, ClearRecycleLogsRequest, PurgeDeletedRequest, RestoreDeletedRequest
-from core.services.file_service import clear_image_list_cache, move_file_preserve_times
+from core.services.file_operations import move_file_preserve_times
+from core.services.image_scan_service import clear_image_list_cache
 
 
 def create_recycle_router(ctx: Any) -> APIRouter:

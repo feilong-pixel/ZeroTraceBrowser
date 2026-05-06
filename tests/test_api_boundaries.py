@@ -9,7 +9,7 @@ import pytest
 
 import app as ztb_app
 import core.context as ztb_context
-from core.services.file_service import (
+from core.services.image_index_service import (
     image_index_cache_path,
     image_index_summary_path,
     image_scan_cache_key,

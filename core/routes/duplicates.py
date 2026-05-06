@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from core.services.file_service import resolve_under_root
+from core.services.file_operations import resolve_under_root
 
 
 def create_duplicates_router(ctx: Any) -> APIRouter:

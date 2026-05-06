@@ -11,11 +11,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from core.schemas import CopyRequest, FileActionRequest
-from core.services.file_service import (
+from core.services.file_operations import copy_file_preserve_times, move_file_preserve_times, resolve_under_root
+from core.services.image_scan_service import (
     clear_image_list_cache,
-    copy_file_preserve_times,
-    move_file_preserve_times,
-    resolve_under_root,
 )
 
 

@@ -11,9 +11,9 @@ from PIL import Image
 
 import app as ztb_app
 import core.context as ztb_context
-import core.services.file_service as file_service
+import core.services.image_scan_service as image_scan_service
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
-from core.services.file_service import (
+from core.services.image_index_service import (
     build_timeline_index_entries,
     image_index_summary_path,
     image_scan_cache_key,
@@ -145,7 +145,7 @@ def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> N
 
 def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
+    monkeypatch.setattr(image_scan_service, "IMAGE_SCAN_CACHE", {})
     index_dir = ztb_context.root_image_index_dir(image_root)
 
     for index in range(3):
@@ -174,7 +174,7 @@ def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_cl
         def start(self) -> None:
             started_threads.append(self)
 
-    monkeypatch.setattr(file_service.threading, "Thread", RecordingThread)
+    monkeypatch.setattr(image_scan_service.threading, "Thread", RecordingThread)
 
     response = client.get(
         "/api/images",
@@ -223,7 +223,7 @@ def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_cl
 
 def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    monkeypatch.setattr(file_service, "IMAGE_SCAN_CACHE", {})
+    monkeypatch.setattr(image_scan_service, "IMAGE_SCAN_CACHE", {})
     index_dir = ztb_context.root_image_index_dir(image_root)
 
     create_test_image(image_root / "photo_1.jpg")
@@ -254,7 +254,7 @@ def test_images_async_scan_drops_stale_preview_items_after_refresh(api_client, m
         def start(self) -> None:
             started_threads.append(self)
 
-    monkeypatch.setattr(file_service.threading, "Thread", RecordingThread)
+    monkeypatch.setattr(image_scan_service.threading, "Thread", RecordingThread)
 
     response = client.get(
         "/api/images",
@@ -338,7 +338,7 @@ def test_async_scan_writes_index_under_root_indexes(api_client, monkeypatch) -> 
         def start(self) -> None:
             started_threads.append(self)
 
-    monkeypatch.setattr(file_service.threading, "Thread", RecordingThread)
+    monkeypatch.setattr(image_scan_service.threading, "Thread", RecordingThread)
 
     response = client.get(
         "/api/images",
