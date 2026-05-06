@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.domain.root_config import RootConfig
-
-
-def normalize_root_path(root: str | Path) -> str:
-    return str(Path(root).expanduser().resolve())
-
-
-def root_id_for(root: str | Path) -> str:
-    normalized = normalize_root_path(root)
-    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+from core.domain.root_config import RootConfig, normalize_root_path, root_id_for
 
 
 @dataclass(frozen=True)

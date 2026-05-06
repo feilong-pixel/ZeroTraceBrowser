@@ -7,8 +7,9 @@ import shutil
 import uuid
 from pathlib import Path
 
-from core.domain.root_config import RootConfig
-from core.domain.root_context import RootContext, normalize_root_path, root_id_for
+from core.domain.root_config import RootConfig, normalize_root_path, root_id_for
+from core.domain.root_context import RootContext
+from core.repositories.settings_repository import SettingsRepository
 
 
 def make_workspace() -> Path:
@@ -75,5 +76,38 @@ def test_root_context_keeps_config_constructor_compatible() -> None:
 
         assert ctx.root == Path(normalize_root_path(image_root))
         assert ctx.data_dir == roots_dir / root_id_for(image_root)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_root_config_create_uses_deterministic_root_id() -> None:
+    workspace = make_workspace()
+    image_root = workspace / "images"
+    image_root.mkdir()
+
+    try:
+        config = RootConfig.create(str(image_root))
+
+        assert config.root_id == root_id_for(image_root)
+        assert config.root_path == str(image_root)
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_settings_repository_defaults_to_current_roots_directory(monkeypatch) -> None:
+    workspace = make_workspace()
+    image_root = workspace / "images"
+    image_root.mkdir()
+
+    try:
+        monkeypatch.chdir(workspace)
+        repo = SettingsRepository()
+        config = RootConfig.create(str(image_root))
+
+        repo.save_root_config(config)
+
+        assert (workspace / "data" / "roots" / config.root_id / "root.json").exists()
+        assert not (workspace / "data" / "root").exists()
+        assert repo.load_root_config(config.root_id) == config
     finally:
         shutil.rmtree(workspace, ignore_errors=True)

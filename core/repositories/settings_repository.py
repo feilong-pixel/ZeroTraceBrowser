@@ -1,9 +1,9 @@
-import json
 from pathlib import Path
+
 from core.domain.root_config import RootConfig
 
 class SettingsRepository:
-    def __init__(self, data_root="data/root"):
+    def __init__(self, data_root="data/roots"):
         self.data_root = Path(data_root)
         self.active_file = self.data_root / "active_root.txt"
 
@@ -14,14 +14,14 @@ class SettingsRepository:
         root_dir = self.data_root / config.root_id
         root_dir.mkdir(parents=True, exist_ok=True)
         path = root_dir / "root.json"
-        path.write_text(config.json(indent=2), encoding="utf-8")
+        path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
 
     # -------------------------
     # 读取 root.json
     # -------------------------
     def load_root_config(self, root_id: str) -> RootConfig:
         path = self.data_root / root_id / "root.json"
-        return RootConfig.parse_raw(path.read_text(encoding="utf-8"))
+        return RootConfig.model_validate_json(path.read_text(encoding="utf-8"))
 
     # -------------------------
     # 设置 active root
