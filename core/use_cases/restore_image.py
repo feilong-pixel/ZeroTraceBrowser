@@ -12,7 +12,10 @@ from pydantic import BaseModel, Field
 from core.services.file_operations import move_file_preserve_times, resolve_under_root
 from core.services.image_scan_service import clear_image_list_cache
 from core.services.recycle_paths import remove_empty_deleted_parent
-from core.services.thumbnail_service import thumbnail_path_for
+from core.services.thumbnail_service import (
+    deleted_thumbnail_path_for as deleted_thumb_fn,
+    thumbnail_path_for,
+)
 
 
 class RestoreImageRequest(BaseModel):
@@ -105,9 +108,8 @@ class RestoreImageUseCase:
         if stale_thumb.exists():
             stale_thumb.unlink()
 
-        # 6b. Remove the deleted-file thumbnail, matching the original
+                # 6b. Remove the deleted-file thumbnail, matching the original
         #     route logic (ctx.deleted_thumbnail_path_for).
-        from core.services.thumbnail_service import deleted_thumbnail_path_for as deleted_thumb_fn
         stale_deleted_thumb = deleted_thumb_fn(self.thumbnails_dir, deleted_path)
         if stale_deleted_thumb.exists():
             stale_deleted_thumb.unlink()

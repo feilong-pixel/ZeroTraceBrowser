@@ -106,15 +106,15 @@ def create_images_router(ctx: Any) -> APIRouter:
     def delete_image(payload: FileActionRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
 
-        class _RootProxy:
+        class _DeleteRootProxy:
             root = active_root
             deleted_dir = ctx.root_deleted_dir(active_root)
             logs_dir = ctx.root_log_dir(active_root)
             thumbnails_dir = ctx.root_thumbnail_dir(active_root)
 
         use_case = DeleteImageUseCase(
-            root_context=_RootProxy(),
-            thumbnails_dir=_RootProxy.thumbnails_dir,
+            root_context=_DeleteRootProxy(),
+            thumbnails_dir=_DeleteRootProxy.thumbnails_dir,
             thumbnail_size=ctx.THUMBNAIL_SIZE,
         )
         req = DeleteImageRequest(relative_path=payload.relative_path)
@@ -125,14 +125,14 @@ def create_images_router(ctx: Any) -> APIRouter:
         settings = ctx.load_settings()
         active_root = Path(settings["active_root"])
 
-        class _RootProxy:
+        class _CopyRootProxy:
             root = active_root
             deleted_dir = ctx.root_deleted_dir(active_root)
             logs_dir = ctx.root_log_dir(active_root)
             thumbnails_dir = ctx.root_thumbnail_dir(active_root)
 
         use_case = CopyImageUseCase(
-            root_context=_RootProxy(),
+            root_context=_CopyRootProxy(),
             default_copy_target=settings.get("default_copy_target", ""),
         )
         req = CopyImageRequest(

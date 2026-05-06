@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from core.schemas import ClearDeletedRequest, ClearRecycleLogsRequest, PurgeDeletedRequest, RestoreDeletedRequest
-from core.services.file_operations import move_file_preserve_times
-from core.services.image_scan_service import clear_image_list_cache
 from core.use_cases.restore_image import RestoreImageRequest, RestoreImageUseCase
+from core.use_cases.purge_image import PurgeImageRequest, PurgeImageUseCase
+from core.use_cases.clear_recycle import ClearRecycleRequest, ClearRecycleUseCase
 
 
 def create_recycle_router(ctx: Any) -> APIRouter:
@@ -56,15 +54,15 @@ def create_recycle_router(ctx: Any) -> APIRouter:
     def restore_deleted_item(payload: RestoreDeletedRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
 
-        class _RootProxy:
+        class _RestoreRootProxy:
             root = active_root
             deleted_dir = ctx.root_deleted_dir(active_root)
             logs_dir = ctx.root_log_dir(active_root)
             thumbnails_dir = ctx.root_thumbnail_dir(active_root)
 
         use_case = RestoreImageUseCase(
-            root_context=_RootProxy(),
-            thumbnails_dir=_RootProxy.thumbnails_dir,
+            root_context=_RestoreRootProxy(),
+            thumbnails_dir=_RestoreRootProxy.thumbnails_dir,
             resolve_fn=ctx.resolve_deleted_file,
         )
         req = RestoreImageRequest(deleted_to=payload.deleted_to)
@@ -72,66 +70,41 @@ def create_recycle_router(ctx: Any) -> APIRouter:
 
     @router.post("/api/recycle-bin/purge")
     def purge_deleted_item(payload: PurgeDeletedRequest) -> dict[str, Any]:
-        deleted_path = ctx.resolve_deleted_file(payload.deleted_to)
-        if not deleted_path.exists() or not deleted_path.is_file():
-            raise HTTPException(status_code=404, detail="Deleted file not found")
+        active_root = ctx.get_active_image_root()
 
-        log_row = next((row for row in reversed(ctx.read_delete_log_rows()) if row["deleted_to"] == str(deleted_path)), None)
-        recycle_path, thumb_path = ctx.prepare_system_recycle_path(deleted_path, log_row)
-        ctx.dispose_recycle_file(recycle_path)
-        if thumb_path.exists():
-            thumb_path.unlink()
-        ctx.remove_empty_deleted_parent(recycle_path)
-        ctx.append_log(
-            "delete_log.csv",
-            datetime.now().isoformat(),
-            log_row["root"] if log_row else "",
-            log_row["relative_path"] if log_row else "",
-            str(deleted_path),
-            "purged",
+        class _PurgeRootProxy:
+            root = active_root
+            deleted_dir = ctx.root_deleted_dir(active_root)
+            logs_dir = ctx.root_log_dir(active_root)
+            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
+
+        use_case = PurgeImageUseCase(
+            root_context=_PurgeRootProxy(),
+            thumbnails_dir=_PurgeRootProxy.thumbnails_dir,
+            resolve_fn=ctx.resolve_deleted_file,
+            dispose_fn=ctx.dispose_recycle_file,
         )
-        return {
-            "status": "purged",
-            "deleted_to": str(deleted_path),
-        }
+        req = PurgeImageRequest(deleted_to=payload.deleted_to)
+        return use_case.execute(req)
 
     @router.post("/api/recycle-bin/clear")
     def clear_recycle_bin(payload: ClearDeletedRequest) -> dict[str, Any]:
-        if not payload.confirm:
-            raise HTTPException(status_code=400, detail="Confirmation required")
+        active_root = ctx.get_active_image_root()
 
-        removed = 0
-        for item in list(ctx.list_recycle_items()):
-            file_path = ctx.resolve_deleted_file(item["deleted_to"])
-            if not file_path.exists() or not file_path.is_file() or file_path.name == ".gitkeep":
-                continue
-            log_row = next((row for row in reversed(ctx.read_delete_log_rows()) if row["deleted_to"] == str(file_path)), None)
-            recycle_path, thumb_path = ctx.prepare_system_recycle_path(file_path, log_row)
-            ctx.dispose_recycle_file(recycle_path)
-            if thumb_path.exists():
-                thumb_path.unlink()
-            ctx.remove_empty_deleted_parent(recycle_path)
-            ctx.append_log(
-                "delete_log.csv",
-                datetime.now().isoformat(),
-                log_row["root"] if log_row else "",
-                log_row["relative_path"] if log_row else "",
-                str(file_path),
-                "purged",
-            )
-            removed += 1
+        class _ClearRootProxy:
+            root = active_root
+            deleted_dir = ctx.root_deleted_dir(active_root)
+            logs_dir = ctx.root_log_dir(active_root)
+            thumbnails_dir = ctx.root_thumbnail_dir(active_root)
 
-        archive_result = ctx.archive_delete_log() if removed > 0 else {
-            "archived": False,
-            "archive_path": "",
-            "archived_count": 0,
-        }
-
-        return {
-            "status": "cleared",
-            "removed_count": removed,
-            "log_archive": archive_result,
-        }
+        use_case = ClearRecycleUseCase(
+            root_context=_ClearRootProxy(),
+            thumbnails_dir=_ClearRootProxy.thumbnails_dir,
+            resolve_fn=ctx.resolve_deleted_file,
+            dispose_fn=ctx.dispose_recycle_file,
+        )
+        req = ClearRecycleRequest(confirm=payload.confirm)
+        return use_case.execute(req)
 
     @router.post("/api/recycle-bin/logs/archive")
     def archive_recycle_logs(payload: ClearDeletedRequest) -> dict[str, Any]:
