@@ -12,6 +12,8 @@ from core.domain.root_proxy import build_root_proxy
 from core.use_cases.restore_image import RestoreImageRequest, RestoreImageUseCase
 from core.use_cases.purge_image import PurgeImageRequest, PurgeImageUseCase
 from core.use_cases.clear_recycle import ClearRecycleRequest, ClearRecycleUseCase
+from core.use_cases.clear_delete_logs import ClearDeleteLogsRequest, ClearDeleteLogsUseCase
+from core.use_cases.archive_delete_logs import ArchiveDeleteLogsRequest, ArchiveDeleteLogsUseCase
 
 
 def create_recycle_router(ctx: Any) -> APIRouter:
@@ -91,34 +93,20 @@ def create_recycle_router(ctx: Any) -> APIRouter:
 
     @router.post("/api/recycle-bin/logs/archive")
     def archive_recycle_logs(payload: ClearDeletedRequest) -> dict[str, Any]:
-        if not payload.confirm:
-            raise HTTPException(status_code=400, detail="Confirmation required")
-
-        result = ctx.archive_delete_log()
-        return {
-            "status": "archived_logs",
-            **result,
-        }
+        logs_dir = ctx.root_log_dir(ctx.get_active_image_root())
+        use_case = ArchiveDeleteLogsUseCase(logs_dir=logs_dir)
+        req = ArchiveDeleteLogsRequest(confirm=payload.confirm)
+        return use_case.execute(req)
 
     @router.post("/api/recycle-bin/logs/clear")
     def clear_recycle_logs(payload: ClearRecycleLogsRequest) -> dict[str, Any]:
-        if not payload.confirm:
-            raise HTTPException(status_code=400, detail="Confirmation required")
-
-        allowed_actions = {"restored", "purged"}
-        actions = set(payload.actions)
-        if not actions or not actions.issubset(allowed_actions):
-            raise HTTPException(status_code=400, detail="Unsupported log cleanup action")
-
-        rows = ctx.read_delete_log_rows()
-        remaining_rows = [row for row in rows if row.get("action") not in actions]
-        removed_count = len(rows) - len(remaining_rows)
-        ctx.write_delete_log_rows(remaining_rows)
-        return {
-            "status": "cleared_logs",
-            "removed_count": removed_count,
-            "actions": sorted(actions),
-        }
+        logs_dir = ctx.root_log_dir(ctx.get_active_image_root())
+        use_case = ClearDeleteLogsUseCase(logs_dir=logs_dir)
+        req = ClearDeleteLogsRequest(
+            confirm=payload.confirm,
+            actions=payload.actions,
+        )
+        return use_case.execute(req)
 
     @router.post("/api/recycle-bin/logs/purged/clear")
     def clear_purged_recycle_logs(payload: ClearDeletedRequest) -> dict[str, Any]:
