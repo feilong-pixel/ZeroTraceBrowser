@@ -9,7 +9,6 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from core.services.image_scan_service import clear_image_list_cache
 from core.services.recycle_paths import remove_empty_deleted_parent
 from core.services.thumbnail_service import (
     deleted_thumbnail_path_for,
