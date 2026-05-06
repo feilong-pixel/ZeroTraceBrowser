@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
+
+logger = logging.getLogger(__name__)
 
 
 def thumbnail_path_for(thumbnail_dir: Path, root: Path, relative_path: str) -> Path:
@@ -32,7 +35,8 @@ def image_file_response(
         try:
             with image_module.open(thumbnail_path) as existing_thumb:
                 should_refresh = max(existing_thumb.size) < max(thumbnail_size)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Failed to inspect cached thumbnail %s: %s", thumbnail_path, exc)
             should_refresh = True
 
     if should_refresh:

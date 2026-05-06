@@ -4,8 +4,13 @@ import argparse
 import os
 import sys
 from datetime import datetime
-from locales import get_texts
-from services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
+
+try:
+    from .locales import get_texts
+    from .services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
+except ImportError:
+    from locales import get_texts
+    from services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
 
 
 def configure_console_encoding() -> None:

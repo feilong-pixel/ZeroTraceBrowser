@@ -7,18 +7,31 @@ import json
 import sys
 from datetime import datetime
 from typing import Callable
-from core.date_classifier import get_target_date, build_date_path
-from core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
-from core.hash_db import (
-    add_hash_record,
-    create_empty_hash_db,
-    get_db_path,
-    get_valid_original_paths,
-    load_hash_db,
-    save_hash_db,
-)
 
-from core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
+try:
+    from ..core.date_classifier import get_target_date, build_date_path
+    from ..core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
+    from ..core.hash_db import (
+        add_hash_record,
+        create_empty_hash_db,
+        get_db_path,
+        get_valid_original_paths,
+        load_hash_db,
+        save_hash_db,
+    )
+    from ..core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
+except ImportError:
+    from core.date_classifier import get_target_date, build_date_path
+    from core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
+    from core.hash_db import (
+        add_hash_record,
+        create_empty_hash_db,
+        get_db_path,
+        get_valid_original_paths,
+        load_hash_db,
+        save_hash_db,
+    )
+    from core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
 
 SUPPORTED_EXT = (".jpg", ".jpeg", ".png", ".mp4", ".mov")
 ProgressCallback = Callable[[int], None]

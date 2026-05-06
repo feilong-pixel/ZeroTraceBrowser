@@ -1,5 +1,9 @@
+import logging
 from pathlib import Path
+
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
 class ThumbnailGenerator:
@@ -22,6 +26,6 @@ class ThumbnailGenerator:
             with Image.open(src) as img:
                 img.thumbnail(self.size)
                 img.convert("RGB").save(dst, "JPEG", quality=self.quality)
-        except Exception:
+        except Exception as exc:
             # Do not raise on thumbnail failure to avoid blocking index builds
-            pass
+            logger.debug("Failed to generate thumbnail for %s -> %s: %s", src, dst, exc)

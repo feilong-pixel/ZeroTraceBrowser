@@ -1,7 +1,7 @@
 from pathlib import Path
-from PIL import Image, ExifTags
-import os
-from typing import Optional, Dict
+from PIL import Image
+from typing import Dict
+from MediaArchiveOrganizer.core.date_classifier import get_target_date
 
 
 class MetadataReader:
@@ -24,26 +24,10 @@ class MetadataReader:
         except Exception:
             pass
 
-        # 2. EXIF datetime
+        # 2. Timestamp
         try:
-            with Image.open(path) as img:
-                exif = img._getexif()
-                if exif:
-                    for tag, value in exif.items():
-                        decoded = ExifTags.TAGS.get(tag, tag)
-                        if decoded == "DateTimeOriginal":
-                            result["timestamp"] = value.replace(":", "-", 2)
-                            break
+            result["timestamp"] = get_target_date(str(path)).isoformat()
         except Exception:
             pass
 
-        # 3. File modification time (fallback)
-        if not result["timestamp"]:
-            ts = os.path.getmtime(path)
-            result["timestamp"] = self._format_timestamp(ts)
-
         return result
-
-    def _format_timestamp(self, ts: float) -> str:
-        from datetime import datetime
-        return datetime.fromtimestamp(ts).isoformat()

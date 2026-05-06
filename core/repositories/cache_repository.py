@@ -1,5 +1,7 @@
+import logging
 from pathlib import Path
-import shutil
+
+logger = logging.getLogger(__name__)
 
 
 class CacheRepository:
@@ -35,8 +37,8 @@ class CacheRepository:
             if f.name.endswith(".summary.json") or f.name.endswith(".timeline.json"):
                 try:
                     f.unlink()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to delete index cache file %s: %s", f, exc)
 
     # ---------------------------------------------------------
     # Clear timeline cache (optional)
@@ -51,8 +53,8 @@ class CacheRepository:
             if f.name.endswith(".timeline.json"):
                 try:
                     f.unlink()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to delete timeline cache file %s: %s", f, exc)
 
     # ---------------------------------------------------------
     # Clear all caches (optional)

@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from core.hash_db import load_hash_db
-from core.date_classifier import build_date_path, get_target_date
-from core.exif_reader import get_exif_datetime
-from locales import get_texts
-from main import validate_paths
-from services.organizer import (
+from MediaArchiveOrganizer.core.hash_db import load_hash_db
+from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
+from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
+from MediaArchiveOrganizer.locales import get_texts
+from MediaArchiveOrganizer.main import validate_paths
+from MediaArchiveOrganizer.services.organizer import (
     apply_windows_file_times,
     organize_images,
     read_windows_file_times,
