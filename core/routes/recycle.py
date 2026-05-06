@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from core.schemas import ClearDeletedRequest, ClearRecycleLogsRequest, PurgeDeletedRequest, RestoreDeletedRequest
+from core.services.file_service import clear_image_list_cache, move_file_preserve_times
 
 
 def prepare_system_recycle_path(ctx: Any, deleted_path: Path, log_row: dict[str, str] | None) -> tuple[Path, Path]:
@@ -22,7 +23,7 @@ def prepare_system_recycle_path(ctx: Any, deleted_path: Path, log_row: dict[str,
     if restored_name_path.exists():
         return deleted_path, thumb_path
 
-    ctx.move_file_preserve_times(deleted_path, restored_name_path)
+    move_file_preserve_times(deleted_path, restored_name_path)
     return restored_name_path, thumb_path
 
 
@@ -97,8 +98,8 @@ def create_recycle_router(ctx: Any) -> APIRouter:
             raise HTTPException(status_code=409, detail="Original path already exists")
 
         restore_path.parent.mkdir(parents=True, exist_ok=True)
-        ctx.move_file_preserve_times(deleted_path, restore_path)
-        ctx.clear_image_list_cache(restore_root)
+        move_file_preserve_times(deleted_path, restore_path)
+        clear_image_list_cache(restore_root)
         thumb_path = ctx.deleted_thumbnail_path_for(deleted_path)
         if thumb_path.exists():
             thumb_path.unlink()

@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from core.services.file_service import resolve_under_root
+
 
 def create_duplicates_router(ctx: Any) -> APIRouter:
     router = APIRouter()
@@ -40,7 +42,7 @@ def create_duplicates_router(ctx: Any) -> APIRouter:
         if root is None:
             raise HTTPException(status_code=404, detail="Duplicate result root not found")
 
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
 

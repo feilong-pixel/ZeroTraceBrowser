@@ -11,6 +11,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from core.schemas import CopyRequest, FileActionRequest
+from core.services.file_service import (
+    clear_image_list_cache,
+    copy_file_preserve_times,
+    move_file_preserve_times,
+    resolve_under_root,
+)
 
 
 def create_images_router(ctx: Any) -> APIRouter:
@@ -53,7 +59,7 @@ def create_images_router(ctx: Any) -> APIRouter:
     @router.get("/api/image")
     def get_image(relative_path: str) -> FileResponse:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
         return FileResponse(image_path)
@@ -61,7 +67,7 @@ def create_images_router(ctx: Any) -> APIRouter:
     @router.post("/api/open-image-editor")
     def open_image_editor(payload: FileActionRequest) -> dict[str, str]:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, payload.relative_path)
+        image_path = resolve_under_root(root, payload.relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
         ctx.open_image_in_system_editor(image_path)
@@ -70,7 +76,7 @@ def create_images_router(ctx: Any) -> APIRouter:
     @router.get("/api/exif")
     def get_exif(relative_path: str) -> dict[str, Any]:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
 
@@ -88,7 +94,7 @@ def create_images_router(ctx: Any) -> APIRouter:
     def get_thumbnail(relative_path: str) -> FileResponse:
         started_at = time.perf_counter()
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
 
@@ -102,9 +108,9 @@ def create_images_router(ctx: Any) -> APIRouter:
     @router.post("/api/delete")
     def delete_image(payload: FileActionRequest) -> dict[str, Any]:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, payload.relative_path)
+        image_path = resolve_under_root(root, payload.relative_path)
         if not image_path.exists() or not image_path.is_file():
-            ctx.clear_image_list_cache(root)
+            clear_image_list_cache(root)
             stale_thumb = ctx.thumbnail_path_for(root, payload.relative_path)
             if stale_thumb.exists():
                 stale_thumb.unlink()
@@ -112,8 +118,8 @@ def create_images_router(ctx: Any) -> APIRouter:
 
         deleted_path = ctx.build_deleted_path(root, payload.relative_path)
         deleted_path.parent.mkdir(parents=True, exist_ok=True)
-        ctx.move_file_preserve_times(image_path, deleted_path)
-        ctx.clear_image_list_cache(root)
+        move_file_preserve_times(image_path, deleted_path)
+        clear_image_list_cache(root)
         ctx.append_log(
             "delete_log.csv",
             datetime.now().isoformat(),
@@ -133,7 +139,7 @@ def create_images_router(ctx: Any) -> APIRouter:
     def copy_image(payload: CopyRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
         root = Path(settings["active_root"])
-        image_path = ctx.resolve_under_root(root, payload.relative_path)
+        image_path = resolve_under_root(root, payload.relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
 
@@ -156,8 +162,8 @@ def create_images_router(ctx: Any) -> APIRouter:
                     break
                 counter += 1
 
-        ctx.copy_file_preserve_times(image_path, target_path)
-        ctx.clear_image_list_cache(root)
+        copy_file_preserve_times(image_path, target_path)
+        clear_image_list_cache(root)
         ctx.append_log("copy_log.csv", datetime.now().isoformat(), str(root), payload.relative_path, str(target_path))
         return {"status": "copied", "copied_to": str(target_path)}
 
