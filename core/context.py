@@ -5,25 +5,15 @@ import shutil
 import subprocess
 import sys
 import time
-from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import HTTPException
 from PIL.ExifTags import GPSTAGS
 
 from core.security import (
-    cors_origins_from_env,
     resolve_path,
-    trusted_hosts_from_env,
 )
 from core.domain.root_context import (
     RootContext,
@@ -69,11 +59,6 @@ from core.services.settings_service import (
     normalize_task_mode,
 )
 from core.services.task_service import TaskRegistry
-from core.routes.duplicates import create_duplicates_router
-from core.routes.images import create_images_router
-from core.routes.recycle import create_recycle_router
-from core.routes.settings import create_settings_router
-from core.routes.tasks import create_tasks_router
 from core.schemas import OrganizerTaskRequest
 
 try:
@@ -399,42 +384,6 @@ def ensure_log_file(log_dir: Path, log_name: str) -> None:
 def current_root_workspace() -> Path:
     return ensure_root_workspace(get_active_image_root())
 
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    ensure_directories()
-    if Image is None or ImageOps is None:
-        raise RuntimeError("Pillow is required. Install dependencies with: pip install -r requirements.txt")
-    yield
-
-
-app = FastAPI(title="ZeroTraceBrowser", version="0.1.0", lifespan=lifespan)
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=trusted_hosts_from_env(),
-)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins_from_env(),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-class StaticNoCacheMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Any) -> Response:
-        response = await call_next(request)
-        path = request.url.path
-        if path.endswith((".html", ".js", ".css")) or path in {"/", "/index.html"}:
-            response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["Pragma"] = "no-cache"
-        return response
-
-
-app.add_middleware(StaticNoCacheMiddleware)
-
-@app.get("/favicon.ico")
-async def favicon():
-    return FileResponse("favicon.ico")
 
 def ensure_directories() -> None:
     for path in (STATIC_DIR, DATA_DIR, ROOT_DATA_DIR, ARTIFACT_INDEX_DIR):
