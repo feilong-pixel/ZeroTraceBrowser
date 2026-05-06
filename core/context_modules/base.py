@@ -86,4 +86,3 @@ try:
 except ImportError:
     Image = None
     ImageOps = None
-

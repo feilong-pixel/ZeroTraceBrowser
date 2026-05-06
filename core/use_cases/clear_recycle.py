@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -11,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from core.services.recycle_paths import remove_empty_deleted_parent
 from core.services.recycle_service import (
+    append_log,
     archive_delete_log as archive_log_service,
     list_recycle_items as list_recycle_items_service,
     read_delete_log_rows,
@@ -151,18 +151,13 @@ class ClearRecycleUseCase:
         self.dispose_fn(path)
 
     def _write_log(self, log_row: dict | None, file_path: Path) -> None:
-        log_path = self.ctx.logs_dir / "delete_log.csv"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        if not log_path.exists():
-            with log_path.open("w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
-        with log_path.open("a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                datetime.now().isoformat(),
-                log_row["root"] if log_row else "",
-                log_row["relative_path"] if log_row else "",
-                str(file_path),
-                "purged",
-            ])
+        """Append a 'purged' row to the delete log using the shared service."""
+        append_log(
+            self.ctx.logs_dir,
+            "delete_log.csv",
+            datetime.now().isoformat(),
+            log_row["root"] if log_row else "",
+            log_row["relative_path"] if log_row else "",
+            str(file_path),
+            "purged",
+        )

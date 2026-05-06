@@ -835,3 +835,171 @@ class TestClearRecycleUseCase:
 
         assert result["removed_count"] == 2
         assert not orphan.exists()
+
+# ===================================================================
+# ClearDeleteLogsUseCase
+# ===================================================================
+
+
+class TestClearDeleteLogsUseCase:
+    """Tests for ClearDeleteLogsUseCase.
+
+    Uses the real service functions (read/write CSV) but only operates
+    on a temporary ``logs_dir``.
+    """
+
+    @pytest.fixture()
+    def logs_dir(self, workspace: Path) -> Path:
+        d = workspace / "logs"
+        d.mkdir(parents=True)
+        return d
+
+    @pytest.fixture()
+    def use_case(self, logs_dir: Path):
+        from core.use_cases.clear_delete_logs import ClearDeleteLogsUseCase
+        return ClearDeleteLogsUseCase(logs_dir=logs_dir)
+
+    # ---------------------------------------------------------------
+    # Helper: seed log rows
+    # ---------------------------------------------------------------
+
+    @staticmethod
+    def _seed_log(logs_dir: Path, rows: list[dict[str, str]]) -> None:
+        from core.services.recycle_service import write_delete_log_rows
+        write_delete_log_rows(logs_dir, rows)
+
+    # ---------------------------------------------------------------
+    # Validation
+    # ---------------------------------------------------------------
+
+    def test_requires_confirmation(self, use_case):
+        from core.use_cases.clear_delete_logs import ClearDeleteLogsRequest
+        req = ClearDeleteLogsRequest(confirm=False)
+
+        with pytest.raises(HTTPException) as exc:
+            use_case.execute(req)
+        assert exc.value.status_code == 400
+        assert "Confirmation required" in exc.value.detail
+
+    def test_rejects_unknown_actions(self, use_case):
+        from core.use_cases.clear_delete_logs import ClearDeleteLogsRequest
+        req = ClearDeleteLogsRequest(confirm=True, actions=["deleted"])
+
+        with pytest.raises(HTTPException) as exc:
+            use_case.execute(req)
+        assert exc.value.status_code == 400
+        assert "Unsupported log cleanup action" in exc.value.detail
+
+    # ---------------------------------------------------------------
+    # Happy path
+    # ---------------------------------------------------------------
+
+    def test_removes_matching_rows(self, logs_dir, use_case):
+        self._seed_log(logs_dir, [
+            {"timestamp": "2026-01-01T00:00:00", "root": "", "relative_path": "a.jpg", "deleted_to": "/d/a.jpg", "action": "deleted"},
+            {"timestamp": "2026-01-02T00:00:00", "root": "", "relative_path": "b.jpg", "deleted_to": "/d/b.jpg", "action": "restored"},
+            {"timestamp": "2026-01-03T00:00:00", "root": "", "relative_path": "c.jpg", "deleted_to": "/d/c.jpg", "action": "purged"},
+        ])
+        from core.use_cases.clear_delete_logs import ClearDeleteLogsRequest
+
+        req = ClearDeleteLogsRequest(confirm=True, actions=["restored", "purged"])
+        result = use_case.execute(req)
+
+        assert result["status"] == "cleared_logs"
+        assert result["removed_count"] == 2
+
+        remaining = read_csv(logs_dir / "delete_log.csv")
+        assert len(remaining) == 1
+        assert remaining[0]["action"] == "deleted"
+
+    def test_removes_only_requested_action(self, logs_dir, use_case):
+        self._seed_log(logs_dir, [
+            {"timestamp": "2026-01-01T00:00:00", "root": "", "relative_path": "a.jpg", "deleted_to": "/d/a.jpg", "action": "deleted"},
+            {"timestamp": "2026-01-02T00:00:00", "root": "", "relative_path": "b.jpg", "deleted_to": "/d/b.jpg", "action": "restored"},
+            {"timestamp": "2026-01-03T00:00:00", "root": "", "relative_path": "c.jpg", "deleted_to": "/d/c.jpg", "action": "purged"},
+        ])
+        from core.use_cases.clear_delete_logs import ClearDeleteLogsRequest
+
+        req = ClearDeleteLogsRequest(confirm=True, actions=["purged"])
+        result = use_case.execute(req)
+
+        assert result["removed_count"] == 1
+
+        remaining = read_csv(logs_dir / "delete_log.csv")
+        assert len(remaining) == 2
+        assert {r["action"] for r in remaining} == {"deleted", "restored"}
+
+    def test_empty_log(self, logs_dir, use_case):
+        from core.use_cases.clear_delete_logs import ClearDeleteLogsRequest
+        req = ClearDeleteLogsRequest(confirm=True, actions=["purged"])
+        result = use_case.execute(req)
+
+        assert result["removed_count"] == 0
+
+
+# ===================================================================
+# ArchiveDeleteLogsUseCase
+# ===================================================================
+
+
+class TestArchiveDeleteLogsUseCase:
+    """Tests for ArchiveDeleteLogsUseCase."""
+
+    @pytest.fixture()
+    def logs_dir(self, workspace: Path) -> Path:
+        d = workspace / "logs"
+        d.mkdir(parents=True)
+        return d
+
+    @pytest.fixture()
+    def use_case(self, logs_dir: Path):
+        from core.use_cases.archive_delete_logs import ArchiveDeleteLogsUseCase
+        return ArchiveDeleteLogsUseCase(logs_dir=logs_dir)
+
+    # ---------------------------------------------------------------
+    # Validation
+    # ---------------------------------------------------------------
+
+    def test_requires_confirmation(self, use_case):
+        from core.use_cases.archive_delete_logs import ArchiveDeleteLogsRequest
+        req = ArchiveDeleteLogsRequest(confirm=False)
+
+        with pytest.raises(HTTPException) as exc:
+            use_case.execute(req)
+        assert exc.value.status_code == 400
+        assert "Confirmation required" in exc.value.detail
+
+    # ---------------------------------------------------------------
+    # Happy path
+    # ---------------------------------------------------------------
+
+    def test_archives_non_empty_log(self, logs_dir, use_case):
+        from core.services.recycle_service import write_delete_log_rows
+        write_delete_log_rows(logs_dir, [
+            {"timestamp": "2026-01-01T00:00:00", "root": "", "relative_path": "a.jpg", "deleted_to": "/d/a.jpg", "action": "deleted"},
+        ])
+
+        from core.use_cases.archive_delete_logs import ArchiveDeleteLogsRequest
+        req = ArchiveDeleteLogsRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["status"] == "archived_logs"
+        assert result["archived"] is True
+        assert result["archived_count"] == 1
+
+        # The current log should now be empty (only header).
+        remaining = read_csv(logs_dir / "delete_log.csv")
+        assert len(remaining) == 0
+
+        # An archive file should exist.
+        archive_files = list(logs_dir.glob("delete_log_*.csv"))
+        assert len(archive_files) >= 1
+
+    def test_archive_empty_log(self, logs_dir, use_case):
+        from core.use_cases.archive_delete_logs import ArchiveDeleteLogsRequest
+        req = ArchiveDeleteLogsRequest(confirm=True)
+        result = use_case.execute(req)
+
+        assert result["status"] == "archived_logs"
+        assert result["archived"] is False
+        assert result["archived_count"] == 0
