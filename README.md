@@ -270,13 +270,27 @@ Or run pytest directly:
 
 ## Supported Formats
 
-The current version supports common local image formats, including:
+The current version scans common local image formats:
 
 * `.jpg` / `.jpeg`
 * `.png`
 * `.webp`
 * `.bmp`
 * `.gif`
+* `.tiff`
+
+It also recognizes video files during browsing and shows placeholder thumbnails:
+
+* `.mp4`
+* `.webm`
+* `.mov`
+* `.m4v`
+* `.avi`
+* `.mkv`
+
+The Viewer provides simple in-page preview for `.mp4`, `.webm`, and `.mov` when the browser can play the file directly.
+
+Video support does not include transcoding, subtitles, playback speed or audio-track switching, playlists, editing, or codec fallback.
 
 ---
 
