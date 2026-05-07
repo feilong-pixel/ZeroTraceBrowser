@@ -214,6 +214,7 @@ python -m venv venv
 
 ```powershell
 .\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+```
 
 ### 4. Start the Server
 
