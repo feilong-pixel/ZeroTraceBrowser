@@ -100,14 +100,14 @@ However, this project recommends using `.\venv\Scripts\python.exe` directly. Thi
 Use the explicit Python path:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Optional: upgrade pip before installation:
 
 ```powershell
 .\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Verify the core dependencies:
@@ -205,23 +205,39 @@ You can also run pytest directly:
 ZeroTraceBrowser/
 ├── app.py                      # FastAPI application entry point
 ├── requirements.txt            # Python dependencies
-├── settings.json               # Local settings
+├── requirements-dev.txt        # Test dependencies
 ├── start.ps1                   # Startup script
 ├── test.ps1                    # Test script
+├── pyproject.toml              # Project metadata
 
-├── static/                     # Frontend pages, CSS, JavaScript
-├── ztb/                        # Backend services and routes
+├── core/                       # Backend core
+│   ├── app/                    # Factory, lifespan, middleware
+│   ├── config/                 # Paths, extensions, supported formats
+│   ├── context_modules/        # Context modules (split by domain)
+│   ├── domain/                 # Domain models: RootContext, ImageEntry, etc.
+│   ├── infrastructure/         # File transfer, hashing, image processing
+│   ├── repositories/           # Data access layer
+│   ├── routes/                 # API route handlers
+│   ├── services/               # Business services
+│   └── use_cases/              # Use-case layer (copy, delete, restore, etc.)
 ├── MediaArchiveOrganizer/      # Image analysis and organization modules
 ├── tests/                      # Automated tests
-├── data/                       # Runtime data
-├── logs/                       # Logs
-└── thumbnails/                 # Legacy or compatibility thumbnail directory
+├── data/                       # Runtime data (isolated by image root)
+│   └── roots/<root_id>/
+│       ├── root.json           # Root configuration
+│       ├── deleted/            # App-level recycle area
+│       ├── thumbnails/         # Thumbnail cache
+│       ├── logs/               # Operation logs (CSV)
+│       ├── indexes/            # Image index / timeline index
+│       ├── tasks/              # Task scoped outputs
+│       ├── hash_db.sqlite3     # Content hash database
+│       └── duplicates.json     # Duplicate detection results
 ```
 
 Primary runtime data is isolated by image root under:
 
 ```text
-data/roots/<hash_id>/
+data/roots/<root_id>/
 ```
 
 It may contain:
@@ -232,7 +248,7 @@ It may contain:
 - `indexes/`: image index and timeline index
 - `tasks/`: task outputs
 - `duplicates.json`: duplicate image results
-- `hash_db.json`: Hash DB
+- `hash_db.sqlite3`: Hash DB
 
 ## 10. Local Settings File
 
@@ -268,7 +284,7 @@ If PowerShell cannot find `python`, check that:
 Always prefer:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Do not rely only on `pip install ...`, because it may point to the system Python or another environment.
@@ -284,7 +300,7 @@ Check the current Python:
 If you see errors related to `PIL`, `exifread`, `win32file`, or `win32con`, reinstall dependencies:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 You can also check whether packages are installed in the current virtual environment:
@@ -349,7 +365,7 @@ If images do not display, check that:
 3. Install dependencies:
 
    ```powershell
-   .\venv\Scripts\python.exe -m pip install -r requirements.txt
+   .\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
    ```
 
 4. Start the server:
@@ -380,13 +396,13 @@ If images do not display, check that:
 - Back up important image folders before batch operations
 - After deleting files, confirm on the Recycle page that they can be restored
 - Before cleaning the app-level recycle area, confirm the files are no longer needed
-- Do not casually delete runtime data under `data/roots/<hash_id>/`
+- Do not casually delete runtime data under `data/roots/<root_id>/`
 
 ## 14. Quick Command Summary
 
 ```powershell
 python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 .\start.ps1
 ```
 
