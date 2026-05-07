@@ -82,10 +82,11 @@
 
 プロジェクトは明確なレイヤーに分かれています。
 
-* フロントエンド: Vanilla JS
-* バックエンド: FastAPI
-* データ層: 画像ルートごとに分離
-* 解析エンジン: 画像処理モジュール
+* フロントエンド: Vanilla JS（フレームワークなし）
+* バックエンド: FastAPI + use-case パターン
+* データ層: 画像ルートごとに分離（各ルートに独立した workspace）
+* 解析エンジン: MediaArchiveOrganizer（Hash DB / 重複検出）
+* 各画像ルートが独立した作業領域: `data/roots/<root_id>/`
 
 ---
 
@@ -123,9 +124,10 @@
 ZeroTraceBrowser/
 ├── app.py                      # FastAPI アプリケーション入口
 ├── requirements.txt            # Python 依存関係
-├── settings.json               # ローカル実行設定
+├── requirements-dev.txt        # テスト依存関係
 ├── start.ps1                   # 起動スクリプト
 ├── test.ps1                    # テストスクリプト
+├── pyproject.toml              # プロジェクトメタデータ
 
 ├── static/                     # フロントエンド資産
 │   ├── *.html                  # index / viewer / tasks / recycle / duplicates / settings
@@ -135,17 +137,30 @@ ZeroTraceBrowser/
 │       ├── locales/            # 多言語リソース
 │       └── pages/              # ページごとのロジック
 
-├── ztb/                        # バックエンド中核
-│   ├── *_service.py            # サービス層
-│   └── routes/                 # API ルート
+├── core/                       # バックエンド中核
+│   ├── app/                    # アプリケーションファクトリ、ライフサイクル、ミドルウェア
+│   ├── config/                 # パス、拡張子、対応フォーマット
+│   ├── context.py              # ルートコンテキストインターフェース
+│   ├── context_modules/        # コンテキストモジュール（ドメイン別に分割）
+│   ├── domain/                 # ドメインモデル：RootContext、ImageEntry など
+│   ├── infrastructure/         # ファイル転送、ハッシュ計算、画像処理
+│   ├── repositories/           # データアクセス層
+│   ├── routes/                 # API ルートハンドラ
+│   ├── schemas.py              # Pydantic リクエスト/レスポンスモデル
+│   ├── security.py             # パス解決とアクセス制御
+│   ├── services/               # ビジネスサービス
+│   └── use_cases/              # ユースケース層（コピー、削除、復元など）
 
 ├── data/                       # 実行時データ（画像ルートごとに分離）
-│   └── roots/<hash_id>/
+│   └── roots/<root_id>/
+│       ├── root.json           # ルート設定
 │       ├── deleted/            # アプリ内リサイクル領域
 │       ├── thumbnails/         # サムネイルキャッシュ
-│       ├── logs/               # 操作ログ
+│       ├── logs/               # 操作ログ（CSV 形式）
 │       ├── indexes/            # 画像インデックス / タイムラインインデックス
-│       └── tasks/              # タスク出力
+│       ├── tasks/              # タスク出力（タスク別）
+│       ├── hash_db.sqlite3     # コンテンツハッシュデータベース
+│       └── duplicates.json     # 重複画像検出結果
 
 ├── MediaArchiveOrganizer/      # 画像解析・整理エンジン
 └── tests/                      # テスト
@@ -198,7 +213,7 @@ python -m venv venv
 ### 3. 依存関係をインストール
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 4. サーバーを起動
@@ -268,15 +283,16 @@ pytest を直接実行することもできます。
 
 ## 実行時データ
 
-ZeroTraceBrowser は、各画像ルートに対応する実行時データを `data/roots/<hash_id>/` に保存します。
+ZeroTraceBrowser は、各画像ルートに対応する実行時データを `data/roots/<root_id>/` に保存します。
 
-* サムネイルキャッシュ
-* 画像インデックス
-* タイムラインインデックス
-* 削除ログ
-* アプリ内リサイクル領域のファイル
-* 重複画像結果
-* タスク出力
+* サムネイルキャッシュ（thumbnails/）
+* 画像インデックス（indexes/）
+* タイムラインインデックス（indexes/）
+* 削除ログ（logs/、CSV 形式）
+* アプリ内リサイクル領域のファイル（deleted/）
+* 重複画像結果（duplicates.json）
+* コンテンツハッシュデータベース（hash_db.sqlite3）
+* タスク出力（tasks/）
 
 これらのデータは、閲覧速度の向上、操作履歴の保持、画像ルートごとの状態分離に使われます。元画像は、ユーザーが設定した画像ディレクトリ内にそのまま残ります。
 
