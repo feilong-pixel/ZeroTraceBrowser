@@ -14,6 +14,7 @@ from core.services.file_operations import resolve_under_root
 def create_duplicates_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
+    # GET /api/duplicates
     @router.get("/api/duplicates")
     def get_duplicates(
         offset: int = Query(0, ge=0),
@@ -22,6 +23,7 @@ def create_duplicates_router(ctx: Any) -> APIRouter:
     ) -> dict[str, Any]:
         return ctx.load_duplicates_payload(offset=offset, limit=limit, method=method)
 
+    # POST /api/duplicates/open-result-root
     @router.post("/api/duplicates/open-result-root")
     def open_duplicates_result_root() -> dict[str, str]:
         payload = ctx.load_duplicates_payload()
@@ -36,6 +38,7 @@ def create_duplicates_router(ctx: Any) -> APIRouter:
         ctx.open_path_in_file_manager(root)
         return {"status": "opened", "path": str(root)}
 
+    # GET /api/duplicates/thumbnail
     @router.get("/api/duplicates/thumbnail")
     def get_duplicates_thumbnail(relative_path: str) -> FileResponse:
         root = ctx.get_latest_duplicates_result_root()

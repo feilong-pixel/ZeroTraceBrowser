@@ -1,7 +1,7 @@
 from .base import *
 from .settings_context import get_active_image_root
 from .root_workspace import ensure_root_workspace, ensure_log_file, root_log_dir, root_deleted_dir
-
+from .system_context import is_windows, move_to_system_recycle_bin
 
 def prepare_system_recycle_path(deleted_path: Path, log_row: dict[str, str] | None) -> tuple[Path, Path]:
     thumb_path = deleted_thumbnail_path_for(deleted_path)

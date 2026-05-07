@@ -20,6 +20,7 @@ from core.use_cases.delete_image import DeleteImageRequest, DeleteImageUseCase
 def create_images_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
+    # GET /api/images
     @router.get("/api/images")
     def get_images(
         offset: int = 0,
@@ -44,16 +45,19 @@ def create_images_router(ctx: Any) -> APIRouter:
             )
         return {"root": str(root), **page}
 
+    # GET /api/timeline-index
     @router.get("/api/timeline-index")
     def get_timeline_index() -> dict[str, Any]:
         root = ctx.get_active_image_root()
         return ctx.get_timeline_index(root)
 
+    # GET /api/images/by-group
     @router.get("/api/images/by-group")
     def get_images_by_group(group_key: str) -> dict[str, Any]:
         root = ctx.get_active_image_root()
         return ctx.get_images_for_timeline_group(root, group_key)
 
+    # GET /api/image
     @router.get("/api/image")
     def get_image(relative_path: str) -> FileResponse:
         root = ctx.get_active_image_root()
@@ -62,6 +66,7 @@ def create_images_router(ctx: Any) -> APIRouter:
             raise HTTPException(status_code=404, detail="Image not found")
         return FileResponse(image_path)
 
+    # POST /api/open-image-editor
     @router.post("/api/open-image-editor")
     def open_image_editor(payload: FileActionRequest) -> dict[str, str]:
         root = ctx.get_active_image_root()
@@ -71,6 +76,7 @@ def create_images_router(ctx: Any) -> APIRouter:
         ctx.open_image_in_system_editor(image_path)
         return {"status": "opened", "path": str(image_path)}
 
+    # GET /api/exif
     @router.get("/api/exif")
     def get_exif(relative_path: str) -> dict[str, Any]:
         root = ctx.get_active_image_root()
@@ -88,6 +94,7 @@ def create_images_router(ctx: Any) -> APIRouter:
             "exif": exif,
         }
 
+    # GET /api/thumbnail
     @router.get("/api/thumbnail")
     def get_thumbnail(relative_path: str) -> FileResponse:
         started_at = time.perf_counter()
@@ -103,6 +110,7 @@ def create_images_router(ctx: Any) -> APIRouter:
             print(f"[perf] /api/thumbnail {elapsed_ms:.1f}ms path={relative_path}")
         return response
 
+    # POST /api/delete
     @router.post("/api/delete")
     def delete_image(payload: FileActionRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
@@ -115,6 +123,7 @@ def create_images_router(ctx: Any) -> APIRouter:
         req = DeleteImageRequest(relative_path=payload.relative_path)
         return use_case.execute(req)
 
+    # POST /api/copy
     @router.post("/api/copy")
     def copy_image(payload: CopyRequest) -> dict[str, Any]:
         settings = ctx.load_settings()

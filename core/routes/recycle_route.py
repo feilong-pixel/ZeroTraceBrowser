@@ -19,6 +19,7 @@ from core.use_cases.archive_delete_logs import ArchiveDeleteLogsRequest, Archive
 def create_recycle_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
+    # GET /api/recycle-bin
     @router.get("/api/recycle-bin")
     def get_recycle_bin(
         offset: int = Query(0, ge=0),
@@ -36,6 +37,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
             "has_more": limit is not None and offset + limit < total,
         }
 
+    # GET /api/recycle-bin/logs
     @router.get("/api/recycle-bin/logs")
     def get_recycle_logs() -> dict[str, Any]:
         rows = sorted(ctx.read_delete_log_rows(), key=lambda row: row["timestamp"], reverse=True)
@@ -44,6 +46,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
             "count": len(rows),
         }
 
+    # GET /api/recycle-bin/thumbnail
     @router.get("/api/recycle-bin/thumbnail")
     def get_recycle_thumbnail(deleted_to: str) -> FileResponse:
         deleted_path = ctx.resolve_deleted_file(deleted_to)
@@ -53,6 +56,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         thumb_path = ctx.deleted_thumbnail_path_for(deleted_path)
         return ctx.image_file_response(deleted_path, thumb_path, ctx.THUMBNAIL_SIZE, ctx.Image, ctx.ImageOps)
 
+    # POST /api/recycle-bin/restore
     @router.post("/api/recycle-bin/restore")
     def restore_deleted_item(payload: RestoreDeletedRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
@@ -65,6 +69,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         req = RestoreImageRequest(deleted_to=payload.deleted_to)
         return use_case.execute(req)
 
+    # POST /api/recycle-bin/purge
     @router.post("/api/recycle-bin/purge")
     def purge_deleted_item(payload: PurgeDeletedRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
@@ -78,6 +83,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         req = PurgeImageRequest(deleted_to=payload.deleted_to)
         return use_case.execute(req)
 
+    # POST /api/recycle-bin/clear
     @router.post("/api/recycle-bin/clear")
     def clear_recycle_bin(payload: ClearDeletedRequest) -> dict[str, Any]:
         active_root = ctx.get_active_image_root()
@@ -91,6 +97,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         req = ClearRecycleRequest(confirm=payload.confirm)
         return use_case.execute(req)
 
+    # POST /api/recycle-bin/logs/archive
     @router.post("/api/recycle-bin/logs/archive")
     def archive_recycle_logs(payload: ClearDeletedRequest) -> dict[str, Any]:
         logs_dir = ctx.root_log_dir(ctx.get_active_image_root())
@@ -98,6 +105,7 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         req = ArchiveDeleteLogsRequest(confirm=payload.confirm)
         return use_case.execute(req)
 
+    # POST /api/recycle-bin/logs/clear
     @router.post("/api/recycle-bin/logs/clear")
     def clear_recycle_logs(payload: ClearRecycleLogsRequest) -> dict[str, Any]:
         logs_dir = ctx.root_log_dir(ctx.get_active_image_root())
@@ -108,6 +116,9 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         )
         return use_case.execute(req)
 
+    # Deprecated endpoints for backward compatibility
+    # These can be removed in a future major release
+    # POST /api/recycle-bin/logs/purged/clear
     @router.post("/api/recycle-bin/logs/purged/clear")
     def clear_purged_recycle_logs(payload: ClearDeletedRequest) -> dict[str, Any]:
         return clear_recycle_logs(ClearRecycleLogsRequest(confirm=payload.confirm, actions=["purged"]))
