@@ -2,6 +2,7 @@
 
 import { $, on, setText } from "../core/dom.js";
 import { ensureDialog, setDialogLanguage, showConfirm } from "../core/dialog.js";
+import { applyDisplayStyle } from "../core/theme.js";
 import { markI18nReady, t, setLang, translateStaticText } from "../locales/i18n.js";
 
 function getSettingsElements() {
@@ -12,10 +13,15 @@ function getSettingsElements() {
     settingsActiveRoot: $("#settingsActiveRoot"),
     settingsCopyTarget: $("#settingsCopyTarget"),
     settingsLanguage: $("#settingsLanguage"),
+    settingsDisplayStyle: $("#settingsDisplayStyle"),
 
     // ===== Language =====
     languageSelect: $("#languageSelect"),
     saveLanguageButton: $("#saveLanguageButton"),
+
+    // ===== Display Style =====
+    displayStyleSelect: $("#displayStyleSelect"),
+    saveDisplayStyleButton: $("#saveDisplayStyleButton"),
 
     // ===== Copy Target =====
     copyTargetInput: $("#copyTargetInput"),
@@ -52,6 +58,7 @@ function createInitialState() {
     activeRoot: null,
     copyTarget: null,
     language: "en",
+    displayStyle: "default",
     roots: [],
     isBusy: false,
   };
@@ -74,6 +81,7 @@ async function loadInitialData(els, state) {
 function renderAll(els, state) {
   renderOverview(els, state);
   renderLanguage(els, state);
+  renderDisplayStyle(els, state);
   renderRoots(els, state);
   renderCopyTarget(els, state);
 }
@@ -82,11 +90,18 @@ function renderOverview(els, state) {
   setText(els.settingsActiveRoot, state.activeRoot || "-");
   setText(els.settingsCopyTarget, state.copyTarget || "-");
   setText(els.settingsLanguage, getLanguageLabel(state.language));
+  setText(els.settingsDisplayStyle, getDisplayStyleLabel(state.displayStyle));
 }
 
 function renderLanguage(els, state) {
   if (els.languageSelect) {
     els.languageSelect.value = state.language;
+  }
+}
+
+function renderDisplayStyle(els, state) {
+  if (els.displayStyleSelect) {
+    els.displayStyleSelect.value = state.displayStyle;
   }
 }
 
@@ -130,6 +145,23 @@ function bindEvents(els, state) {
 
       translateStaticText();
       setStatus(els, settingsText("settings.status.languageSaved", "Language saved"));
+    } catch (err) {
+      handleError(els, err);
+    } finally {
+      setBusy(els, state, false);
+    }
+  });
+
+  // ===== Display Style =====
+  on(els.saveDisplayStyleButton, "click", async () => {
+    const nextDisplayStyle = els.displayStyleSelect.value;
+
+    try {
+      setBusy(els, state, true);
+      await postJson("/api/settings/display-style", { display_style: nextDisplayStyle });
+      await refreshConfig(els, state);
+
+      setStatus(els, settingsText("settings.status.displayStyleSaved", "Display style saved"));
     } catch (err) {
       handleError(els, err);
     } finally {
@@ -280,6 +312,7 @@ function applyConfig(state, config) {
   state.copyTarget = config.default_copy_target || "";
   state.roots = config.image_roots || [];
   state.language = setLang(config.language || "en");
+  state.displayStyle = applyDisplayStyle(config.display_style || "default");
   setDialogLanguage(state.language);
   updateDocumentLanguage(state.language);
 }
@@ -312,6 +345,15 @@ function getLanguageLabel(language) {
   }[language] || language || "-";
 }
 
+function getDisplayStyleLabel(displayStyle) {
+  return {
+    default: settingsText("settings.displayStyles.default", "Default"),
+    "multi-light": settingsText("settings.displayStyles.multiLight", "Multi Light"),
+    "multi-dark": settingsText("settings.displayStyles.multiDark", "Multi Dark"),
+    harbor: settingsText("settings.displayStyles.harbor", "Harbor"),
+  }[displayStyle] || displayStyle || "-";
+}
+
 function updateDocumentLanguage(language) {
   document.documentElement.lang = language === "zh" ? "zh-CN" : language;
 }
@@ -321,6 +363,7 @@ function setBusy(els, state, isBusy) {
 
   [
     els.saveLanguageButton,
+    els.saveDisplayStyleButton,
     els.saveCopyTargetButton,
     els.clearCopyTargetButton,
     els.addRootButton,
@@ -348,6 +391,10 @@ function getErrorMessage(err) {
 
   if (raw.includes("Unsupported language")) {
     return settingsText("settings.status.unsupportedLanguage", "Unsupported language");
+  }
+
+  if (raw.includes("Unsupported display style")) {
+    return settingsText("settings.status.unsupportedDisplayStyle", "Unsupported display style");
   }
 
   return raw || settingsText("settings.status.requestFailed", "Request failed");

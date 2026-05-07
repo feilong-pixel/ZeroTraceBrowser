@@ -1,0 +1,127 @@
+/* SPDX-License-Identifier: MIT */
+
+@import url("./style.css?v=20260424-io9");
+
+/* =========================================================
+   Harbor Theme
+   ========================================================= */
+:root {
+  color-scheme: light;
+
+  --bg: #eef3f1;
+  --panel: rgba(248, 251, 250, 0.86);
+  --surface: rgba(255, 255, 252, 0.84);
+  --surface-strong: rgba(255, 255, 252, 0.97);
+  --line: #cbd8d5;
+  --ink: #17211f;
+  --muted: #61706d;
+  --accent: #1f7a8c;
+  --accent-hover: #176273;
+  --accent-soft: rgba(31, 122, 140, 0.13);
+  --danger: #b84a5a;
+
+  --shadow: 0 12px 26px rgba(36, 62, 58, 0.08);
+  --shadow-strong: 0 20px 46px rgba(25, 46, 43, 0.22);
+}
+
+body {
+  background:
+    linear-gradient(135deg, rgba(31, 122, 140, 0.12), transparent 34%),
+    linear-gradient(225deg, rgba(219, 143, 67, 0.1), transparent 30%),
+    linear-gradient(180deg, #f8fbfa 0%, var(--bg) 100%);
+}
+
+input,
+select,
+button,
+.button-link {
+  background: rgba(255, 255, 252, 0.9);
+  border-color: rgba(203, 216, 213, 0.96);
+}
+
+.sidebar,
+.viewer-sidebar-page {
+  background: rgba(248, 251, 250, 0.82);
+}
+
+.panel,
+.meta-card,
+.date-filter-panel,
+.selection-context,
+.duplicate-group,
+.duplicate-thumb-button,
+.recycle-item,
+.recycle-log-table-wrap,
+.summary-path-input {
+  background: rgba(255, 255, 252, 0.76);
+  border-color: rgba(203, 216, 213, 0.92);
+}
+
+.panel {
+  box-shadow: 0 8px 18px rgba(36, 62, 58, 0.06);
+}
+
+.card {
+  background: rgba(255, 255, 252, 0.78);
+  border-color: rgba(203, 216, 213, 0.96);
+  box-shadow: 0 8px 18px rgba(36, 62, 58, 0.06);
+}
+
+.card.is-selected,
+.duplicate-thumb-button.is-selected {
+  border-color: var(--accent);
+  background:
+    linear-gradient(180deg, rgba(31, 122, 140, 0.13), rgba(255, 255, 252, 0.9));
+  box-shadow: 0 12px 26px rgba(31, 122, 140, 0.12);
+}
+
+.thumb,
+.duplicate-thumb,
+.recycle-thumb {
+  background: #dce7e4;
+}
+
+.thumb[data-src],
+.thumb.is-loading {
+  background:
+    linear-gradient(90deg, rgba(220, 231, 228, 0.74), rgba(255, 255, 252, 0.86), rgba(220, 231, 228, 0.74)),
+    #dce7e4;
+  background-size: 220% 100%;
+}
+
+.gallery-sticky-header,
+.recycle-log-table th {
+  background: rgba(248, 251, 250, 0.96);
+}
+
+.primary-button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #f8fbfa;
+}
+
+.primary-button:hover,
+.primary-button:focus-visible {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button.danger {
+  border-color: rgba(184, 74, 90, 0.44);
+  background: rgba(184, 74, 90, 0.08);
+}
+
+button.danger:hover,
+button.danger:focus-visible {
+  background: rgba(184, 74, 90, 0.14);
+}
+
+.viewer-canvas,
+.viewer-canvas-page {
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    #111b1a;
+  background-position: 0 0, 16px 16px;
+  background-size: 32px 32px;
+}

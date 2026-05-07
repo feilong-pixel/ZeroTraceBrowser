@@ -30,6 +30,10 @@ def validate_language(language: str) -> str:
     return get_settings_store().validate_language(language)
 
 
+def validate_display_style(display_style: str) -> str:
+    return get_settings_store().validate_display_style(display_style)
+
+
 def serialize_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return get_settings_store().serialize(settings)
 

@@ -28,6 +28,13 @@ def normalize_task_lang(language: str) -> str:
     return {"zh": "zh", "en": "en", "ja": "ja"}.get(language, language)
 
 
+SUPPORTED_DISPLAY_STYLES = {"default", "multi-light", "multi-dark", "harbor"}
+
+
+def normalize_display_style(display_style: str) -> str:
+    return display_style if display_style in SUPPORTED_DISPLAY_STYLES else "default"
+
+
 class SettingsStore:
     def __init__(
         self,
@@ -44,6 +51,7 @@ class SettingsStore:
     def default_settings(self) -> dict[str, Any]:
         return {
             "language": "en",
+            "display_style": "default",
             "image_roots": [self.default_image_root],
             "active_root": self.default_image_root,
             "default_copy_target": self.default_copy_target,
@@ -82,6 +90,7 @@ class SettingsStore:
 
         language = settings.get("language", "en").strip()
         settings["language"] = language if language in self.supported_languages else "en"
+        settings["display_style"] = normalize_display_style(str(settings.get("display_style", "default")).strip())
         settings["default_copy_target"] = str(
             settings.get("default_copy_target", self.default_copy_target)
         ).strip()
@@ -129,9 +138,15 @@ class SettingsStore:
             raise HTTPException(status_code=400, detail="Unsupported language")
         return language
 
+    def validate_display_style(self, display_style: str) -> str:
+        if display_style not in SUPPORTED_DISPLAY_STYLES:
+            raise HTTPException(status_code=400, detail="Unsupported display style")
+        return display_style
+
     def serialize(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
             "language": settings["language"],
+            "display_style": settings["display_style"],
             "image_roots": settings["image_roots"],
             "active_root": settings["active_root"],
             "default_copy_target": settings["default_copy_target"],

@@ -258,6 +258,7 @@ export default {
       clearCopyTarget: "Clear",
       removeRoot: "Remove",
       saveCopyTarget: "Save",
+      saveDisplayStyle: "Save",
       saveLanguage: "Save",
       switchRoot: "Set Current"
     },
@@ -273,10 +274,18 @@ export default {
       title: "Remove folder"
     },
     intro: "Manage image roots, the default copy target, and interface language.",
+    displayStyles: {
+      default: "Default",
+      harbor: "Harbor",
+      multiDark: "Multi Dark",
+      multiLight: "Multi Light"
+    },
     labels: {
       activeRoot: "Current folder",
       copyTarget: "Default copy target",
       copyTargetInput: "Default copy folder",
+      displayStyle: "Display style",
+      displayStyleSelect: "Display style",
       language: "Interface language",
       languageSelect: "Interface language",
       newRootInput: "Add folder",
@@ -289,6 +298,7 @@ export default {
     sections: {
       advanced: "Advanced",
       copyTarget: "Copy Target",
+      displayStyle: "Display Style",
       language: "Language",
       overview: "Overview",
       roots: "Image folders",
@@ -298,6 +308,7 @@ export default {
       copyTargetCleared: "Default copy target cleared",
       copyTargetSaved: "Default copy target saved",
       invalidRoot: "Enter a folder to add",
+      displayStyleSaved: "Display style saved",
       languageSaved: "Language saved",
       loadFailed: "Failed to load settings",
       ready: "Ready",
@@ -308,6 +319,7 @@ export default {
       rootRemovedWithCleanup: "Folder removed and related data cleared",
       rootRequired: "At least one folder must remain",
       rootSwitched: "Current folder switched",
+      unsupportedDisplayStyle: "Unsupported display style",
       unsupportedLanguage: "Unsupported language"
     },
     title: "Settings"

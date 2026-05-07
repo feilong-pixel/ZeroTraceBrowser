@@ -49,6 +49,25 @@ def test_config_reports_system_recycle_support(api_client) -> None:
     assert response.json()["system_recycle_supported"] == ztb_app.is_windows()
 
 
+def test_display_style_setting_is_persisted(api_client) -> None:
+    client, *_ = api_client
+
+    response = client.post("/api/settings/display-style", json={"display_style": "multi-dark"})
+
+    assert response.status_code == 200
+    assert response.json()["display_style"] == "multi-dark"
+    assert client.get("/api/config").json()["display_style"] == "multi-dark"
+
+
+def test_display_style_rejects_unknown_value(api_client) -> None:
+    client, *_ = api_client
+
+    response = client.post("/api/settings/display-style", json={"display_style": "unknown"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported display style"
+
+
 def test_startup_creates_only_root_scoped_runtime_dirs(api_client) -> None:
     _, workspace, image_root, _ = api_client
 

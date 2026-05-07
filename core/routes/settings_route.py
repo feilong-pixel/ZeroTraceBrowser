@@ -7,7 +7,14 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from core.schemas import CopyTargetUpdateRequest, LanguageUpdateRequest, OpenPathRequest, RootAddRequest, RootUpdateRequest
+from core.schemas import (
+    CopyTargetUpdateRequest,
+    DisplayStyleUpdateRequest,
+    LanguageUpdateRequest,
+    OpenPathRequest,
+    RootAddRequest,
+    RootUpdateRequest,
+)
 from core.app.security import require_existing_directory, require_open_path_allowed, resolve_path
 
 
@@ -52,6 +59,14 @@ def create_settings_router(ctx: Any) -> APIRouter:
     def update_language(payload: LanguageUpdateRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
         settings["language"] = ctx.validate_language(payload.language)
+        ctx.save_settings(settings)
+        return ctx.serialize_settings(settings)
+
+    # POST /api/settings/display-style
+    @router.post("/api/settings/display-style")
+    def update_display_style(payload: DisplayStyleUpdateRequest) -> dict[str, Any]:
+        settings = ctx.load_settings()
+        settings["display_style"] = ctx.validate_display_style(payload.display_style)
         ctx.save_settings(settings)
         return ctx.serialize_settings(settings)
 

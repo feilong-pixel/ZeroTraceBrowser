@@ -256,6 +256,7 @@ export default {
       clearCopyTarget: "清空",
       removeRoot: "移除",
       saveCopyTarget: "保存",
+      saveDisplayStyle: "保存",
       saveLanguage: "保存",
       switchRoot: "设为当前"
     },
@@ -271,10 +272,18 @@ export default {
       title: "移除目录"
     },
     intro: "管理全局目录、默认复制目标与界面语言。",
+    displayStyles: {
+      default: "默认",
+      harbor: "港湾",
+      multiDark: "多彩深色",
+      multiLight: "多彩浅色"
+    },
     labels: {
       activeRoot: "当前目录",
       copyTarget: "默认复制目标",
       copyTargetInput: "默认复制目录",
+      displayStyle: "显示风格",
+      displayStyleSelect: "显示风格",
       language: "界面语言",
       languageSelect: "界面语言",
       newRootInput: "追加目录",
@@ -287,6 +296,7 @@ export default {
     sections: {
       advanced: "高级设置",
       copyTarget: "复制目标目录",
+      displayStyle: "显示风格",
       language: "语言",
       overview: "当前概览",
       roots: "加载目录",
@@ -295,6 +305,7 @@ export default {
     status: {
       copyTargetCleared: "默认复制目录已清空",
       copyTargetSaved: "默认复制目录已保存",
+      displayStyleSaved: "显示风格已保存",
       invalidRoot: "请输入要追加的目录",
       languageSaved: "语言设置已保存",
       loadFailed: "加载设置失败",
@@ -306,6 +317,7 @@ export default {
       rootRemovedWithCleanup: "目录已移除，并已清理相关数据及历史",
       rootRequired: "至少需要保留一个加载目录",
       rootSwitched: "当前目录已切换",
+      unsupportedDisplayStyle: "不支持该显示风格",
       unsupportedLanguage: "不支持该语言"
     },
     title: "设置"
