@@ -82,10 +82,11 @@
 
 项目结构清晰分层：
 
-* 前端（Vanilla JS）
-* 后端（FastAPI）
-* 数据层（按图片根目录隔离）
-* 分析引擎（图片处理模块）
+* 前端（Vanilla JS，无框架）
+* 后端（FastAPI + use-case 模式）
+* 数据层（按图片根目录隔离，每个根有独立 workspace）
+* 分析引擎（MediaArchiveOrganizer，哈希 DB / 重复检测）
+* 每个图片根目录独立工作区：`data/roots/<root_id>/`
 
 ---
 
@@ -123,9 +124,10 @@
 ZeroTraceBrowser/
 ├── app.py                      # FastAPI 应用入口
 ├── requirements.txt            # Python 依赖
-├── settings.json               # 本地运行设置
+├── requirements-dev.txt        # 测试依赖
 ├── start.ps1                   # 启动脚本
 ├── test.ps1                    # 测试脚本
+├── pyproject.toml              # 项目元数据
 
 ├── static/                     # 前端资源
 │   ├── *.html                  # index / viewer / tasks / recycle / duplicates / settings
@@ -135,17 +137,30 @@ ZeroTraceBrowser/
 │       ├── locales/            # 多语言资源
 │       └── pages/              # 页面逻辑
 
-├── ztb/                        # 后端核心
-│   ├── *_service.py            # 业务逻辑层
-│   └── routes/                 # API 路由
+├── core/                       # 后端核心
+│   ├── app/                    # 应用工厂、生命周期、中间件
+│   ├── config/                 # 路径、扩展名、支持格式
+│   ├── context.py              # 路由上下文接口
+│   ├── context_modules/        # 上下文模块（按领域拆分）
+│   ├── domain/                 # 领域模型：RootContext、ImageEntry 等
+│   ├── infrastructure/         # 文件传输、哈希计算、图片处理
+│   ├── repositories/           # 数据访问层
+│   ├── routes/                 # API 路由
+│   ├── schemas.py              # Pydantic 请求/响应模型
+│   ├── security.py             # 路径解析与访问控制
+│   ├── services/               # 业务服务
+│   └── use_cases/              # Use-case 层（复制、删除、恢复等）
 
 ├── data/                       # 运行数据（按图片根目录隔离）
-│   └── roots/<hash_id>/
+│   └── roots/<root_id>/
+│       ├── root.json           # 根目录配置
 │       ├── deleted/            # 应用内回收区
 │       ├── thumbnails/         # 缩略图缓存
-│       ├── logs/               # 操作日志
+│       ├── logs/               # 操作日志（CSV 格式）
 │       ├── indexes/            # 图片索引 / 时间线索引
-│       └── tasks/              # 任务结果
+│       ├── tasks/              # 任务输出（按任务隔离）
+│       ├── hash_db.sqlite3     # 内容哈希数据库
+│       └── duplicates.json     # 重复图片检测结果
 
 ├── MediaArchiveOrganizer/      # 图片分析与整理引擎
 └── tests/                      # 测试
@@ -198,7 +213,7 @@ python -m venv venv
 ### 3. 安装依赖
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 4. 启动服务
@@ -268,15 +283,16 @@ http://127.0.0.1:8000
 
 ## 运行数据说明
 
-ZeroTraceBrowser 会在 `data/roots/<hash_id>/` 下保存每个图片根目录对应的运行数据：
+ZeroTraceBrowser 会在 `data/roots/<root_id>/` 下保存每个图片根目录对应的运行数据：
 
-* 缩略图缓存
-* 图片索引
-* 时间线索引
-* 删除日志
-* 应用内回收区文件
-* 重复图片结果
-* 任务输出
+* 缩略图缓存（thumbnails/）
+* 图片索引（indexes/）
+* 时间线索引（indexes/）
+* 删除日志（logs/，CSV 格式）
+* 应用内回收区文件（deleted/）
+* 重复图片结果（duplicates.json）
+* 内容哈希数据库（hash_db.sqlite3）
+* 任务输出（tasks/）
 
 这些数据用于提升浏览速度、保存操作历史和隔离不同图片根目录的状态。原始图片仍保存在用户配置的图片目录中。
 

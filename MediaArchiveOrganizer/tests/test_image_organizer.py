@@ -12,12 +12,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from core.hash_db import load_hash_db
-from core.date_classifier import build_date_path, get_target_date
-from core.exif_reader import get_exif_datetime
-from locales import get_texts
-from main import validate_paths
-from services.organizer import (
+from MediaArchiveOrganizer.core.hash_db import load_hash_db
+from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
+from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
+from MediaArchiveOrganizer.locales import get_texts
+from MediaArchiveOrganizer.main import validate_paths
+import MediaArchiveOrganizer.services.organizer as organizer_mod
+from MediaArchiveOrganizer.services.organizer import (
     apply_windows_file_times,
     organize_images,
     read_windows_file_times,
@@ -396,22 +397,24 @@ def test_rebuild_hash_db_replace_rebuilds_only_target_root(work_dir: Path) -> No
     assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
 
 
-def test_rebuild_hash_db_append_keeps_existing_records(work_dir: Path) -> None:
-    root_a = work_dir / "organized_a"
-    root_b = work_dir / "organized_b"
-    create_media_file(root_a / "2026" / "04" / "16" / "a.jpg", content="first")
-    create_media_file(root_b / "2026" / "04" / "16" / "b.jpg", content="second")
+def test_rebuild_hash_db_reuses_cached_strict_hash_for_unchanged_files(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    create_media_file(root / "2026" / "04" / "16" / "a.jpg", content="same")
+    calls = {"strict": 0}
 
-    rebuild_hash_db(str(root_a), rebuild_mode="replace", hash_method="strict")
-    stats = rebuild_hash_db(str(root_b), rebuild_mode="append", hash_method="strict")
-    db = load_hash_db()
+    def fake_compute_file_hash(path: str) -> str:
+        calls["strict"] += 1
+        return "strict-hash"
 
-    assert stats["scanned_files"] == 1
-    assert stats["strict_indexed"] == 1
-    strict_paths = sorted(path for paths in db["strict"].values() for path in paths)
-    assert len(strict_paths) == 2
-    assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
-    assert strict_paths[1].endswith(str(Path("organized_b") / "2026" / "04" / "16" / "b.jpg"))
+    monkeypatch.setattr(organizer_mod, "compute_file_hash", fake_compute_file_hash)
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+
+    assert calls["strict"] == 1
 
 
 def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) -> None:
@@ -434,6 +437,28 @@ def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) ->
         "2026/04/16/a.jpg",
         "2026/04/16/a_dup1.jpg",
     ]
+
+
+def test_rebuild_duplicate_results_json_reuses_cached_phash_for_unchanged_files(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    json_path = work_dir / "duplicates.json"
+    create_image_file(root / "2026" / "04" / "16" / "a.jpg", color=(10, 20, 30))
+    create_image_file(root / "2026" / "04" / "16" / "b.jpg", color=(10, 20, 30))
+    calls = {"phash": 0}
+
+    def fake_compute_phash(path: str) -> str:
+        calls["phash"] += 1
+        return "0000000000000000"
+
+    monkeypatch.setattr(organizer_mod, "compute_phash", fake_compute_phash)
+
+    rebuild_duplicate_results_json(str(root), str(json_path), hash_method="phash", phash_threshold=0)
+    rebuild_duplicate_results_json(str(root), str(json_path), hash_method="phash", phash_threshold=0)
+
+    assert calls["phash"] == 2
 
 
 def test_rebuild_duplicate_results_json_append_phash_keeps_existing_strict_groups(work_dir: Path) -> None:

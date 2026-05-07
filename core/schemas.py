@@ -30,6 +30,10 @@ class LanguageUpdateRequest(BaseModel):
     language: str = Field(..., min_length=2)
 
 
+class DisplayStyleUpdateRequest(BaseModel):
+    display_style: str = Field(..., min_length=1)
+
+
 class CopyTargetUpdateRequest(BaseModel):
     default_copy_target: str = Field(default="")
 

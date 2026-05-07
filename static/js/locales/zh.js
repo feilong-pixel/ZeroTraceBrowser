@@ -256,6 +256,7 @@ export default {
       clearCopyTarget: "清空",
       removeRoot: "移除",
       saveCopyTarget: "保存",
+      saveDisplayStyle: "保存",
       saveLanguage: "保存",
       switchRoot: "设为当前"
     },
@@ -271,10 +272,18 @@ export default {
       title: "移除目录"
     },
     intro: "管理全局目录、默认复制目标与界面语言。",
+    displayStyles: {
+      default: "默认",
+      harbor: "港湾",
+      multiDark: "多彩深色",
+      multiLight: "多彩浅色"
+    },
     labels: {
       activeRoot: "当前目录",
       copyTarget: "默认复制目标",
       copyTargetInput: "默认复制目录",
+      displayStyle: "显示风格",
+      displayStyleSelect: "显示风格",
       language: "界面语言",
       languageSelect: "界面语言",
       newRootInput: "追加目录",
@@ -287,6 +296,7 @@ export default {
     sections: {
       advanced: "高级设置",
       copyTarget: "复制目标目录",
+      displayStyle: "显示风格",
       language: "语言",
       overview: "当前概览",
       roots: "加载目录",
@@ -295,6 +305,7 @@ export default {
     status: {
       copyTargetCleared: "默认复制目录已清空",
       copyTargetSaved: "默认复制目录已保存",
+      displayStyleSaved: "显示风格已保存",
       invalidRoot: "请输入要追加的目录",
       languageSaved: "语言设置已保存",
       loadFailed: "加载设置失败",
@@ -306,6 +317,7 @@ export default {
       rootRemovedWithCleanup: "目录已移除，并已清理相关数据及历史",
       rootRequired: "至少需要保留一个加载目录",
       rootSwitched: "当前目录已切换",
+      unsupportedDisplayStyle: "不支持该显示风格",
       unsupportedLanguage: "不支持该语言"
     },
     title: "设置"
@@ -322,8 +334,8 @@ export default {
   tasks: {
     backToGallery: "返回主画面",
     confirmLeaveWhileRunning: "当前处理仍在执行。现在返回主画面可能中断当前处理或停止本页监控，是否继续？",
-    confirmRunRebuild: (mode) => `确认以 ${mode} 模式重建 Hash DB 和重复结果吗？`,
-    confirmRunTask: "确认开始整理，并向 Hash DB 追加新记录吗？",
+    confirmRunRebuild: "确认根据当前目录重新生成 Hash DB 和重复结果吗？",
+    confirmRunTask: "确认开始整理，并更新 Hash DB 与重复结果吗？",
     csvPath: "CSV 路径",
     destDir: "目标目录",
     duplicateDetection: "重复检测",
@@ -350,11 +362,6 @@ export default {
     pageIntro: "运行整理任务，生成日志、CSV 和 duplicates.json。",
     pageTitle: "MediaArchiveOrganizer 任务",
     phashThreshold: "pHash 阈值",
-    rebuildMode: "重建模式",
-    rebuildModes: {
-      append: "append（追加）",
-      replace: "replace（替换）"
-    },
     rebuildRoot: "重建目录",
     runRebuildTask: "重建结果",
     runTask: "开始整理",

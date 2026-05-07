@@ -7,13 +7,21 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ztb.schemas import CopyTargetUpdateRequest, LanguageUpdateRequest, OpenPathRequest, RootAddRequest, RootUpdateRequest
-from ztb.security import require_existing_directory, require_open_path_allowed, resolve_path
+from core.schemas import (
+    CopyTargetUpdateRequest,
+    DisplayStyleUpdateRequest,
+    LanguageUpdateRequest,
+    OpenPathRequest,
+    RootAddRequest,
+    RootUpdateRequest,
+)
+from core.app.security import require_existing_directory, require_open_path_allowed, resolve_path
 
 
 def create_settings_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
+    # GET /api/config
     @router.get("/api/config")
     def get_config() -> dict[str, Any]:
         settings = ctx.load_settings()
@@ -33,6 +41,7 @@ def create_settings_router(ctx: Any) -> APIRouter:
             "system_recycle_supported": ctx.is_windows(),
         }
 
+    # POST /api/open-path
     @router.post("/api/open-path")
     def open_path(payload: OpenPathRequest) -> dict[str, str]:
         settings = ctx.load_settings()
@@ -45,6 +54,7 @@ def create_settings_router(ctx: Any) -> APIRouter:
         ctx.open_path_in_file_manager(open_target)
         return {"status": "opened", "path": str(open_target)}
 
+    # POST /api/settings/language
     @router.post("/api/settings/language")
     def update_language(payload: LanguageUpdateRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
@@ -52,6 +62,15 @@ def create_settings_router(ctx: Any) -> APIRouter:
         ctx.save_settings(settings)
         return ctx.serialize_settings(settings)
 
+    # POST /api/settings/display-style
+    @router.post("/api/settings/display-style")
+    def update_display_style(payload: DisplayStyleUpdateRequest) -> dict[str, Any]:
+        settings = ctx.load_settings()
+        settings["display_style"] = ctx.validate_display_style(payload.display_style)
+        ctx.save_settings(settings)
+        return ctx.serialize_settings(settings)
+
+    # POST /api/settings/copy-target
     @router.post("/api/settings/copy-target")
     def update_default_copy_target(payload: CopyTargetUpdateRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
@@ -59,6 +78,7 @@ def create_settings_router(ctx: Any) -> APIRouter:
         ctx.save_settings(settings)
         return ctx.serialize_settings(settings)
 
+    # POST /api/settings/roots
     @router.post("/api/settings/roots")
     def add_image_root(payload: RootAddRequest) -> dict[str, Any]:
         candidate = require_existing_directory(resolve_path(payload.path), "Image root")
@@ -71,6 +91,7 @@ def create_settings_router(ctx: Any) -> APIRouter:
         ctx.save_settings(settings)
         return ctx.serialize_settings(settings)
 
+    # POST /api/settings/active-root
     @router.post("/api/settings/active-root")
     def set_active_root(payload: RootUpdateRequest) -> dict[str, Any]:
         candidate = str(Path(payload.path).expanduser().resolve())
@@ -82,6 +103,7 @@ def create_settings_router(ctx: Any) -> APIRouter:
         ctx.save_settings(settings)
         return ctx.serialize_settings(settings)
 
+    # POST /api/settings/remove-root
     @router.post("/api/settings/remove-root")
     def remove_root(payload: RootUpdateRequest) -> dict[str, Any]:
         candidate = str(Path(payload.path).expanduser().resolve())

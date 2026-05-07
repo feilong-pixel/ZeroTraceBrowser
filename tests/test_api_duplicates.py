@@ -8,6 +8,7 @@ from pathlib import Path
 from tests.test_api_user_flow import create_test_image
 
 import app as ztb_app
+import core.context as ztb_context
 
 
 def write_duplicates_json(path: Path, destination_root: Path, groups: list[dict]) -> Path:
@@ -124,7 +125,7 @@ def test_duplicates_thumbnail_and_open_result_root(api_client, monkeypatch) -> N
     thumbnail_response = client.get("/api/duplicates/thumbnail", params={"relative_path": "same.jpg"})
     assert thumbnail_response.status_code == 200
     assert thumbnail_response.headers["content-type"].startswith("image/")
-    assert any(ztb_app.root_thumbnail_dir(archive_root).rglob("*.jpg"))
+    assert any(ztb_context.root_thumbnail_dir(archive_root).rglob("*.jpg"))
 
     open_response = client.post("/api/duplicates/open-result-root", json={})
     assert open_response.status_code == 200

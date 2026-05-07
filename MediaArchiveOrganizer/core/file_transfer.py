@@ -5,13 +5,20 @@ import shutil
 import platform
 from pathlib import Path
 
-# This module provides a cross-platform file transfer function that preserves timestamps.
+# Try importing pywin32; fall back when it is unavailable.
+try:
+    import win32file
+    import win32con
+    import pywintypes
+    HAS_PYWIN32 = True
+except ImportError:
+    HAS_PYWIN32 = False
+
 def is_windows():
     return platform.system() == "Windows"
 
-
-# Read the Windows FILETIME values for CreationTime, AccessTime, and ModifyTime.
 def read_windows_file_times(path: Path):
+    """Read Windows file timestamps as FILETIME tuples."""
     if not is_windows():
         return None
 
@@ -25,17 +32,15 @@ def read_windows_file_times(path: Path):
         ]
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
     handle = kernel32.CreateFileW(
         str(path),
-        0x80000000,  # GENERIC_READ
-        0x00000001 | 0x00000002 | 0x00000004,  # share flags
+        0x80000000,
+        0x00000001 | 0x00000002 | 0x00000004,
         None,
-        3,  # OPEN_EXISTING
-        0x00000080,  # FILE_ATTRIBUTE_NORMAL
+        3,
+        0x00000080,
         None,
     )
-
     if handle == wintypes.HANDLE(-1).value:
         return None
 
@@ -43,15 +48,14 @@ def read_windows_file_times(path: Path):
         created = FILETIME()
         accessed = FILETIME()
         written = FILETIME()
-
-        if not kernel32.GetFileTime(
+        ok = kernel32.GetFileTime(
             handle,
             ctypes.byref(created),
             ctypes.byref(accessed),
             ctypes.byref(written),
-        ):
+        )
+        if not ok:
             return None
-
         return (
             (created.dwLowDateTime, created.dwHighDateTime),
             (accessed.dwLowDateTime, accessed.dwHighDateTime),
@@ -61,65 +65,78 @@ def read_windows_file_times(path: Path):
         kernel32.CloseHandle(handle)
 
 
-# Apply the given Windows FILETIME values to the specified path. This is 
-# necessary when moving files across drives since CreationTime isn't preserved by default.
-def apply_windows_file_times(path: Path, file_times):
-    if not is_windows() or file_times is None:
+def apply_windows_file_times(path: Path, times):
+    """Apply Windows file timestamps from FILETIME tuples."""
+    if not is_windows() or times is None:
         return
 
-    try:
-        import pywintypes
-        import win32file
-        import win32con
-    except ImportError:
-        return
+    import ctypes
+    from ctypes import wintypes
 
-    handle = win32file.CreateFile(
+    class FILETIME(ctypes.Structure):
+        _fields_ = [
+            ("dwLowDateTime", wintypes.DWORD),
+            ("dwHighDateTime", wintypes.DWORD),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.CreateFileW(
         str(path),
-        win32con.GENERIC_WRITE,
-        win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE | win32con.FILE_SHARE_DELETE,
+        0x40000000,
+        0x00000001 | 0x00000002 | 0x00000004,
         None,
-        win32con.OPEN_EXISTING,
-        win32con.FILE_ATTRIBUTE_NORMAL,
+        3,
+        0x00000080,
         None,
     )
-
-    if handle == win32file.INVALID_HANDLE_VALUE:
+    if handle == wintypes.HANDLE(-1).value:
         return
 
     try:
-        c_low, c_high = file_times[0]
-        a_low, a_high = file_times[1]
-        w_low, w_high = file_times[2]
-
-        # FILETIME → 64bit int → pywintypes.Time
-        def to_time(low, high):
-            ft = (high << 32) | low
-            return pywintypes.Time(ft / 10_000_000 - 11644473600)
-
-        win32file.SetFileTime(
+        created = FILETIME(times[0][0], times[0][1])
+        accessed = FILETIME(times[1][0], times[1][1])
+        written = FILETIME(times[2][0], times[2][1])
+        kernel32.SetFileTime(
             handle,
-            to_time(c_low, c_high),
-            to_time(a_low, a_high),
-            to_time(w_low, w_high),
+            ctypes.byref(created),
+            ctypes.byref(accessed),
+            ctypes.byref(written),
         )
     finally:
-        handle.close()
+        kernel32.CloseHandle(handle)
 
 
-# Transfer the file while preserving timestamps. Windows doesn't preserve 
-# creation time by default, so we need to set it explicitly when moving across drives.
 def transfer_file(src: Path, dst: Path, mode: str):
+    src, dst = Path(src), Path(dst)
+    
+    if not src.exists():
+        raise FileNotFoundError(f"Source file does not exist: {src}")
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1. Read timestamps before transfer.
     file_times = read_windows_file_times(src)
 
-    if mode == "copy":
-        shutil.copy2(src, dst)
-    else:
-        same_drive = os.path.splitdrive(src)[0].lower() == os.path.splitdrive(dst)[0].lower()
-        shutil.move(src, dst)
+    # 2. Transfer the file.
+    try:
+        if mode == "copy":
+            shutil.copy2(src, dst)
+        elif mode == "move":
+            # Check whether the move stayed on the same device.
+            src_stat = src.stat()
+            shutil.move(str(src), str(dst))
+            
+            # Same-device moves usually preserve creation time.
+            try:
+                if dst.exists() and dst.stat().st_dev == src_stat.st_dev:
+                    return
+            except Exception:
+                pass
+        else:
+            raise ValueError(f"Unsupported mode: {mode}")
 
-        # rename の場合は CreationTime が保持されるので SetFileTime は不要
-        if same_drive:
-            return
+        # 3. Restore timestamps when needed.
+        apply_windows_file_times(dst, file_times)
 
-    apply_windows_file_times(dst, file_times)
+    except PermissionError as exc:
+        raise PermissionError(f"Permission denied: {src}") from exc

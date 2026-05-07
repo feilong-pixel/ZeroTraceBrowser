@@ -258,6 +258,7 @@ export default {
       clearCopyTarget: "クリア",
       removeRoot: "削除",
       saveCopyTarget: "保存",
+      saveDisplayStyle: "保存",
       saveLanguage: "保存",
       switchRoot: "適用"
     },
@@ -273,10 +274,18 @@ export default {
       title: "フォルダ削除"
     },
     intro: "フォルダや表示設定を管理します",
+    displayStyles: {
+      default: "標準",
+      harbor: "Harbor",
+      multiDark: "Multi ダーク",
+      multiLight: "Multi ライト"
+    },
     labels: {
       activeRoot: "現在のフォルダ",
       copyTarget: "コピー先",
       copyTargetInput: "コピー先",
+      displayStyle: "表示スタイル",
+      displayStyleSelect: "表示スタイル",
       language: "表示言語",
       languageSelect: "表示言語",
       newRootInput: "フォルダを追加",
@@ -289,6 +298,7 @@ export default {
     sections: {
       advanced: "詳細設定",
       copyTarget: "コピー先フォルダ",
+      displayStyle: "表示スタイル",
       language: "言語",
       overview: "現在の概要",
       roots: "読み込みフォルダ",
@@ -297,6 +307,7 @@ export default {
     status: {
       copyTargetCleared: "コピー先をクリアしました",
       copyTargetSaved: "保存しました",
+      displayStyleSaved: "表示スタイルを保存しました",
       invalidRoot: "追加するフォルダを入力してください",
       languageSaved: "言語設定を保存しました",
       loadFailed: "設定の読み込みに失敗しました",
@@ -308,6 +319,7 @@ export default {
       rootRemovedWithCleanup: "フォルダを削除し、関連データと履歴をクリアしました",
       rootRequired: "少なくとも1つのフォルダが必要です",
       rootSwitched: "現在のフォルダを切り替えました",
+      unsupportedDisplayStyle: "対応していない表示スタイルです",
       unsupportedLanguage: "対応していない言語です"
     },
     title: "設定"
@@ -324,8 +336,8 @@ export default {
   tasks: {
     backToGallery: "メイン画面へ戻る",
     confirmLeaveWhileRunning: "現在の処理はまだ実行中です。ここで画面を離れると、現在の処理が中断されるか、このページでの監視が停止する可能性があります。続行しますか？",
-    confirmRunRebuild: (mode) => `${mode} モードで Hash DB と重複結果を再構築しますか？`,
-    confirmRunTask: "整理を開始し、Hash DB に新しい記録を追加しますか？",
+    confirmRunRebuild: "現在のフォルダーをもとに Hash DB と重複結果を再構築しますか？",
+    confirmRunTask: "整理を開始し、Hash DB と重複結果を更新しますか？",
     csvPath: "CSV パス",
     destDir: "出力ディレクトリ",
     duplicateDetection: "重複検出",
@@ -352,11 +364,6 @@ export default {
     pageIntro: "整理タスクを実行し、ログ、CSV、duplicates.json を生成します。",
     pageTitle: "MediaArchiveOrganizer タスク",
     phashThreshold: "pHash しきい値",
-    rebuildMode: "再構築モード",
-    rebuildModes: {
-      append: "append（追加）",
-      replace: "replace（置換）"
-    },
     rebuildRoot: "再構築対象ディレクトリ",
     runRebuildTask: "再構築",
     runTask: "開始",

@@ -10,12 +10,17 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from ztb.schemas import CopyRequest, FileActionRequest
+from core.schemas import CopyRequest, FileActionRequest
+from core.domain.root_proxy import build_root_proxy
+from core.services.file_operations import resolve_under_root
+from core.use_cases.copy_image import CopyImageRequest, CopyImageUseCase
+from core.use_cases.delete_image import DeleteImageRequest, DeleteImageUseCase
 
 
 def create_images_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
+    # GET /api/images
     @router.get("/api/images")
     def get_images(
         offset: int = 0,
@@ -40,37 +45,42 @@ def create_images_router(ctx: Any) -> APIRouter:
             )
         return {"root": str(root), **page}
 
+    # GET /api/timeline-index
     @router.get("/api/timeline-index")
     def get_timeline_index() -> dict[str, Any]:
         root = ctx.get_active_image_root()
         return ctx.get_timeline_index(root)
 
+    # GET /api/images/by-group
     @router.get("/api/images/by-group")
     def get_images_by_group(group_key: str) -> dict[str, Any]:
         root = ctx.get_active_image_root()
         return ctx.get_images_for_timeline_group(root, group_key)
 
+    # GET /api/image
     @router.get("/api/image")
     def get_image(relative_path: str) -> FileResponse:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
         return FileResponse(image_path)
 
+    # POST /api/open-image-editor
     @router.post("/api/open-image-editor")
     def open_image_editor(payload: FileActionRequest) -> dict[str, str]:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, payload.relative_path)
+        image_path = resolve_under_root(root, payload.relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
         ctx.open_image_in_system_editor(image_path)
         return {"status": "opened", "path": str(image_path)}
 
+    # GET /api/exif
     @router.get("/api/exif")
     def get_exif(relative_path: str) -> dict[str, Any]:
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
 
@@ -84,11 +94,12 @@ def create_images_router(ctx: Any) -> APIRouter:
             "exif": exif,
         }
 
+    # GET /api/thumbnail
     @router.get("/api/thumbnail")
     def get_thumbnail(relative_path: str) -> FileResponse:
         started_at = time.perf_counter()
         root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, relative_path)
+        image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
 
@@ -99,66 +110,33 @@ def create_images_router(ctx: Any) -> APIRouter:
             print(f"[perf] /api/thumbnail {elapsed_ms:.1f}ms path={relative_path}")
         return response
 
+    # POST /api/delete
     @router.post("/api/delete")
     def delete_image(payload: FileActionRequest) -> dict[str, Any]:
-        root = ctx.get_active_image_root()
-        image_path = ctx.resolve_under_root(root, payload.relative_path)
-        if not image_path.exists() or not image_path.is_file():
-            ctx.clear_image_list_cache(root)
-            stale_thumb = ctx.thumbnail_path_for(root, payload.relative_path)
-            if stale_thumb.exists():
-                stale_thumb.unlink()
-            return {"status": "missing", "relative_path": payload.relative_path}
-
-        deleted_path = ctx.build_deleted_path(root, payload.relative_path)
-        deleted_path.parent.mkdir(parents=True, exist_ok=True)
-        ctx.move_file_preserve_times(image_path, deleted_path)
-        ctx.clear_image_list_cache(root)
-        ctx.append_log(
-            "delete_log.csv",
-            datetime.now().isoformat(),
-            str(root),
-            payload.relative_path,
-            str(deleted_path),
-            "deleted",
+        active_root = ctx.get_active_image_root()
+        root_context = build_root_proxy(ctx, active_root)
+        use_case = DeleteImageUseCase(
+            root_context=root_context,
+            thumbnails_dir=root_context.thumbnails_dir,
+            thumbnail_size=ctx.THUMBNAIL_SIZE,
         )
+        req = DeleteImageRequest(relative_path=payload.relative_path)
+        return use_case.execute(req)
 
-        stale_thumb = ctx.thumbnail_path_for(root, payload.relative_path)
-        if stale_thumb.exists():
-            stale_thumb.unlink()
-
-        return {"status": "deleted", "deleted_to": str(deleted_path)}
-
+    # POST /api/copy
     @router.post("/api/copy")
     def copy_image(payload: CopyRequest) -> dict[str, Any]:
         settings = ctx.load_settings()
-        root = Path(settings["active_root"])
-        image_path = ctx.resolve_under_root(root, payload.relative_path)
-        if not image_path.exists() or not image_path.is_file():
-            raise HTTPException(status_code=404, detail="Image not found")
-
-        target_root_value = payload.target_dir.strip() or settings["default_copy_target"]
-        if not target_root_value:
-            raise HTTPException(status_code=400, detail="No copy target configured")
-
-        target_root = Path(target_root_value).expanduser().resolve()
-        target_root.mkdir(parents=True, exist_ok=True)
-        target_path = target_root / image_path.name
-
-        if target_path.exists():
-            stem = target_path.stem
-            suffix = target_path.suffix
-            counter = 1
-            while True:
-                candidate = target_root / f"{stem}_{counter}{suffix}"
-                if not candidate.exists():
-                    target_path = candidate
-                    break
-                counter += 1
-
-        ctx.copy_file_preserve_times(image_path, target_path)
-        ctx.clear_image_list_cache(root)
-        ctx.append_log("copy_log.csv", datetime.now().isoformat(), str(root), payload.relative_path, str(target_path))
-        return {"status": "copied", "copied_to": str(target_path)}
-
+        active_root = Path(settings["active_root"])
+        root_context = build_root_proxy(ctx, active_root)
+        use_case = CopyImageUseCase(
+            root_context=root_context,
+            default_copy_target=settings.get("default_copy_target", ""),
+        )
+        req = CopyImageRequest(
+            relative_path=payload.relative_path,
+            target_dir=payload.target_dir,
+        )
+        return use_case.execute(req)
     return router
+

@@ -110,6 +110,33 @@
                                 <span data-i18n="settings.labels.language">Interface Language</span>
                                 <strong id="settingsLanguage">-</strong>
                             </div>
+
+                            <div class="meta-card">
+                                <span data-i18n="settings.labels.displayStyle">Display Style</span>
+                                <strong id="settingsDisplayStyle">-</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Display Style -->
+                    <section class="panel settings-display-style-panel">
+                        <div class="settings-panel-head">
+                            <h2 data-i18n="settings.sections.displayStyle">Display Style</h2>
+                        </div>
+
+                        <div class="action-stack">
+                            <label for="displayStyleSelect" data-i18n="settings.labels.displayStyleSelect">Display Style</label>
+                            <select id="displayStyleSelect">
+                                <option value="default" data-i18n="settings.displayStyles.default">Default</option>
+                                <option value="multi-light" data-i18n="settings.displayStyles.multiLight">Multi Light</option>
+                                <option value="multi-dark" data-i18n="settings.displayStyles.multiDark">Multi Dark</option>
+                                <option value="harbor" data-i18n="settings.displayStyles.harbor">Harbor</option>
+                            </select>
+
+                            <button id="saveDisplayStyleButton" type="button" class="primary-button"
+                                data-i18n="settings.buttons.saveDisplayStyle">
+                                Save Style
+                            </button>
                         </div>
                     </section>
 

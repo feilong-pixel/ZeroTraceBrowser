@@ -82,10 +82,11 @@ The gallery timeline uses backend-generated `timeline_time` / `timeline_ts` valu
 
 The project is organized into clear layers:
 
-* Frontend: Vanilla JS
-* Backend: FastAPI
-* Data layer: isolated by image root
-* Analysis engine: image processing modules
+* Frontend: Vanilla JS (no framework)
+* Backend: FastAPI + use-case pattern
+* Data layer: isolated by image root (root_id)
+* Analysis engine: MediaArchiveOrganizer (hash DB, duplicate detection)
+* Every image root has its own workspace: `data/roots/<root_id>/`
 
 ---
 
@@ -123,9 +124,10 @@ The project is organized into clear layers:
 ZeroTraceBrowser/
 ├── app.py                      # FastAPI application entry point
 ├── requirements.txt            # Python dependencies
-├── settings.json               # Local runtime settings
+├── requirements-dev.txt        # Test dependencies
 ├── start.ps1                   # Startup script
 ├── test.ps1                    # Test script
+├── pyproject.toml              # Project metadata
 
 ├── static/                     # Frontend assets
 │   ├── *.html                  # index / viewer / tasks / recycle / duplicates / settings
@@ -135,17 +137,30 @@ ZeroTraceBrowser/
 │       ├── locales/            # Localization resources
 │       └── pages/              # Page logic
 
-├── ztb/                        # Backend core
-│   ├── *_service.py            # Service layer
-│   └── routes/                 # API routes
+├── core/                       # Backend core
+│   ├── app/                    # Factory, lifespan, middleware
+│   ├── config/                 # Paths, extensions, supported formats
+│   ├── context.py              # Route context facade
+│   ├── context_modules/        # Context modules (split by domain)
+│   ├── domain/                 # Domain models: RootContext, ImageEntry, etc.
+│   ├── infrastructure/         # File transfer, hashing, image processing
+│   ├── repositories/           # Data access layer
+│   ├── routes/                 # API route handlers
+│   ├── schemas.py              # Pydantic request/response models
+│   ├── security.py             # Path resolution and access control
+│   ├── services/               # Business services
+│   └── use_cases/              # Use-case layer (copy, delete, restore, etc.)
 
 ├── data/                       # Runtime data, isolated by image root
-│   └── roots/<hash_id>/
+│   └── roots/<root_id>/
+│       ├── root.json           # Root configuration
 │       ├── deleted/            # App-level recycle area
 │       ├── thumbnails/         # Thumbnail cache
-│       ├── logs/               # Operation logs
+│       ├── logs/               # Operation logs (CSV)
 │       ├── indexes/            # Image index / timeline index
-│       └── tasks/              # Task outputs
+│       ├── tasks/              # Task scoped outputs
+│       ├── hash_db.sqlite3     # Content hash database
+│       └── duplicates.json     # Duplicate detection results
 
 ├── MediaArchiveOrganizer/      # Image analysis and organization engine
 └── tests/                      # Tests
@@ -198,8 +213,7 @@ python -m venv venv
 ### 3. Install Dependencies
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 
 ### 4. Start the Server
 
@@ -268,15 +282,16 @@ The current version supports common local image formats, including:
 
 ## Runtime Data
 
-ZeroTraceBrowser stores runtime data for each image root under `data/roots/<hash_id>/`:
+ZeroTraceBrowser stores runtime data for each image root under `data/roots/<root_id>/`:
 
-* Thumbnail cache
-* Image index
-* Timeline index
-* Delete logs
-* App-level recycle files
-* Duplicate results
-* Task outputs
+* Thumbnail cache (thumbnails/)
+* Image index (indexes/)
+* Timeline index (indexes/)
+* Delete logs (logs/, CSV format)
+* App-level recycle files (deleted/)
+* Duplicate results (duplicates.json)
+* Content hash database (hash_db.sqlite3)
+* Task outputs (tasks/)
 
 This data improves browsing speed, preserves operation history, and keeps state isolated between image roots. Original images remain in the image directories configured by the user.
 

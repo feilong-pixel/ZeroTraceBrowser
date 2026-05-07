@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import threading
 import time
@@ -14,44 +12,46 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from fastapi import HTTPException
-from fastapi.responses import FileResponse
 from MediaArchiveOrganizer.core.date_classifier import get_target_date_with_source
-from MediaArchiveOrganizer.core.file_transfer import transfer_file
+from core.services.file_operations import (
+    copy_file_preserve_times,
+    move_file_preserve_times,
+    resolve_under_root,
+)
+from core.services.image_index_service import (
+    IMAGE_INDEX_PREVIEW_LIMIT,
+    build_timeline_index_entries,
+    get_image_timestamp_for_sort,
+    image_index_cache_path,
+    image_index_summary_path,
+    image_scan_cache_key,
+    load_full_image_index_cache,
+    load_image_index_cache,
+    load_image_index_summary_metadata,
+    load_timeline_index_cache,
+    save_image_index_cache,
+    save_image_index_summary,
+    save_image_index_summary_metadata,
+    save_timeline_index_cache,
+    timeline_group_key_for_item,
+    timeline_index_cache_path,
+)
+from core.services.recycle_paths import (
+    build_deleted_path,
+    remove_empty_deleted_parent,
+    resolve_deleted_file,
+)
+from core.services.thumbnail_service import (
+    deleted_thumbnail_path_for,
+    image_file_response,
+    thumbnail_path_for,
+)
 
 IMAGE_LIST_CACHE_TTL_SECONDS = 5.0
 IMAGE_LIST_CACHE: dict[tuple[str, tuple[str, ...], tuple[str, ...]], tuple[float, list[dict[str, Any]]]] = {}
 IMAGE_SCAN_CACHE: dict[tuple[str, tuple[str, ...], tuple[str, ...]], dict[str, Any]] = {}
 IMAGE_SCAN_LOCK = threading.Lock()
 IMAGE_INDEX_REFRESH_DELAY_SECONDS = 0.0
-IMAGE_INDEX_PREVIEW_LIMIT = 240
-
-
-def replace_with_retry(source: Path, target: Path, attempts: int = 3) -> None:
-    for attempt in range(attempts):
-        try:
-            source.replace(target)
-            return
-        except PermissionError:
-            if attempt >= attempts - 1:
-                raise
-            time.sleep(0.05 * (attempt + 1))
-
-
-def copy_file_preserve_times(src: Path, dst: Path):
-    transfer_file(src, dst, "copy")
-
-
-def move_file_preserve_times(src: Path, dst: Path):
-    transfer_file(src, dst, "move")
-
-
-def resolve_under_root(root: Path, candidate: str) -> Path:
-    resolved = (root / candidate).resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Path escapes configured root") from exc
-    return resolved
 
 
 def clear_image_list_cache(root: Path | None = None) -> None:
@@ -249,281 +249,6 @@ def list_lightweight_image_metadata_page(
     }
 
 
-def image_scan_cache_key(
-    root: Path,
-    supported_extensions: set[str],
-    excluded_scan_dirs: set[str],
-) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
-    return (
-        str(root.resolve()),
-        tuple(sorted(supported_extensions)),
-        tuple(sorted(excluded_scan_dirs)),
-    )
-
-
-def image_index_cache_path(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-) -> Path:
-    digest = hashlib.sha1("|".join([cache_key[0], *cache_key[1], *cache_key[2]]).encode("utf-8")).hexdigest()
-    return index_dir / f"{digest}.json"
-
-
-def image_index_summary_path(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-) -> Path:
-    digest = hashlib.sha1("|".join([cache_key[0], *cache_key[1], *cache_key[2]]).encode("utf-8")).hexdigest()
-    return index_dir / f"{digest}.summary.json"
-
-
-def timeline_index_cache_path(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-) -> Path:
-    digest = hashlib.sha1("|".join([cache_key[0], *cache_key[1], *cache_key[2]]).encode("utf-8")).hexdigest()
-    return index_dir / f"{digest}.timeline.json"
-
-
-def timeline_group_key_for_item(item: dict[str, Any]) -> str:
-    timeline_time = str(item.get("timeline_time", "")).strip()
-    if (
-        len(timeline_time) >= 7
-        and timeline_time[4] == "-"
-        and timeline_time[:4].isdigit()
-        and timeline_time[5:7].isdigit()
-    ):
-        month = int(timeline_time[5:7])
-        if 1 <= month <= 12:
-            return timeline_time[:7]
-
-    timestamp = get_image_timestamp_for_sort(item)
-    if timestamp is None:
-        return "unknown"
-
-    date = datetime.fromtimestamp(timestamp)
-    return f"{date.year:04d}-{date.month:02d}"
-
-
-def timeline_group_label_from_key(group_key: str) -> str:
-    return "Unknown date" if group_key == "unknown" else group_key
-
-
-def timeline_tick_label_from_key(group_key: str) -> str:
-    return "Unknown" if group_key == "unknown" else group_key.replace("-", "")
-
-
-def build_timeline_index_entries(items: list[dict[str, Any]]) -> list[dict[str, str]]:
-    group_keys = {timeline_group_key_for_item(item) for item in items}
-
-    def group_sort_key(group_key: str) -> tuple[int, str]:
-        if group_key == "unknown":
-            return (1, group_key)
-        return (0, group_key)
-
-    entries = []
-    for group_key in sorted(group_keys, key=group_sort_key, reverse=True):
-        entries.append(
-            {
-                "key": group_key,
-                "label": timeline_group_label_from_key(group_key),
-                "index_label": timeline_tick_label_from_key(group_key),
-            }
-        )
-
-    return entries
-
-
-def load_image_index_cache(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-) -> tuple[list[dict[str, Any]], int | None, str | None]:
-    cache_path = image_index_summary_path(index_dir, cache_key)
-    try:
-        with cache_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return [], None, None
-
-    items = payload.get("items", [])
-    if not isinstance(items, list):
-        return [], None, None
-
-    total = payload.get("total")
-    generated_at = payload.get("generated_at")
-    return [
-        item
-        for item in items
-        if isinstance(item, dict)
-        and isinstance(item.get("relative_path"), str)
-        and isinstance(item.get("name"), str)
-    ], total if isinstance(total, int) else None, generated_at if isinstance(generated_at, str) else None
-
-
-def load_image_index_summary_metadata(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-) -> dict[str, Any]:
-    cache_path = image_index_summary_path(index_dir, cache_key)
-    try:
-        with cache_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return {"items": [], "total": None, "generated_at": None, "duplicate_group_count": None}
-
-    items = payload.get("items", [])
-    if not isinstance(items, list):
-        items = []
-
-    total = payload.get("total")
-    generated_at = payload.get("generated_at")
-    duplicate_group_count = payload.get("duplicate_group_count")
-    return {
-        "items": items,
-        "total": total if isinstance(total, int) else None,
-        "generated_at": generated_at if isinstance(generated_at, str) else None,
-        "duplicate_group_count": duplicate_group_count if isinstance(duplicate_group_count, int) else None,
-    }
-
-
-def load_full_image_index_cache(index_dir: Path, cache_key: tuple[str, tuple[str, ...], tuple[str, ...]]) -> list[dict[str, Any]]:
-    cache_path = image_index_cache_path(index_dir, cache_key)
-    try:
-        with cache_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return []
-
-    items = payload.get("items", [])
-    if not isinstance(items, list):
-        return []
-
-    return [
-        item
-        for item in items
-        if isinstance(item, dict)
-        and isinstance(item.get("relative_path"), str)
-        and isinstance(item.get("name"), str)
-    ]
-
-
-def load_timeline_index_cache(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-) -> tuple[list[dict[str, str]], str | None]:
-    cache_path = timeline_index_cache_path(index_dir, cache_key)
-    try:
-        with cache_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return [], None
-
-    entries = payload.get("entries", [])
-    if not isinstance(entries, list):
-        return [], None
-
-    generated_at = payload.get("generated_at")
-    return [
-        entry
-        for entry in entries
-        if isinstance(entry, dict)
-        and isinstance(entry.get("key"), str)
-        and isinstance(entry.get("label"), str)
-        and isinstance(entry.get("index_label"), str)
-    ], generated_at if isinstance(generated_at, str) else None
-
-
-def save_image_index_cache(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-    items: list[dict[str, Any]],
-) -> None:
-    index_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = image_index_cache_path(index_dir, cache_key)
-    payload = {
-        "generated_at": datetime.now().isoformat(),
-        "root": cache_key[0],
-        "items": items,
-    }
-    temp_path = cache_path.with_name(f"{cache_path.name}.{threading.get_ident()}.tmp")
-    with temp_path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-    replace_with_retry(temp_path, cache_path)
-
-    save_image_index_summary(
-        index_dir,
-        cache_key,
-        items[:IMAGE_INDEX_PREVIEW_LIMIT],
-        len(items),
-        payload["generated_at"],
-    )
-    save_timeline_index_cache(index_dir, cache_key, items, payload["generated_at"])
-
-
-def save_image_index_summary(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-    items: list[dict[str, Any]],
-    total: int | None,
-    generated_at: str | None = None,
-    duplicate_group_count: int | None = None,
-) -> None:
-    index_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = image_index_summary_path(index_dir, cache_key)
-    existing_metadata = load_image_index_summary_metadata(index_dir, cache_key)
-    summary_payload = {
-        "generated_at": generated_at or existing_metadata.get("generated_at") or datetime.now().isoformat(),
-        "root": cache_key[0],
-        "total": total,
-        "duplicate_group_count": duplicate_group_count if isinstance(duplicate_group_count, int) else existing_metadata.get("duplicate_group_count"),
-        "items": items,
-    }
-    summary_temp_path = summary_path.with_name(f"{summary_path.name}.{threading.get_ident()}.tmp")
-    with summary_temp_path.open("w", encoding="utf-8") as handle:
-        json.dump(summary_payload, handle, ensure_ascii=False)
-    replace_with_retry(summary_temp_path, summary_path)
-
-
-def save_image_index_summary_metadata(
-    index_dir: Path,
-    root: Path,
-    supported_extensions: set[str],
-    excluded_scan_dirs: set[str],
-    total: int | None = None,
-    duplicate_group_count: int | None = None,
-    generated_at: str | None = None,
-) -> None:
-    cache_key = image_scan_cache_key(root, supported_extensions, excluded_scan_dirs)
-    metadata = load_image_index_summary_metadata(index_dir, cache_key)
-    save_image_index_summary(
-        index_dir,
-        cache_key,
-        metadata["items"] if isinstance(metadata.get("items"), list) else [],
-        total if isinstance(total, int) else metadata.get("total"),
-        generated_at or metadata.get("generated_at"),
-        duplicate_group_count if isinstance(duplicate_group_count, int) else metadata.get("duplicate_group_count"),
-    )
-
-
-def save_timeline_index_cache(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-    items: list[dict[str, Any]],
-    generated_at: str | None = None,
-) -> None:
-    index_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = timeline_index_cache_path(index_dir, cache_key)
-    payload = {
-        "generated_at": generated_at or datetime.now().isoformat(),
-        "root": cache_key[0],
-        "entries": build_timeline_index_entries(items),
-    }
-    temp_path = cache_path.with_name(f"{cache_path.name}.{threading.get_ident()}.tmp")
-    with temp_path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-    replace_with_retry(temp_path, cache_path)
-
-
 def get_timeline_index(
     index_dir: Path,
     root: Path,
@@ -537,7 +262,7 @@ def get_timeline_index(
 
     entries, timeline_generated_at = load_timeline_index_cache(index_dir, cache_key)
 
-    # 只要 timeline 和 full index 的生成时间一致，就直接返回旧 timeline
+    # If timeline and full index have the same generation time, return the old timeline
     if entries and summary_generated_at == timeline_generated_at:
         return {
             "root": str(root),
@@ -546,7 +271,7 @@ def get_timeline_index(
             "from_cache": True,
         }
 
-    # 关键：timeline 只允许从完整 index 生成
+    # Critical: timeline must only be generated from a full index
     full_items = load_full_image_index_cache(index_dir, cache_key)
 
     if full_items:
@@ -559,7 +284,7 @@ def get_timeline_index(
             "from_cache": True,
         }
 
-    # 没有完整 index 时，不用 summary_items 生成 timeline
+    # Without a full index, do not generate timeline from summary items
     return {
         "root": str(root),
         "entries": entries if entries else [],
@@ -782,13 +507,6 @@ def list_images_cached_page(
     }
 
 
-def get_image_timestamp_for_sort(item: dict[str, Any]) -> float | None:
-    timestamp = item.get("timeline_ts")
-    if isinstance(timestamp, int | float):
-        return float(timestamp)
-    return None
-
-
 def list_images(root: Path, supported_extensions: set[str], excluded_scan_dirs: set[str]) -> list[dict[str, Any]]:
     return [
         image_metadata_from_path(root, file_path, include_exif=True)
@@ -829,64 +547,3 @@ def list_images_page(
         "next_offset": next_offset if next_offset < total else None,
         "has_more": next_offset < total,
     }
-
-
-def build_deleted_path(deleted_dir: Path, root: Path, relative_path: str) -> Path:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    digest = hashlib.sha1(f"{root}|{relative_path}".encode("utf-8")).hexdigest()[:10]
-    file_name = Path(relative_path).name
-    return deleted_dir / f"{timestamp}_{digest}" / file_name
-
-
-def resolve_deleted_file(deleted_dir: Path, candidate: str) -> Path:
-    deleted_path = Path(candidate).expanduser().resolve()
-    deleted_root = deleted_dir.resolve()
-    try:
-        deleted_path.relative_to(deleted_root)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid deleted file path")
-    return deleted_path
-
-
-def remove_empty_deleted_parent(deleted_dir: Path, deleted_path: Path) -> None:
-    deleted_root = deleted_dir.resolve()
-    parent = deleted_path.resolve().parent
-    while parent != deleted_root:
-        try:
-            parent.rmdir()
-        except OSError:
-            break
-        parent = parent.parent
-
-
-def thumbnail_path_for(thumbnail_dir: Path, root: Path, relative_path: str) -> Path:
-    digest = hashlib.sha1(f"{root}|{relative_path}".encode("utf-8")).hexdigest()
-    return thumbnail_dir / digest[:2] / digest[2:4] / f"{digest}.jpg"
-
-
-def deleted_thumbnail_path_for(thumbnail_dir: Path, deleted_path: Path) -> Path:
-    digest = hashlib.sha1(f"deleted|{deleted_path}".encode("utf-8")).hexdigest()
-    return thumbnail_dir / "deleted" / digest[:2] / f"deleted_{digest}.jpg"
-
-
-def image_file_response(image_path: Path, thumbnail_path: Path, thumbnail_size: tuple[int, int], image_module: Any, image_ops_module: Any) -> FileResponse:
-    should_refresh = not thumbnail_path.exists() or thumbnail_path.stat().st_mtime < image_path.stat().st_mtime
-    if not should_refresh:
-        try:
-            with image_module.open(thumbnail_path) as existing_thumb:
-                should_refresh = max(existing_thumb.size) < max(thumbnail_size)
-        except Exception:
-            should_refresh = True
-
-    if should_refresh:
-        thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
-        with image_module.open(image_path) as img:
-            if hasattr(img, "draft"):
-                img.draft("RGB", thumbnail_size)
-            thumb = image_ops_module.exif_transpose(img)
-            thumb.thumbnail(thumbnail_size)
-            if thumb.mode != "RGB":
-                thumb = thumb.convert("RGB")
-            thumb.save(thumbnail_path, format="JPEG", quality=92, optimize=True)
-
-    return FileResponse(thumbnail_path)

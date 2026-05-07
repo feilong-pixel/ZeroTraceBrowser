@@ -258,6 +258,7 @@ export default {
       clearCopyTarget: "Clear",
       removeRoot: "Remove",
       saveCopyTarget: "Save",
+      saveDisplayStyle: "Save",
       saveLanguage: "Save",
       switchRoot: "Set Current"
     },
@@ -273,10 +274,18 @@ export default {
       title: "Remove folder"
     },
     intro: "Manage image roots, the default copy target, and interface language.",
+    displayStyles: {
+      default: "Default",
+      harbor: "Harbor",
+      multiDark: "Multi Dark",
+      multiLight: "Multi Light"
+    },
     labels: {
       activeRoot: "Current folder",
       copyTarget: "Default copy target",
       copyTargetInput: "Default copy folder",
+      displayStyle: "Display style",
+      displayStyleSelect: "Display style",
       language: "Interface language",
       languageSelect: "Interface language",
       newRootInput: "Add folder",
@@ -289,6 +298,7 @@ export default {
     sections: {
       advanced: "Advanced",
       copyTarget: "Copy Target",
+      displayStyle: "Display Style",
       language: "Language",
       overview: "Overview",
       roots: "Image folders",
@@ -298,6 +308,7 @@ export default {
       copyTargetCleared: "Default copy target cleared",
       copyTargetSaved: "Default copy target saved",
       invalidRoot: "Enter a folder to add",
+      displayStyleSaved: "Display style saved",
       languageSaved: "Language saved",
       loadFailed: "Failed to load settings",
       ready: "Ready",
@@ -308,6 +319,7 @@ export default {
       rootRemovedWithCleanup: "Folder removed and related data cleared",
       rootRequired: "At least one folder must remain",
       rootSwitched: "Current folder switched",
+      unsupportedDisplayStyle: "Unsupported display style",
       unsupportedLanguage: "Unsupported language"
     },
     title: "Settings"
@@ -324,8 +336,8 @@ export default {
   tasks: {
     backToGallery: "Back to gallery",
     confirmLeaveWhileRunning: "A task is still running. Leaving this page may interrupt the current processing or stop live monitoring. Continue?",
-    confirmRunRebuild: (mode) => `Rebuild Hash DB and duplicate results with ${mode} mode?`,
-    confirmRunTask: "Start organizing and append new records to the Hash DB?",
+    confirmRunRebuild: "Rebuild the Hash DB and duplicate results from the current folder?",
+    confirmRunTask: "Start organizing and update the Hash DB and duplicate results?",
     csvPath: "CSV Path",
     destDir: "Destination Directory",
     duplicateDetection: "Duplicate detection",
@@ -352,11 +364,6 @@ export default {
     pageIntro: "Run organizer jobs and generate logs, CSV, and duplicates.json.",
     pageTitle: "MediaArchiveOrganizer Tasks",
     phashThreshold: "pHash Threshold",
-    rebuildMode: "Rebuild Mode",
-    rebuildModes: {
-      append: "append",
-      replace: "replace"
-    },
     rebuildRoot: "Rebuild Root",
     runRebuildTask: "Rebuild",
     runTask: "Start",
