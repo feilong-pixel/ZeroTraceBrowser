@@ -149,6 +149,10 @@ function fileNameFromPath(path) {
   return String(path || "").split(/[\\/]/).pop() || String(path || "-");
 }
 
+function isVideoPath(path) {
+  return /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(String(path || ""));
+}
+
 function normalizeLogAction(action) {
   return action || "deleted";
 }
@@ -226,7 +230,7 @@ function renderRecycleItems(els, state) {
       (item) => `
       <article class="recycle-item">
         <div class="recycle-item-layout">
-          <div class="recycle-thumb-column">
+          <div class="recycle-thumb-column ${isVideoPath(item.relative_path || item.deleted_to) ? "is-video" : ""}">
             <img
               class="recycle-thumb"
               src="/api/recycle-bin/thumbnail?deleted_to=${encodeURIComponent(item.deleted_to)}"

@@ -16,7 +16,10 @@ DEFAULT_IMAGE_ROOT = str(Path(os.getenv("ZTB_IMAGE_ROOT", BASE_DIR)).resolve())
 DEFAULT_COPY_TARGET = os.getenv("ZTB_DEFAULT_COPY_TARGET", "")
 
 THUMBNAIL_SIZE = (384, 384)
-SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"}
+FRONTEND_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov"}
+SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 SKIP_SCAN_DIR_NAMES = {
     ".git",
     "__pycache__",

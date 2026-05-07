@@ -379,6 +379,8 @@ export default {
       copying: (path) => `Copying ${path} ...`,
       deleted: (path) => `Moved ${path} to the Recycle Bin.`,
       deleting: (path) => `Moving ${path} to the Recycle Bin ...`,
+      openedFolder: (path) => `Opened folder: ${path}`,
+      openingFolder: (path) => `Opening folder for ${path} ...`,
       openedEditor: (path) => `Opened in image editor: ${path}`,
       openingEditor: (path) => `Opening ${path} in image editor ...`
     },
@@ -386,6 +388,7 @@ export default {
       backToGallery: "Back to Gallery",
       copySelected: "Copy",
       deleteSelected: "Delete",
+      openFolder: "Open Folder",
       openEditor: "Edit in Paint",
       rotateLeft: "Rotate left",
       rotateRight: "Rotate right",

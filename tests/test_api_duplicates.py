@@ -133,6 +133,32 @@ def test_duplicates_thumbnail_and_open_result_root(api_client, monkeypatch) -> N
     assert opened == [archive_root]
 
 
+def test_duplicates_thumbnail_returns_placeholder_for_video(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    archive_root.mkdir()
+    (archive_root / "clip.mp4").write_bytes(b"not a real video")
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    write_duplicates_json(
+        ztb_context.root_duplicates_path(archive_root),
+        archive_root,
+        [
+            {
+                "group_id": "video-group",
+                "reason": "strict",
+                "hash": "video",
+                "kept_path": "clip.mp4",
+                "items": [{"role": "kept", "path": "clip.mp4"}],
+            },
+        ],
+    )
+
+    thumbnail_response = client.get("/api/duplicates/thumbnail", params={"relative_path": "clip.mp4"})
+
+    assert thumbnail_response.status_code == 200
+    assert thumbnail_response.headers["content-type"].startswith("image/")
+
+
 def test_duplicates_api_can_return_only_requested_page(api_client) -> None:
     client, workspace, *_ = api_client
     archive_root = workspace / "archive"

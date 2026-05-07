@@ -137,6 +137,11 @@ function imageExists(item) {
   return item?.exists !== false;
 }
 
+function isVideoItem(item) {
+  const path = String(item?.relative_path || "").toLowerCase();
+  return item?.media_type === "video" || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(path);
+}
+
 function pruneSelectionToFiltered(state) {
   const visiblePaths = new Set(state.filtered.map((item) => item.relative_path));
 
@@ -480,6 +485,7 @@ function createGalleryCard(els, state, item) {
   const thumb = node.querySelector(".thumb");
 
   node.dataset.path = item.relative_path;
+  node.classList.toggle("is-video", isVideoItem(item));
   node.classList.toggle("is-missing", !imageExists(item));
   node.classList.toggle("is-selected", state.selectedPaths.has(item.relative_path));
   node.setAttribute(

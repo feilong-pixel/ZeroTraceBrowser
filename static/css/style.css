@@ -395,6 +395,35 @@ button:hover {
   background: rgba(255, 247, 244, 0.78);
 }
 
+.card.is-video::after {
+  content: "VIDEO";
+  position: absolute;
+  right: 10px;
+  bottom: 62px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.82);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.duplicate-thumb-button[data-media-type="video"]::after,
+.recycle-thumb-column.is-video::after {
+  content: "VIDEO";
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.82);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
 .card-body {
   min-height: 40px;
   min-width: 0;
@@ -1012,6 +1041,13 @@ button:disabled:hover {
   object-fit: contain;
   transform-origin: center center;
   transition: transform 100ms ease;
+}
+
+.viewer-video {
+  display: block;
+  width: min(100%, 960px);
+  max-height: calc(100vh - 48px);
+  background: #111827;
 }
 
 .viewer-sidebar-page {
@@ -2314,6 +2350,7 @@ button:disabled:hover {
 }
 
 .recycle-thumb-column {
+  position: relative;
   min-width: 0;
   display: grid;
   gap: var(--space-3);

@@ -13,6 +13,7 @@ from typing import Any, Iterable
 
 from fastapi import HTTPException
 from MediaArchiveOrganizer.core.date_classifier import get_target_date_with_source
+from core.config.app_config import VIDEO_EXTENSIONS
 from core.services.file_operations import (
     copy_file_preserve_times,
     move_file_preserve_times,
@@ -133,10 +134,12 @@ def image_metadata_from_path(root: Path, file_path: Path, include_exif: bool = T
     stat = file_path.stat()
     timeline_date, timeline_ts, timeline_source = timeline_metadata_from_path(file_path)
     captured_at = timeline_date if include_exif else None
+    media_type = "video" if file_path.suffix.lower() in VIDEO_EXTENSIONS else "image"
     return {
         "relative_path": relative_path,
         "path": relative_path,
         "name": file_path.name,
+        "media_type": media_type,
         "size": stat.st_size,
         "captured_at": captured_at.isoformat() if captured_at else "",
         "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),

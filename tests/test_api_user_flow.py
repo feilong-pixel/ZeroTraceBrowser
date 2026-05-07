@@ -107,6 +107,24 @@ def test_images_lightweight_page_returns_without_total(api_client) -> None:
     assert all(item["timeline_time"] for item in payload["items"])
 
 
+def test_images_scan_video_files_and_return_placeholder_thumbnail(api_client) -> None:
+    client, _, image_root, _ = api_client
+    for name in ("clip.mp4", "sample.webm", "movie.mov", "phone.m4v", "legacy.avi", "archive.mkv"):
+        (image_root / name).write_bytes(b"not a real video")
+
+    response = client.get("/api/images")
+
+    assert response.status_code == 200
+    payload = response.json()
+    paths = {item["relative_path"]: item for item in payload["items"]}
+    assert set(paths) == {"clip.mp4", "sample.webm", "movie.mov", "phone.m4v", "legacy.avi", "archive.mkv"}
+    assert all(item["media_type"] == "video" for item in paths.values())
+
+    thumbnail_response = client.get("/api/thumbnail", params={"relative_path": "clip.mp4"})
+    assert thumbnail_response.status_code == 200
+    assert thumbnail_response.headers["content-type"].startswith("image/")
+
+
 def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
     create_test_image(image_root / "a.jpg")

@@ -15,6 +15,7 @@ function getViewerElements() {
     statusMessage: $("#statusMessage"),
     viewerCanvas: $("#viewerCanvas"),
     viewerImage: $("#viewerImage"),
+    viewerVideo: $("#viewerVideo"),
     viewerName: $("#viewerName"),
     viewerPath: $("#viewerPath"),
     viewerZoom: $("#viewerZoom"),
@@ -28,6 +29,7 @@ function getViewerElements() {
     viewerRotateRightButton: $("#viewerRotateRightButton"),
     viewerCopyButton: $("#viewerCopyButton"),
     viewerOpenEditorButton: $("#viewerOpenEditorButton"),
+    viewerOpenFolderButton: $("#viewerOpenFolderButton"),
     viewerDeleteButton: $("#viewerDeleteButton"),
   };
 }
@@ -103,6 +105,11 @@ function updateZoomText(els, state) {
 
 function applyImageTransform(els, state) {
   els.viewerImage.style.transform = `scale(${state.zoom}) rotate(${state.rotation}deg)`;
+}
+
+function isVideoItem(item) {
+  const path = String(item?.relative_path || "").toLowerCase();
+  return item?.media_type === "video" || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(path);
 }
 
 function translateViewerPage(els, state) {
@@ -404,14 +411,51 @@ async function openAt(els, state, index) {
   setText(els.viewerName, state.filtered[index].name);
   setText(els.viewerPath, state.filtered[index].relative_path);
 
-  els.viewerImage.src =
-    `/api/image?relative_path=${encodeURIComponent(state.filtered[index].relative_path)}`;
+  const item = state.filtered[index];
+  const sourceUrl = `/api/image?relative_path=${encodeURIComponent(item.relative_path)}`;
+  const isVideo = isVideoItem(item);
+
+  els.viewerImage.classList.toggle("is-hidden", isVideo);
+  els.viewerVideo.classList.toggle("is-hidden", !isVideo);
+  els.viewerOpenEditorButton.disabled = isVideo;
+
+  if (isVideo) {
+    els.viewerImage.removeAttribute("src");
+    els.viewerVideo.src = sourceUrl;
+    els.viewerVideo.load();
+    state.base = 1;
+  } else {
+    els.viewerVideo.pause();
+    els.viewerVideo.removeAttribute("src");
+    els.viewerImage.src = sourceUrl;
+  }
 
   updateZoomText(els, state);
   loadExif(els, state).catch(() => {
     setText(els.viewerExifBox, t("viewer.exif.failed"));
     els.viewerExifBox.className = "muted";
   });
+}
+
+async function openSelectedFolder(els, state) {
+  const item = state.filtered[state.index];
+  const activeRoot = state.config?.active_root;
+  if (!item || !activeRoot) return;
+
+  const normalizedRoot = String(activeRoot).replace(/[\\/]+$/, "");
+  const filePath = `${normalizedRoot}/${item.relative_path}`;
+
+  try {
+    setStatus(els, t("viewer.action.openingFolder", item.relative_path));
+    const result = await postJson("/api/open-path", { path: filePath });
+    setStatus(els, t("viewer.action.openedFolder", result.path));
+  } catch (error) {
+    setStatus(els, error.message, true);
+    await showAlert(error.message, {
+      title: t("dialog.title.error"),
+      confirmText: t("dialog.buttons.ok"),
+    });
+  }
 }
 
 function shiftImage(els, state, delta) {
@@ -594,6 +638,10 @@ function bindViewerEvents(els, state) {
     openSelectedInEditor(els, state);
   });
 
+  on(els.viewerOpenFolderButton, "click", () => {
+    openSelectedFolder(els, state);
+  });
+
   on(els.viewerDeleteButton, "click", () => {
     deleteSelected(els, state);
   });
@@ -688,6 +736,7 @@ export function initViewerPage() {
     els.statusMessage,
     els.viewerCanvas,
     els.viewerImage,
+    els.viewerVideo,
     els.viewerName,
     els.viewerPath,
     els.viewerZoom,
@@ -701,6 +750,7 @@ export function initViewerPage() {
     els.viewerRotateRightButton,
     els.viewerCopyButton,
     els.viewerOpenEditorButton,
+    els.viewerOpenFolderButton,
     els.viewerDeleteButton,
   ];
 

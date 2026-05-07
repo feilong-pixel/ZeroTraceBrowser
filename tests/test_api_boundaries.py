@@ -240,7 +240,7 @@ def test_purge_permanently_deletes_on_non_windows(api_client, monkeypatch: pytes
     assert not deleted_to.exists()
 
 
-def test_recycle_thumbnail_rejects_unsupported_image_format(api_client) -> None:
+def test_recycle_thumbnail_returns_placeholder_for_video(api_client) -> None:
     client, _, image_root, _ = api_client
     deleted_to = ztb_context.root_deleted_dir(image_root) / "entry" / "clip.MOV"
     deleted_to.parent.mkdir(parents=True, exist_ok=True)
@@ -248,8 +248,8 @@ def test_recycle_thumbnail_rejects_unsupported_image_format(api_client) -> None:
 
     response = client.get("/api/recycle-bin/thumbnail", params={"deleted_to": str(deleted_to)})
 
-    assert response.status_code == 415
-    assert response.json()["detail"] == "Unsupported image format"
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/")
 
 
 def test_delete_missing_image_clears_stale_gallery_entry(api_client) -> None:

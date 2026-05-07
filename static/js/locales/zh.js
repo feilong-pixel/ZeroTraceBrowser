@@ -377,6 +377,8 @@ export default {
       copying: (path) => `正在复制 ${path} ...`,
       deleted: (path) => `已删除 ${path}。`,
       deleting: (path) => `正在删除 ${path} ...`,
+      openedFolder: (path) => `已打开所在文件夹：${path}`,
+      openingFolder: (path) => `正在打开 ${path} 所在文件夹 ...`,
       openedEditor: (path) => `已用图片编辑器打开：${path}`,
       openingEditor: (path) => `正在用图片编辑器打开 ${path} ...`
     },
@@ -384,6 +386,7 @@ export default {
       backToGallery: "返回图库",
       copySelected: "复制",
       deleteSelected: "删除",
+      openFolder: "打开所在文件夹",
       openEditor: "用画图编辑",
       rotateLeft: "向左旋转",
       rotateRight: "向右旋转",

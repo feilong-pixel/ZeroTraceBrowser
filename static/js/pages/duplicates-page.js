@@ -108,6 +108,10 @@ function duplicateDirectory(path) {
   return index > 0 ? value.slice(0, index) : "-";
 }
 
+function isVideoPath(path) {
+  return /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(String(path || ""));
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -420,6 +424,7 @@ function renderDuplicatesPage(els, state) {
                 <button
                   type="button"
                   class="duplicate-thumb-button ${selectedPathFor(state, group.group_id) === path ? "is-selected" : ""} ${isDeleted ? "is-deleted" : ""}"
+                  ${isVideoPath(path) ? 'data-media-type="video"' : ""}
                   ${isDeleted ? "" : `data-action="select-image"`}
                   data-group-id="${escapeHtml(group.group_id)}"
                   data-path="${escapeHtml(path)}"

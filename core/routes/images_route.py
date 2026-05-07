@@ -83,6 +83,12 @@ def create_images_router(ctx: Any) -> APIRouter:
         image_path = resolve_under_root(root, relative_path)
         if not image_path.exists() or not image_path.is_file():
             raise HTTPException(status_code=404, detail="Image not found")
+        if image_path.suffix.lower() in ctx.VIDEO_EXTENSIONS:
+            return {
+                "relative_path": relative_path,
+                "media_type": "video",
+                "exif": {},
+            }
 
         try:
             exif = ctx.read_exif_summary(image_path)

@@ -379,6 +379,8 @@ export default {
       copying: (path) => `${path} をコピー中 ...`,
       deleted: (path) => `${path} をごみ箱へ移しました。`,
       deleting: (path) => `${path} をごみ箱へ移動中 ...`,
+      openedFolder: (path) => `フォルダを開きました: ${path}`,
+      openingFolder: (path) => `${path} のフォルダを開いています ...`,
       openedEditor: (path) => `画像エディターで開きました: ${path}`,
       openingEditor: (path) => `${path} を画像エディターで開いています ...`
     },
@@ -386,6 +388,7 @@ export default {
       backToGallery: "ギャラリーへ戻る",
       copySelected: "コピー",
       deleteSelected: "削除",
+      openFolder: "フォルダを開く",
       openEditor: "ペイントで編集",
       rotateLeft: "左回転",
       rotateRight: "右回転",
