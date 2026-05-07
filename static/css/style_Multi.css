@@ -59,6 +59,38 @@ body {
     linear-gradient(180deg, #252526 0%, var(--bg) 100%);
 }
 
+:root[data-theme="dark"] .settings-header {
+  border-bottom-color: var(--line);
+}
+
+:root[data-theme="dark"] .settings-header .intro,
+:root[data-theme="dark"] .settings-page label,
+:root[data-theme="dark"] .settings-page .muted,
+:root[data-theme="dark"] .settings-page .meta-card span {
+  color: #c8c8c8;
+}
+
+:root[data-theme="dark"] .settings-page .panel,
+:root[data-theme="dark"] .settings-focus-panel,
+:root[data-theme="dark"] .settings-page .meta-card {
+  background: rgba(45, 45, 48, 0.94);
+  border-color: var(--line);
+}
+
+:root[data-theme="dark"] .settings-page h1,
+:root[data-theme="dark"] .settings-page h2,
+:root[data-theme="dark"] .settings-page .meta-card strong,
+:root[data-theme="dark"] .settings-status-panel #statusMessage {
+  color: #f2f2f2;
+}
+
+:root[data-theme="dark"] .settings-page input,
+:root[data-theme="dark"] .settings-page select {
+  background: #1f1f1f;
+  border-color: #555555;
+  color: #f2f2f2;
+}
+
 input,
 select,
 button,
