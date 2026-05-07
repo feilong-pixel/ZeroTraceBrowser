@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -219,6 +220,17 @@ def test_rebuild_hash_db_failed_task_exposes_error_state(api_client, monkeypatch
     assert queried["error"] == "Fake task failure"
 
 
+def test_rebuild_hash_db_rejects_append_mode(api_client) -> None:
+    client, _, image_root, _ = api_client
+    payload = rebuild_payload(image_root)
+    payload["rebuild_mode"] = "append"
+
+    response = client.post("/api/tasks/rebuild-hash-db", json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported rebuild mode"
+
+
 def test_rebuild_hash_db_keeps_results_separate_per_root(api_client, monkeypatch) -> None:
     client, workspace, _, _ = api_client
     root_a = workspace / "archive_a"
@@ -309,7 +321,7 @@ def test_rebuild_hash_db_keeps_results_separate_per_root(api_client, monkeypatch
     assert payload_b["groups"][0]["group_id"] == "dup_b"
 
 
-def test_run_organizer_uses_task_scoped_duplicates_and_shared_hash_db(api_client, monkeypatch) -> None:
+def test_run_organizer_publishes_duplicates_and_shared_hash_db(api_client, monkeypatch) -> None:
     client, workspace, image_root, _ = api_client
     destination = workspace / "organized"
     captured: list[dict[str, object]] = []
@@ -333,11 +345,11 @@ def test_run_organizer_uses_task_scoped_duplicates_and_shared_hash_db(api_client
     first_task = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination)).json()
     second_task = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination)).json()
 
-    assert first_task["outputs"]["duplicates_json_path"] != second_task["outputs"]["duplicates_json_path"]
+    assert first_task["outputs"]["duplicates_json_path"] == second_task["outputs"]["duplicates_json_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
     assert first_task["outputs"]["duplicates_json_path"].endswith("duplicates.json")
     assert first_task["outputs"]["hash_db_path"].endswith("hash_db.json")
-    assert first_task["outputs"]["duplicates_json_path"] != str(ztb_context.root_duplicates_path(destination))
+    assert first_task["outputs"]["duplicates_json_path"] == str(ztb_context.root_duplicates_path(destination))
     assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB": first_task["outputs"]["hash_db_path"]}
     assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB": second_task["outputs"]["hash_db_path"]}
 
@@ -346,7 +358,7 @@ def test_run_organizer_uses_task_scoped_duplicates_and_shared_hash_db(api_client
     assert first_command[first_command.index("--duplicates-json-path") + 1] == first_task["outputs"]["duplicates_json_path"]
 
 
-def test_run_organizer_does_not_overwrite_published_duplicates(api_client, monkeypatch) -> None:
+def test_run_organizer_updates_published_duplicates(api_client, monkeypatch) -> None:
     client, workspace, image_root, _ = api_client
     destination = workspace / "organized"
     destination.mkdir(parents=True, exist_ok=True)
@@ -367,10 +379,9 @@ def test_run_organizer_does_not_overwrite_published_duplicates(api_client, monke
             },
         ],
     )
-    before = published_path.read_text(encoding="utf-8")
     monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
 
-    def mark_completed_with_empty_duplicates(
+    def mark_completed_with_global_duplicates(
         task_id: str,
         command: list[str],
         workdir: Path,
@@ -379,7 +390,7 @@ def test_run_organizer_does_not_overwrite_published_duplicates(api_client, monke
         task = ztb_app.TASK_REGISTRY.tasks[task_id]
         json_index = command.index("--duplicates-json-path") + 1
         Path(command[json_index]).write_text(
-            '{"destination_root":"","group_count":0,"groups":[]}',
+            '{"destination_root":"updated","group_count":0,"groups":[]}',
             encoding="utf-8",
         )
         task["output_lines"] = ["fake organizer finished"]
@@ -388,12 +399,12 @@ def test_run_organizer_does_not_overwrite_published_duplicates(api_client, monke
         task["finished_at"] = datetime.now().isoformat()
         ztb_app.summarize_task_root(task)
 
-    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_completed_with_empty_duplicates)
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_completed_with_global_duplicates)
 
     response = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination))
 
     assert response.status_code == 200
-    assert published_path.read_text(encoding="utf-8") == before
+    assert json.loads(published_path.read_text(encoding="utf-8"))["destination_root"] == "updated"
 
 
 def test_rebuild_hash_db_reuses_duplicates_and_hash_db_paths_for_same_root(api_client, monkeypatch) -> None:
@@ -494,9 +505,9 @@ def test_completed_task_saves_root_summary_for_index_reuse(api_client, monkeypat
     client.post("/api/settings/roots", json={"path": str(destination)})
     config = client.get("/api/config").json()
     assert config["root_summary"]["image_count"] == 2
-    assert config["root_summary"]["duplicate_group_count"] is None
+    assert config["root_summary"]["duplicate_group_count"] == 1
     assert isinstance(config["root_summary"]["updated_at"], str)
-    assert config["duplicate_results"]["group_count"] == 0
+    assert config["duplicate_results"]["group_count"] == 1
 
     images = client.get("/api/images?offset=0&limit=48&include_exif=false&async_scan=true&refresh_scan=false&include_total=true").json()
     assert images["total"] == 2

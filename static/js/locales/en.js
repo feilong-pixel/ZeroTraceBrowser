@@ -324,8 +324,8 @@ export default {
   tasks: {
     backToGallery: "Back to gallery",
     confirmLeaveWhileRunning: "A task is still running. Leaving this page may interrupt the current processing or stop live monitoring. Continue?",
-    confirmRunRebuild: (mode) => `Rebuild Hash DB and duplicate results with ${mode} mode?`,
-    confirmRunTask: "Start organizing and append new records to the Hash DB?",
+    confirmRunRebuild: "Rebuild the Hash DB and duplicate results from the current folder?",
+    confirmRunTask: "Start organizing and update the Hash DB and duplicate results?",
     csvPath: "CSV Path",
     destDir: "Destination Directory",
     duplicateDetection: "Duplicate detection",
@@ -352,11 +352,6 @@ export default {
     pageIntro: "Run organizer jobs and generate logs, CSV, and duplicates.json.",
     pageTitle: "MediaArchiveOrganizer Tasks",
     phashThreshold: "pHash Threshold",
-    rebuildMode: "Rebuild Mode",
-    rebuildModes: {
-      append: "append",
-      replace: "replace"
-    },
     rebuildRoot: "Rebuild Root",
     runRebuildTask: "Rebuild",
     runTask: "Start",

@@ -396,24 +396,6 @@ def test_rebuild_hash_db_replace_rebuilds_only_target_root(work_dir: Path) -> No
     assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
 
 
-def test_rebuild_hash_db_append_keeps_existing_records(work_dir: Path) -> None:
-    root_a = work_dir / "organized_a"
-    root_b = work_dir / "organized_b"
-    create_media_file(root_a / "2026" / "04" / "16" / "a.jpg", content="first")
-    create_media_file(root_b / "2026" / "04" / "16" / "b.jpg", content="second")
-
-    rebuild_hash_db(str(root_a), rebuild_mode="replace", hash_method="strict")
-    stats = rebuild_hash_db(str(root_b), rebuild_mode="append", hash_method="strict")
-    db = load_hash_db()
-
-    assert stats["scanned_files"] == 1
-    assert stats["strict_indexed"] == 1
-    strict_paths = sorted(path for paths in db["strict"].values() for path in paths)
-    assert len(strict_paths) == 2
-    assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
-    assert strict_paths[1].endswith(str(Path("organized_b") / "2026" / "04" / "16" / "b.jpg"))
-
-
 def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) -> None:
     root = work_dir / "organized"
     json_path = work_dir / "duplicates.json"

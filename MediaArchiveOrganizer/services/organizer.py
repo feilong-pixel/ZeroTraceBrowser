@@ -755,7 +755,12 @@ def organize_images(
     save_hash_db(hash_db)
     save_hash_cache(hash_cache)
     append_duplicate_report_rows(build_duplicate_report_path(log_path), duplicate_rows)
-    write_duplicate_json(duplicates_json_path or build_duplicate_json_path(log_path), dst_dir, duplicate_rows)
+    rebuild_duplicate_results_json(
+        dst_dir,
+        duplicates_json_path or build_duplicate_json_path(log_path),
+        "both",
+        phash_threshold,
+    )
 
     # Write one log entry per processed file so each run can be audited later.
     with open(log_path, "w", encoding="utf-8") as f:

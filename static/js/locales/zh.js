@@ -322,8 +322,8 @@ export default {
   tasks: {
     backToGallery: "返回主画面",
     confirmLeaveWhileRunning: "当前处理仍在执行。现在返回主画面可能中断当前处理或停止本页监控，是否继续？",
-    confirmRunRebuild: (mode) => `确认以 ${mode} 模式重建 Hash DB 和重复结果吗？`,
-    confirmRunTask: "确认开始整理，并向 Hash DB 追加新记录吗？",
+    confirmRunRebuild: "确认根据当前目录重新生成 Hash DB 和重复结果吗？",
+    confirmRunTask: "确认开始整理，并更新 Hash DB 与重复结果吗？",
     csvPath: "CSV 路径",
     destDir: "目标目录",
     duplicateDetection: "重复检测",
@@ -350,11 +350,6 @@ export default {
     pageIntro: "运行整理任务，生成日志、CSV 和 duplicates.json。",
     pageTitle: "MediaArchiveOrganizer 任务",
     phashThreshold: "pHash 阈值",
-    rebuildMode: "重建模式",
-    rebuildModes: {
-      append: "append（追加）",
-      replace: "replace（替换）"
-    },
     rebuildRoot: "重建目录",
     runRebuildTask: "重建结果",
     runTask: "开始整理",

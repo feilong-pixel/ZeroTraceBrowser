@@ -20,6 +20,7 @@ from core.services.settings_service import normalize_task_lang
 def create_tasks_router(ctx: Any) -> APIRouter:
     router = APIRouter()
 
+    # POST /api/tasks/run-organizer
     @router.post("/api/tasks/run-organizer")
     def run_organizer(payload: OrganizerTaskRequest) -> dict[str, Any]:
         if payload.mode not in {"copy", "move"}:
@@ -35,7 +36,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         task_id = uuid.uuid4().hex[:12]
         log_path = ctx.build_task_log_path(task_id, dst_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        outputs = ctx.build_task_outputs(log_path, dst_path, publish_duplicates=False)
+        outputs = ctx.build_task_outputs(log_path, dst_path, publish_duplicates=True)
         require_not_same_or_child(
             dst_path,
             src_path,
@@ -90,9 +91,10 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         thread.start()
         return ctx.serialize_task(task)
 
+    # POST /api/tasks/rebuild-hash-db
     @router.post("/api/tasks/rebuild-hash-db")
     def rebuild_hash_db_task(payload: RebuildHashDbTaskRequest) -> dict[str, Any]:
-        if payload.rebuild_mode not in {"replace", "append"}:
+        if payload.rebuild_mode != "replace":
             raise HTTPException(status_code=400, detail="Unsupported rebuild mode")
         if payload.hash_method not in {"strict", "phash", "both"}:
             raise HTTPException(status_code=400, detail="Unsupported hash method")
@@ -115,7 +117,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             "--rebuild-hash-db-root",
             root,
             "--rebuild-hash-db-mode",
-            payload.rebuild_mode,
+            "replace",
             "--rebuild-hash-method",
             payload.hash_method,
             "--phash-threshold",
@@ -150,11 +152,13 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         thread.start()
         return ctx.serialize_task(task)
 
+    # GET /api/tasks/running
     @router.get("/api/tasks/running")
     def get_running_task() -> dict[str, Any]:
         task = ctx.get_running_task()
         return {"task": ctx.serialize_task(task) if task is not None else None}
 
+    # GET /api/tasks/{task_id}
     @router.get("/api/tasks/{task_id}")
     def get_task(task_id: str) -> dict[str, Any]:
         task = ctx.TASK_REGISTRY.get(task_id)
@@ -162,6 +166,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             raise HTTPException(status_code=404, detail="Task not found")
         return ctx.serialize_task(task)
 
+    # GET /api/tasks/{task_id}/duplicates
     @router.get("/api/tasks/{task_id}/duplicates")
     def get_task_duplicates(task_id: str) -> dict[str, Any]:
         task = ctx.TASK_REGISTRY.get(task_id)

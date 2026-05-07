@@ -23,7 +23,6 @@ function getTasksElements() {
     maintenancePanel: $("#maintenancePanel"),
 
     rebuildRootInput: $("#rebuildRootInput"),
-    rebuildModeSelect: $("#rebuildModeSelect"),
     hashMethodSelect: $("#hashMethodSelect"),
     runRebuildButton: $("#runRebuildButton"),
 
@@ -157,23 +156,11 @@ function applyTranslations(els, state) {
       ? t("tasks.hideHashMaintenance")
       : t("tasks.showHashMaintenance");
   }
-  applyRebuildModeLabels(els);
-
   if (!state.currentTaskId) {
     setTaskStatus(els, t("tasks.idle"));
     setTaskLog(els, t("tasks.noTaskStarted"));
   }
   markI18nReady();
-}
-
-function applyRebuildModeLabels(els) {
-  if (!els.rebuildModeSelect) {
-    return;
-  }
-
-  Array.from(els.rebuildModeSelect.options).forEach((option) => {
-    option.textContent = t(`tasks.rebuildModes.${option.value}`);
-  });
 }
 
 function updateSummary(els, task) {
@@ -269,7 +256,7 @@ async function runRebuildTask(els, state) {
   }
 
   const confirmed = await showConfirm(
-    t("tasks.confirmRunRebuild", t(`tasks.rebuildModes.${els.rebuildModeSelect.value}`)),
+    t("tasks.confirmRunRebuild"),
     {
       title: t("dialog.title.warning"),
       confirmText: t("tasks.runRebuildTask"),
@@ -293,7 +280,7 @@ async function runRebuildTask(els, state) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         root: els.rebuildRootInput.value.trim(),
-        rebuild_mode: els.rebuildModeSelect.value,
+        rebuild_mode: "replace",
         hash_method: els.hashMethodSelect.value,
         lang: state.currentLang,
       }),

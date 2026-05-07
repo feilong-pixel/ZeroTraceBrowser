@@ -1,5 +1,5 @@
 from .base import *
-from .settings_context import save_root_summary
+from .settings_context import save_root_summary, get_active_image_root, save_image_index_summary_metadata_service
 from .root_workspace import ensure_root_workspace, root_task_log_dir, root_hash_db_path, root_duplicates_path, root_image_index_dir
 from .artifact_context import get_hash_db_path
 from .image_context import iter_image_files, clear_image_list_cache
@@ -76,7 +76,7 @@ def summarize_task_root(task: dict[str, Any]) -> None:
     image_count = sum(1 for _ in iter_image_files(root)) if root.exists() else 0
     duplicate_group_count: int | None = None
     duplicates_json_path = str(task.get("outputs", {}).get("duplicates_json_path", "")).strip()
-    if task.get("task_type") == "rebuild_hash_db" and duplicates_json_path:
+    if task.get("task_type") in {"organizer", "rebuild_hash_db"} and duplicates_json_path:
         try:
             with Path(duplicates_json_path).open("r", encoding="utf-8") as handle:
                 payload = json.load(handle)

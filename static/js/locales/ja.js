@@ -324,8 +324,8 @@ export default {
   tasks: {
     backToGallery: "メイン画面へ戻る",
     confirmLeaveWhileRunning: "現在の処理はまだ実行中です。ここで画面を離れると、現在の処理が中断されるか、このページでの監視が停止する可能性があります。続行しますか？",
-    confirmRunRebuild: (mode) => `${mode} モードで Hash DB と重複結果を再構築しますか？`,
-    confirmRunTask: "整理を開始し、Hash DB に新しい記録を追加しますか？",
+    confirmRunRebuild: "現在のフォルダーをもとに Hash DB と重複結果を再構築しますか？",
+    confirmRunTask: "整理を開始し、Hash DB と重複結果を更新しますか？",
     csvPath: "CSV パス",
     destDir: "出力ディレクトリ",
     duplicateDetection: "重複検出",
@@ -352,11 +352,6 @@ export default {
     pageIntro: "整理タスクを実行し、ログ、CSV、duplicates.json を生成します。",
     pageTitle: "MediaArchiveOrganizer タスク",
     phashThreshold: "pHash しきい値",
-    rebuildMode: "再構築モード",
-    rebuildModes: {
-      append: "append（追加）",
-      replace: "replace（置換）"
-    },
     rebuildRoot: "再構築対象ディレクトリ",
     runRebuildTask: "再構築",
     runTask: "開始",

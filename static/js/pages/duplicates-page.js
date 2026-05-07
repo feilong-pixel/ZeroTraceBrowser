@@ -343,7 +343,7 @@ function renderDuplicatesPage(els, state) {
     els.duplicatesSummary,
     `${totalGroupCount} / ${allGroupCount || totalGroupCount}`,
   );
-  setText(els.summaryGroupCount, String(totalGroupCount));
+  setText(els.summaryGroupCount, String(allGroupCount || totalGroupCount));
   setText(els.summaryGeneratedAt, formatDisplayTime(payload.generated_at));
   setInputValue(els.summaryResultRoot, payload.destination_root || "-");
   setText(els.pageInfo, t("duplicates.pageInfo", state.page, total));
