@@ -1,6 +1,6 @@
 # ZeroTraceBrowser
 
-> A lightweight, controlled, and recoverable local image browser and organizer.
+> Browse, review, and clean up your local photos without importing them into a cloud service or risking irreversible deletion.
 
 ---
 
@@ -67,6 +67,21 @@ The task system can generate:
 * `duplicate_report.csv`
 
 These outputs are intended for manual review and handling, not automatic deletion.
+
+Duplicate detection supports two methods:
+
+* **strict** — exact byte hash match
+* **phash** — perceptual hash match with a configurable threshold (default 4)
+
+Both methods can also be combined in a single scan.
+
+### EXIF Data Display
+
+The viewer reads and displays embedded EXIF metadata (camera model, capture date, GPS coordinates, etc.) when available. Videos show a media-type indicator instead.
+
+### Open in System Editor
+
+Any image can be opened in the OS default application (e.g. Photos, Paint) directly from the viewer, without leaving the browser tab.
 
 ### Timeline Browsing
 
@@ -200,11 +215,13 @@ The system favors clear structure, explicit logic, maintainability, and predicta
 ### 1. Clone the Project
 
 ```powershell
-git clone https://github.com/yourname/ZeroTraceBrowser.git
+git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
 cd ZeroTraceBrowser
 ```
 
 ### 2. Create a Virtual Environment
+
+Requires **Python 3.10 or later**.
 
 ```powershell
 python -m venv venv
@@ -235,6 +252,20 @@ Or run Uvicorn directly:
 ```text
 http://127.0.0.1:8000
 ```
+
+---
+
+## Environment Variables
+
+All variables are optional. When unset, the defaults shown below apply.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ZTB_IMAGE_ROOT` | Project directory | Default image root directory loaded on startup |
+| `ZTB_DEFAULT_COPY_TARGET` | _(empty)_ | Default destination used by the copy action |
+| `ZTB_CORS_ORIGINS` | `http://127.0.0.1:8000` and localhost variants | Comma-separated list of allowed CORS origins |
+| `ZTB_TRUSTED_HOSTS` | `localhost`, `127.0.0.1`, `::1` | Comma-separated list of trusted host names |
+| `ZTB_ALLOW_ARBITRARY_OPEN_PATH` | _(off)_ | Set to `1` or `true` to allow opening any file path in the system editor, not just paths within configured roots |
 
 ---
 
@@ -316,6 +347,7 @@ This data improves browsing speed, preserves operation history, and keeps state 
 
 * Delete is a safe delete by default. Files are moved into ZeroTraceBrowser's app-level recycle area.
 * The app-level recycle area is not the same as the Windows system Recycle Bin.
+* When you permanently clean (purge) files from the app recycle area on Windows, they are sent to the Windows system Recycle Bin rather than deleted immediately. On other platforms they are permanently removed.
 * Cleaning the recycle area or removing root history requires explicit user confirmation.
 * Make sure the image root and copy target directories have the required read/write permissions.
 * The current version is intended for local use. Do not expose it directly to the public internet.
@@ -374,6 +406,38 @@ If this project is useful to you, contributions are welcome:
 * Star the project
 * Open an issue
 * Submit a pull request
+
+---
+
+## Current Limitations
+
+- Desktop/local use only
+- No installer yet
+- Requires Python environment
+- Video preview is basic
+- Duplicate handling is manual
+- AI tagging is not implemented yet
+
+---
+
+## Status
+
+Current version: v0.3.0
+
+This is an early local-first release for technical users.
+A packaged desktop release may be considered later.
+
+---
+
+## Who is this for?
+
+ZeroTraceBrowser is useful if you:
+
+- Keep many photos in local folders, external drives, or NAS folders
+- Do not want to import photos into a cloud service
+- Want to browse photos continuously instead of opening files one by one
+- Need duplicate detection but do not trust automatic deletion
+- Prefer explicit, recoverable file operations
 
 ---
 
