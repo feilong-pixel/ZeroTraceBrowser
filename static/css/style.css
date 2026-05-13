@@ -160,6 +160,10 @@ p {
   display: none;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .ghost {
   background: transparent;
 }

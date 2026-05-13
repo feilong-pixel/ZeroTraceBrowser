@@ -402,31 +402,45 @@ function isImageWithinDateRange(item, startValue, endValue) {
 async function openAt(els, state, index) {
   if (index < 0 || index >= state.filtered.length) return;
 
-  state.index = index;
-  state.selected = state.filtered[index].relative_path;
-  state.zoom = 1;
-  state.base = 1;
-  state.rotation = 0;
-
-  setText(els.viewerName, state.filtered[index].name);
-  setText(els.viewerPath, state.filtered[index].relative_path);
-
   const item = state.filtered[index];
   const sourceUrl = `/api/image?relative_path=${encodeURIComponent(item.relative_path)}`;
   const isVideo = isVideoItem(item);
 
-  els.viewerImage.classList.toggle("is-hidden", isVideo);
-  els.viewerVideo.classList.toggle("is-hidden", !isVideo);
+  state.index = index;
+  state.selected = item.relative_path;
+  state.zoom = 1;
+  state.base = 1;
+  state.rotation = 0;
+
+  els.viewerImage.classList.add("is-hidden");
+  els.viewerVideo.classList.add("is-hidden");
+  els.viewerImage.hidden = true;
+  els.viewerVideo.hidden = true;
+  els.viewerVideo.pause();
+  els.viewerImage.removeAttribute("src");
+  els.viewerVideo.removeAttribute("src");
+
+  setText(els.viewerName, item.name);
+  setText(els.viewerPath, item.relative_path);
   els.viewerOpenEditorButton.disabled = isVideo;
 
   if (isVideo) {
-    els.viewerImage.removeAttribute("src");
     els.viewerVideo.src = sourceUrl;
     els.viewerVideo.load();
+    els.viewerVideo.hidden = false;
+    els.viewerVideo.classList.remove("is-hidden");
     state.base = 1;
   } else {
-    els.viewerVideo.pause();
-    els.viewerVideo.removeAttribute("src");
+    els.viewerImage.addEventListener(
+      "load",
+      () => {
+        if (state.selected === item.relative_path) {
+          els.viewerImage.hidden = false;
+          els.viewerImage.classList.remove("is-hidden");
+        }
+      },
+      { once: true },
+    );
     els.viewerImage.src = sourceUrl;
   }
 
@@ -721,6 +735,12 @@ async function initializeViewerPage(els, state) {
 }
 
 function renderViewerInitialState(els) {
+  els.viewerImage.classList.add("is-hidden");
+  els.viewerVideo.classList.add("is-hidden");
+  els.viewerImage.hidden = true;
+  els.viewerVideo.hidden = true;
+  els.viewerImage.removeAttribute("src");
+  els.viewerVideo.removeAttribute("src");
   setText(els.viewerZoom, "-");
   setText(els.viewerExifBox, t("viewer.exif.empty"));
 }
