@@ -154,7 +154,7 @@ def ensure_image_timeline_metadata(root: Path, item: dict[str, Any]) -> dict[str
     relative_path = str(item.get("relative_path", ""))
     if (
         relative_path
-        and isinstance(item.get("timeline_ts"), int)
+        and isinstance(item.get("timeline_ts"), int | float)
         and str(item.get("timeline_time", "")).strip()
         and str(item.get("timeline_source", "")).strip()
     ):

@@ -15,12 +15,14 @@ import core.services.image_scan_service as image_scan_service
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
 from core.services.image_index_service import (
     build_timeline_index_entries,
+    digest_for_cache_key,
     image_index_summary_path,
     image_scan_cache_key,
     save_image_index_cache,
     save_image_index_summary,
     save_timeline_index_cache,
 )
+from core.storage.image_index_repository import ImageIndexRepository
 
 
 def create_test_image(path: Path, color: tuple[int, int, int] = (32, 96, 160)) -> Path:
@@ -53,6 +55,33 @@ def indexed_image(relative_path: str, value: str) -> dict[str, object]:
         "timeline_ts": int(timeline_dt.timestamp()),
         "timeline_source": "file",
     }
+
+
+def write_image_index_summary_json(
+    index_dir: Path,
+    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
+    items: list[dict[str, object]],
+    *,
+    total: int | None = None,
+    generated_at: str = "2026-05-13T10:00:00",
+    duplicate_group_count: int | None = None,
+) -> Path:
+    path = image_index_summary_path(index_dir, cache_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "generated_at": generated_at,
+                "root": cache_key[0],
+                "total": total,
+                "duplicate_group_count": duplicate_group_count,
+                "items": items,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def windows_filetime_from_unix(timestamp: float) -> tuple[int, int]:
@@ -374,7 +403,13 @@ def test_async_scan_writes_index_under_root_indexes(api_client, monkeypatch) -> 
     started_threads[0].target(*started_threads[0].args)
     index_dir = ztb_context.root_data_dir(image_root) / "indexes"
     assert ztb_context.root_image_index_dir(image_root) == index_dir
-    assert any(index_dir.glob("*.summary.json"))
+    repository = ImageIndexRepository(ztb_context.root_data_dir(image_root) / "workspace.sqlite3")
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+    assert repository.load_summary(digest_for_cache_key(cache_key))["total"] == 1
     assert not (ztb_context.root_thumbnail_dir(image_root) / "_indexes").exists()
 
 
@@ -416,7 +451,7 @@ def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> No
     old_summary_path = image_index_summary_path(index_dir, old_cache_key)
     current_summary_path = image_index_summary_path(index_dir, current_cache_key)
 
-    save_image_index_summary(
+    write_image_index_summary_json(
         old_summary_path.parent,
         old_cache_key,
         [indexed_image("old.jpg", "2024-01-01T00:00:00")],
@@ -424,7 +459,7 @@ def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> No
         generated_at="2026-05-05T21:50:42",
         duplicate_group_count=3,
     )
-    save_image_index_summary(
+    write_image_index_summary_json(
         current_summary_path.parent,
         current_cache_key,
         [indexed_image("new.jpg", "2024-01-02T00:00:00")],

@@ -1,8 +1,9 @@
 # Data Format Inventory
 
 This document records the remaining file-backed data formats during the SQLite
-migration. Task duplicate results and hash DB records now write directly to the
-root workspace database; several files remain as compatibility or audit formats.
+migration. Task duplicate results, hash DB records, and image index data now
+write directly to the root workspace database; several files remain as
+compatibility or audit formats.
 
 ## Root Workspace
 
@@ -93,7 +94,8 @@ read while older results exist.
 
 ### `data/roots/<root_id>/indexes/<digest>.json`
 
-Full image index cache.
+Legacy full image index cache. Current index-page scan writes the same data to
+`workspace.sqlite3`.
 
 Top-level fields:
 
@@ -127,7 +129,8 @@ and `height`.
 
 ### `data/roots/<root_id>/indexes/<digest>.summary.json`
 
-Fast first-paint summary cache.
+Legacy fast first-paint summary cache. Current reads prefer SQLite summary rows
+and use this JSON only for older workspaces.
 
 Fields:
 
@@ -145,7 +148,7 @@ Fields:
 
 ### `data/roots/<root_id>/indexes/<digest>.timeline.json`
 
-Timeline navigation cache.
+Legacy timeline navigation cache. Current reads prefer SQLite timeline rows.
 
 Fields:
 
@@ -159,8 +162,8 @@ Fields:
 }
 ```
 
-Migration recommendation: second SQLite target. It benefits from indexed
-pagination, summary reads, and timeline queries.
+Migration status: active index-page writes now target SQLite. Legacy JSON can
+still be read while older cache files exist.
 
 ## Logs
 
@@ -221,8 +224,8 @@ remain files unless the UI starts querying them directly.
 
 Recommended order:
 
-1. Duplicate results.
-2. Image index, summary, and timeline cache.
+1. Duplicate results. Done for active task writes.
+2. Image index, summary, and timeline cache. Done for active index-page writes.
 3. Recycle/delete lifecycle records.
 4. Task summary metadata.
 5. Optional audit logs.

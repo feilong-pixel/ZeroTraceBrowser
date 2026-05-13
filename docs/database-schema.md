@@ -8,8 +8,10 @@ data/roots/<root_id>/workspace.sqlite3
 ```
 
 The task result flow writes duplicate results and hash DB records directly to
-this database. Duplicate-result reads prefer SQLite for the active root while
-retaining legacy JSON compatibility during the migration.
+this database. The index-page flow writes image index, summary, and timeline
+data directly to the same database. Duplicate and image-index reads prefer
+SQLite for the active root while retaining legacy JSON compatibility during the
+migration.
 
 ## Versioning
 
@@ -75,6 +77,7 @@ Unique key: `(result_id, group_id)`.
 | `cache_digest` | TEXT PRIMARY KEY | Existing digest from scan root/extensions/exclusions. |
 | `root` | TEXT | Root path for the index. |
 | `generated_at` | TEXT | Cache generation time. |
+| `timeline_generated_at` | TEXT | Generation time for timeline entries. |
 | `total` | INTEGER | Full image count. |
 | `duplicate_group_count` | INTEGER | Optional current duplicate count. |
 | `updated_at` | TEXT | SQLite timestamp. |
@@ -178,9 +181,11 @@ core.storage.duplicates_repository.DuplicateResultRepository
 core.storage.image_index_repository.ImageIndexRepository
   save_index(cache_digest, root, items, total=None, generated_at=None,
              duplicate_group_count=None, timeline_entries=None)
+  load_metadata(cache_digest)
   load_summary(cache_digest)
   list_images(cache_digest, offset=0, limit=None)
   load_timeline_entries(cache_digest)
+  replace_timeline_entries(cache_digest, root, entries, generated_at)
 
 core.storage.recycle_repository.RecycleRepository
   append_record(timestamp, root, relative_path, deleted_to, action="deleted")

@@ -12,6 +12,14 @@ from core.domain.root_context import RootContext
 SCHEMA_VERSION = 2
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def root_database_path(root_context: RootContext) -> Path:
     return root_context.database_path
 
@@ -19,7 +27,7 @@ def root_database_path(root_context: RootContext) -> Path:
 def connect(database_path: str | Path) -> sqlite3.Connection:
     database = Path(database_path)
     database.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database)
+    connection = sqlite3.connect(database, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
@@ -85,6 +93,7 @@ def init_root_database(database_path: str | Path) -> Path:
                 cache_digest TEXT PRIMARY KEY,
                 root TEXT NOT NULL,
                 generated_at TEXT,
+                timeline_generated_at TEXT,
                 total INTEGER,
                 duplicate_group_count INTEGER,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -155,5 +164,11 @@ def init_root_database(database_path: str | Path) -> Path:
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?)",
             (SCHEMA_VERSION,),
         )
+        existing_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(image_indexes)").fetchall()
+        }
+        if "timeline_generated_at" not in existing_columns:
+            connection.execute("ALTER TABLE image_indexes ADD COLUMN timeline_generated_at TEXT")
         connection.commit()
     return database

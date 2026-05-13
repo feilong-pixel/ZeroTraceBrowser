@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from core.services.file_operations import replace_with_retry
+from core.storage.image_index_repository import ImageIndexRepository
 
 IMAGE_INDEX_PREVIEW_LIMIT = 240
 
@@ -49,6 +50,17 @@ def timeline_index_cache_path(
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> Path:
     return index_dir / f"{digest_for_cache_key(cache_key)}.timeline.json"
+
+
+def database_path_for_index_dir(index_dir: Path) -> Path | None:
+    if index_dir.name != "indexes":
+        return None
+    return index_dir.parent / "workspace.sqlite3"
+
+
+def image_index_repository(index_dir: Path) -> ImageIndexRepository | None:
+    database_path = database_path_for_index_dir(index_dir)
+    return ImageIndexRepository(database_path) if database_path is not None else None
 
 
 def get_image_timestamp_for_sort(item: dict[str, Any]) -> float | None:
@@ -111,6 +123,17 @@ def load_image_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        summary = repository.load_summary(digest_for_cache_key(cache_key))
+        if summary is not None:
+            items = summary.get("items", [])
+            return (
+                items if isinstance(items, list) else [],
+                summary.get("total") if isinstance(summary.get("total"), int) else None,
+                summary.get("generated_at") if isinstance(summary.get("generated_at"), str) else None,
+            )
+
     cache_path = image_index_summary_path(index_dir, cache_key)
     try:
         with cache_path.open("r", encoding="utf-8") as handle:
@@ -137,6 +160,18 @@ def load_image_index_summary_metadata(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> dict[str, Any]:
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        summary = repository.load_summary(digest_for_cache_key(cache_key))
+        if summary is not None:
+            items = summary.get("items", [])
+            return {
+                "items": items if isinstance(items, list) else [],
+                "total": summary.get("total") if isinstance(summary.get("total"), int) else None,
+                "generated_at": summary.get("generated_at") if isinstance(summary.get("generated_at"), str) else None,
+                "duplicate_group_count": summary.get("duplicate_group_count") if isinstance(summary.get("duplicate_group_count"), int) else None,
+            }
+
     cache_path = image_index_summary_path(index_dir, cache_key)
     try:
         with cache_path.open("r", encoding="utf-8") as handle:
@@ -163,6 +198,10 @@ def load_full_image_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> list[dict[str, Any]]:
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        return repository.list_images(digest_for_cache_key(cache_key))
+
     cache_path = image_index_cache_path(index_dir, cache_key)
     try:
         with cache_path.open("r", encoding="utf-8") as handle:
@@ -187,6 +226,15 @@ def load_timeline_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> tuple[list[dict[str, str]], str | None]:
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        digest = digest_for_cache_key(cache_key)
+        entries = repository.load_timeline_entries(digest)
+        metadata = repository.load_metadata(digest)
+        if entries or metadata is not None:
+            generated_at = metadata.get("timeline_generated_at") if metadata else None
+            return entries, generated_at if isinstance(generated_at, str) else None
+
     cache_path = timeline_index_cache_path(index_dir, cache_key)
     try:
         with cache_path.open("r", encoding="utf-8") as handle:
@@ -215,9 +263,22 @@ def save_image_index_cache(
     items: list[dict[str, Any]],
 ) -> None:
     index_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now().isoformat()
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        repository.save_index(
+            digest_for_cache_key(cache_key),
+            root=cache_key[0],
+            items=items,
+            total=len(items),
+            generated_at=generated_at,
+            timeline_entries=build_timeline_index_entries(items),
+        )
+        return
+
     cache_path = image_index_cache_path(index_dir, cache_key)
     payload = {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": generated_at,
         "root": cache_key[0],
         "items": items,
     }
@@ -226,14 +287,8 @@ def save_image_index_cache(
         json.dump(payload, handle, ensure_ascii=False)
     replace_with_retry(temp_path, cache_path)
 
-    save_image_index_summary(
-        index_dir,
-        cache_key,
-        items[:IMAGE_INDEX_PREVIEW_LIMIT],
-        len(items),
-        payload["generated_at"],
-    )
-    save_timeline_index_cache(index_dir, cache_key, items, payload["generated_at"])
+    save_image_index_summary(index_dir, cache_key, items[:IMAGE_INDEX_PREVIEW_LIMIT], len(items), generated_at)
+    save_timeline_index_cache(index_dir, cache_key, items, generated_at)
 
 
 def save_image_index_summary(
@@ -245,7 +300,6 @@ def save_image_index_summary(
     duplicate_group_count: int | None = None,
 ) -> None:
     index_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = image_index_summary_path(index_dir, cache_key)
     existing_metadata = load_image_index_summary_metadata(index_dir, cache_key)
     summary_payload = {
         "generated_at": generated_at or existing_metadata.get("generated_at") or datetime.now().isoformat(),
@@ -254,6 +308,25 @@ def save_image_index_summary(
         "duplicate_group_count": duplicate_group_count if isinstance(duplicate_group_count, int) else existing_metadata.get("duplicate_group_count"),
         "items": items,
     }
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        digest = digest_for_cache_key(cache_key)
+        stored_items = repository.list_images(digest)
+        persisted_items = items
+        if stored_items and isinstance(total, int) and len(items) < len(stored_items):
+            persisted_items = stored_items
+        repository.save_index(
+            digest,
+            root=cache_key[0],
+            items=persisted_items,
+            total=summary_payload["total"],
+            generated_at=summary_payload["generated_at"],
+            duplicate_group_count=summary_payload["duplicate_group_count"],
+            timeline_entries=repository.load_timeline_entries(digest) or build_timeline_index_entries(persisted_items),
+        )
+        return
+
+    summary_path = image_index_summary_path(index_dir, cache_key)
     summary_temp_path = summary_path.with_name(f"{summary_path.name}.{threading.get_ident()}.tmp")
     with summary_temp_path.open("w", encoding="utf-8") as handle:
         json.dump(summary_payload, handle, ensure_ascii=False)
@@ -288,6 +361,18 @@ def save_timeline_index_cache(
     generated_at: str | None = None,
 ) -> None:
     index_dir.mkdir(parents=True, exist_ok=True)
+    repository = image_index_repository(index_dir)
+    if repository is not None:
+        digest = digest_for_cache_key(cache_key)
+        metadata = repository.load_metadata(digest) or {}
+        repository.replace_timeline_entries(
+            digest,
+            root=cache_key[0],
+            generated_at=generated_at or metadata.get("generated_at") or datetime.now().isoformat(),
+            entries=build_timeline_index_entries(items),
+        )
+        return
+
     cache_path = timeline_index_cache_path(index_dir, cache_key)
     payload = {
         "generated_at": generated_at or datetime.now().isoformat(),

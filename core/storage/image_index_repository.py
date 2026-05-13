@@ -28,16 +28,17 @@ class ImageIndexRepository:
             connection.execute(
                 """
                 INSERT INTO image_indexes
-                    (cache_digest, root, generated_at, total, duplicate_group_count, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    (cache_digest, root, generated_at, timeline_generated_at, total, duplicate_group_count, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(cache_digest) DO UPDATE SET
                     root = excluded.root,
                     generated_at = excluded.generated_at,
+                    timeline_generated_at = COALESCE(excluded.timeline_generated_at, image_indexes.timeline_generated_at),
                     total = excluded.total,
                     duplicate_group_count = excluded.duplicate_group_count,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                (cache_digest, root, generated_at, total, duplicate_group_count),
+                (cache_digest, root, generated_at, generated_at if timeline_entries is not None else None, total, duplicate_group_count),
             )
             connection.execute("DELETE FROM image_items WHERE cache_digest = ?", (cache_digest,))
             for position, item in enumerate(items):
@@ -104,10 +105,27 @@ class ImageIndexRepository:
             preview_items = self.list_images(cache_digest, limit=240)
             return {
                 "generated_at": row["generated_at"],
+                "timeline_generated_at": row["timeline_generated_at"],
                 "root": row["root"],
                 "total": row["total"],
                 "duplicate_group_count": row["duplicate_group_count"],
                 "items": preview_items,
+            }
+
+    def load_metadata(self, cache_digest: str) -> dict[str, Any] | None:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT * FROM image_indexes WHERE cache_digest = ?",
+                (cache_digest,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "generated_at": row["generated_at"],
+                "timeline_generated_at": row["timeline_generated_at"],
+                "root": row["root"],
+                "total": row["total"],
+                "duplicate_group_count": row["duplicate_group_count"],
             }
 
     def list_images(self, cache_digest: str, *, offset: int = 0, limit: int | None = None) -> list[dict[str, Any]]:
@@ -157,3 +175,44 @@ class ImageIndexRepository:
                     (cache_digest,),
                 ).fetchall()
             ]
+
+    def replace_timeline_entries(
+        self,
+        cache_digest: str,
+        *,
+        root: str,
+        entries: list[dict[str, str]],
+        generated_at: str,
+    ) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO image_indexes
+                    (cache_digest, root, generated_at, timeline_generated_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(cache_digest) DO UPDATE SET
+                    root = excluded.root,
+                    timeline_generated_at = excluded.timeline_generated_at,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (cache_digest, root, generated_at, generated_at),
+            )
+            connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
+            for position, entry in enumerate(entries):
+                if not isinstance(entry, dict) or not entry.get("key"):
+                    continue
+                connection.execute(
+                    """
+                    INSERT INTO timeline_entries
+                        (cache_digest, key, label, index_label, position)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        cache_digest,
+                        str(entry.get("key", "")),
+                        str(entry.get("label", "")),
+                        str(entry.get("index_label", "")),
+                        position,
+                    ),
+                )
+            connection.commit()
