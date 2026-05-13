@@ -158,8 +158,11 @@ export default {
     archivedLogs: (count, path) => `Archived ${count} delete log entries: ${path}`,
     backToGallery: "Back to gallery",
     clearRecycle: "Clear Page",
+    clearRecycle100: "Clear 100 Files",
+    clear100Title: "Clear up to 100 Recycle Bin files from this page",
     clearCurrentPageTitle: (count) => `Clear ${count} Recycle Bin files on this page`,
     cleared: (count) => `Cleared ${count} Recycle Bin files from this page.`,
+    cleared100: (count) => `Cleared ${count} Recycle Bin files.`,
     clearedAndArchived: (count, path) => `Emptied ${count} files from the Recycle Bin and archived delete logs: ${path}`,
     clearedLogs: (count, target) => `Cleared ${count} ${target}.`,
     confirmLeaveWhileBusy: "A Recycle Bin action is still running. Leaving this page may interrupt the current operation or stop the live status display. Continue?",
@@ -174,6 +177,10 @@ export default {
       messagePermanent: (count) => `Clear ${count} Recycle Bin files on this page? On this system, files will be deleted permanently and cannot be recovered.`,
       messageSystemRecycle: (count) => `Move ${count} Recycle Bin files on this page to the Windows system Recycle Bin?`,
       title: "Clear Page"
+    },
+    confirmClear100: {
+      messagePermanent: (count) => `Clear ${count} Recycle Bin files starting from this page? On this system, files will be deleted permanently and cannot be recovered.`,
+      messageSystemRecycle: (count) => `Move ${count} Recycle Bin files starting from this page to the Windows system Recycle Bin?`
     },
     confirmClearLogs: {
       confirm: "Clear logs",

@@ -619,3 +619,28 @@ def test_recycle_bin_api_can_return_only_requested_page(api_client) -> None:
     assert payload["page_limit"] == 2
     assert payload["has_more"] is True
     assert len(payload["items"]) == 2
+
+
+def test_recycle_logs_api_does_not_migrate_rows_on_read(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    deleted_path = create_test_image(ztb_app.DELETED_DIR / "deleted_log_only.jpg")
+    ztb_app.append_log(
+        "delete_log.csv",
+        "2026-04-23T12:34:59",
+        str(image_root),
+        "photo.jpg",
+        str(deleted_path),
+        "deleted",
+    )
+
+    def fail_migration(*args, **kwargs):
+        raise AssertionError("logs read should not migrate rows")
+
+    monkeypatch.setattr(ztb_context, "migrate_delete_log_rows_to_database", fail_migration)
+
+    response = client.get("/api/recycle-bin/logs", params={"offset": 0, "limit": 50})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["items"][0]["deleted_to"] == str(deleted_path)

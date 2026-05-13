@@ -3,6 +3,7 @@ from .settings_context import get_active_image_root
 from .root_workspace import ensure_root_workspace, ensure_log_file, root_log_dir, root_deleted_dir, root_database_path
 from .system_context import is_windows, move_to_system_recycle_bin
 from core.storage.recycle_repository import RecycleRepository
+from core.services.recycle_service import list_recycle_items_from_records
 
 
 def migrate_delete_log_rows_to_database(root: Path, rows: list[dict[str, str]]) -> None:
@@ -32,6 +33,15 @@ def read_recycle_records_from_database(root: Path, *, include_terminal: bool = T
         migrate_delete_log_rows_to_database(root, legacy_rows)
         return repository.list_records(include_terminal=include_terminal)
     return []
+
+
+def ensure_recycle_records_in_database(root: Path) -> RecycleRepository:
+    repository = RecycleRepository(root_database_path(root))
+    if repository.count_records() == 0:
+        legacy_rows = read_delete_log_rows_service(root_log_dir(root))
+        if legacy_rows:
+            migrate_delete_log_rows_to_database(root, legacy_rows)
+    return repository
 
 def prepare_system_recycle_path(deleted_path: Path, log_row: dict[str, str] | None) -> tuple[Path, Path]:
     thumb_path = deleted_thumbnail_path_for(deleted_path)
@@ -81,6 +91,20 @@ def read_delete_log_rows() -> list[dict[str, str]]:
     return db_rows if db_rows else read_delete_log_rows_service(LOG_DIR)
 
 
+def read_delete_log_rows_page(offset: int = 0, limit: int | None = None) -> dict[str, Any]:
+    root = get_active_image_root()
+    rows = read_delete_log_rows_service(root_log_dir(root))
+    if not rows:
+        rows = read_recycle_records_from_database(root)
+    if not rows:
+        rows = read_delete_log_rows_service(LOG_DIR)
+    rows = sorted(rows, key=lambda row: row["timestamp"], reverse=True)
+    total = len(rows)
+    if limit is not None:
+        rows = rows[offset:offset + limit]
+    return {"items": rows, "count": total}
+
+
 def write_delete_log_rows(rows: list[dict[str, str]]) -> None:
     root = get_active_image_root()
     ensure_root_workspace(root)
@@ -102,6 +126,35 @@ def list_recycle_items() -> list[dict[str, Any]]:
     if items:
         return items
     return list_recycle_items_service(read_delete_log_rows_service(LOG_DIR), DELETED_DIR)
+
+
+def list_recycle_items_page(offset: int = 0, limit: int | None = None) -> dict[str, Any]:
+    root = get_active_image_root()
+    repository = RecycleRepository(root_database_path(root))
+    total = repository.count_records(include_terminal=False)
+    if total:
+        rows = repository.list_records(include_terminal=False, offset=offset, limit=limit)
+        items = list_recycle_items_from_records(rows)
+        return {"items": items, "count": total}
+
+    deleted_dir = root_deleted_dir(root)
+    root_deleted_empty = not deleted_dir.exists() or not any(deleted_dir.iterdir())
+    legacy_deleted_empty = not DELETED_DIR.exists() or not any(DELETED_DIR.iterdir())
+    if repository.count_records() > 0 or (root_deleted_empty and legacy_deleted_empty):
+        return {"items": [], "count": 0}
+
+    repository = ensure_recycle_records_in_database(root)
+    total = repository.count_records(include_terminal=False)
+    if total:
+        rows = repository.list_records(include_terminal=False, offset=offset, limit=limit)
+        items = list_recycle_items_from_records(rows)
+        return {"items": items, "count": total}
+
+    legacy_items = list_recycle_items_service(read_delete_log_rows_service(LOG_DIR), DELETED_DIR)
+    legacy_total = len(legacy_items)
+    if limit is not None:
+        legacy_items = legacy_items[offset:offset + limit]
+    return {"items": legacy_items, "count": legacy_total}
 
 
 def build_deleted_path(root: Path, relative_path: str) -> Path:

@@ -25,10 +25,9 @@ def create_recycle_router(ctx: Any) -> APIRouter:
         offset: int = Query(0, ge=0),
         limit: int | None = Query(None, ge=1, le=200),
     ) -> dict[str, Any]:
-        items = ctx.list_recycle_items()
-        total = len(items)
-        if limit is not None:
-            items = items[offset:offset + limit]
+        payload = ctx.list_recycle_items_page(offset=offset, limit=limit)
+        items = payload["items"]
+        total = payload["count"]
         return {
             "items": items,
             "count": total,
@@ -39,11 +38,19 @@ def create_recycle_router(ctx: Any) -> APIRouter:
 
     # GET /api/recycle-bin/logs
     @router.get("/api/recycle-bin/logs")
-    def get_recycle_logs() -> dict[str, Any]:
-        rows = sorted(ctx.read_delete_log_rows(), key=lambda row: row["timestamp"], reverse=True)
+    def get_recycle_logs(
+        offset: int = Query(0, ge=0),
+        limit: int | None = Query(None, ge=1, le=200),
+    ) -> dict[str, Any]:
+        payload = ctx.read_delete_log_rows_page(offset=offset, limit=limit)
+        rows = payload["items"]
+        total = payload["count"]
         return {
             "items": rows,
-            "count": len(rows),
+            "count": total,
+            "page_offset": offset,
+            "page_limit": limit,
+            "has_more": limit is not None and offset + limit < total,
         }
 
     # GET /api/recycle-bin/thumbnail

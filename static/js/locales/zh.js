@@ -158,8 +158,11 @@ export default {
     archivedLogs: (count, path) => `已归档 ${count} 条删除日志：${path}`,
     backToGallery: "返回主画面",
     clearRecycle: "清空当前页",
+    clearRecycle100: "清空 100 个文件",
+    clear100Title: "从当前页开始清空最多 100 个回收区文件",
     clearCurrentPageTitle: (count) => `清空当前页 ${count} 个回收区文件`,
     cleared: (count) => `已清空当前页 ${count} 个回收区文件。`,
+    cleared100: (count) => `已清空 ${count} 个回收区文件。`,
     clearedAndArchived: (count, path) => `已清空 ${count} 个回收区文件，并归档删除日志：${path}`,
     clearedLogs: (count, target) => `已清理 ${count} 条${target}。`,
     confirmLeaveWhileBusy: "当前回收区处理仍在执行。现在离开此页面，可能中断当前操作或停止本页状态显示，是否继续？",
@@ -174,6 +177,10 @@ export default {
       messagePermanent: (count) => `确认清空当前页 ${count} 个回收区文件吗？当前系统下文件将被彻底删除，无法恢复。`,
       messageSystemRecycle: (count) => `确认将当前页 ${count} 个回收区文件放入 Windows 系统回收站吗？`,
       title: "清空当前页"
+    },
+    confirmClear100: {
+      messagePermanent: (count) => `确认从当前页开始清空 ${count} 个回收区文件吗？当前系统下文件将被彻底删除，无法恢复。`,
+      messageSystemRecycle: (count) => `确认从当前页开始将 ${count} 个回收区文件放入 Windows 系统回收站吗？`
     },
     confirmClearLogs: {
       confirm: "清理日志",

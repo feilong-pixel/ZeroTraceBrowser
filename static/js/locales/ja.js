@@ -158,8 +158,11 @@ export default {
     archivedLogs: (count, path) => `${count} 件の削除ログをアーカイブしました: ${path}`,
     backToGallery: "メイン画面へ戻る",
     clearRecycle: "このページを空にする",
+    clearRecycle100: "100件を空にする",
+    clear100Title: "現在ページから最大100件のごみ箱ファイルを空にする",
     clearCurrentPageTitle: (count) => `このページの${count}件を空にする`,
     cleared: (count) => `このページの${count}件を削除しました`,
+    cleared100: (count) => `${count}件のごみ箱ファイルを削除しました`,
     clearedAndArchived: (count, path) => `ごみ箱から ${count} 件を削除し、削除ログをアーカイブしました: ${path}`,
     clearedLogs: (count, target) => `${target}を ${count} 件消去しました。`,
     confirmLeaveWhileBusy: "現在のごみ箱処理はまだ実行中です。ここで画面を離れると、現在の処理が中断されるか、このページでの状態表示が停止する可能性があります。続行しますか？",
@@ -174,6 +177,10 @@ export default {
       messagePermanent: (count) => `このページの${count}件を空にしますか？この環境ではファイルは完全に削除され、復元できません。`,
       messageSystemRecycle: (count) => `このページの${count}件を Windows のシステムごみ箱へ移動しますか？`,
       title: "このページを空にする"
+    },
+    confirmClear100: {
+      messagePermanent: (count) => `現在ページから${count}件のごみ箱ファイルを空にしますか？この環境ではファイルは完全に削除され、復元できません。`,
+      messageSystemRecycle: (count) => `現在ページから${count}件のごみ箱ファイルを Windows のシステムごみ箱へ移動しますか？`
     },
     confirmClearLogs: {
       confirm: "ログを消去",

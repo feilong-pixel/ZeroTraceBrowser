@@ -27,6 +27,7 @@ function getRecycleElements() {
     clearRecycleLogsButton: $("#clearRecycleLogsButton"),
     archiveRecycleLogsButton: $("#archiveRecycleLogsButton"),
     clearRecycleButton: $("#clearRecycleButton"),
+    clearRecycle100Button: $("#clearRecycle100Button"),
     backToGalleryLink: $("#backToGalleryLink"),
   };
 }
@@ -39,6 +40,7 @@ function createRecycleState() {
     page: 1,
     pageSize: 20,
     logs: [],
+    logTotal: 0,
     logFilter: "all",
     itemStatuses: {},
     isBusy: false,
@@ -82,6 +84,9 @@ function setBusyState(els, state, isBusy) {
   }
   if (els.clearRecycleButton) {
     els.clearRecycleButton.disabled = isBusy || els.clearRecycleButton.disabled;
+  }
+  if (els.clearRecycle100Button) {
+    els.clearRecycle100Button.disabled = isBusy || els.clearRecycle100Button.disabled;
   }
   if (els.recycleLogFilter) {
     els.recycleLogFilter.disabled = isBusy;
@@ -173,6 +178,22 @@ function recyclePageUrl(state) {
   return `/api/recycle-bin?${params.toString()}`;
 }
 
+function recycleRangeUrl(state, limit) {
+  const params = new URLSearchParams({
+    offset: String((state.page - 1) * state.pageSize),
+    limit: String(limit),
+  });
+  return `/api/recycle-bin?${params.toString()}`;
+}
+
+function recycleLogsUrl() {
+  const params = new URLSearchParams({
+    offset: "0",
+    limit: "50",
+  });
+  return `/api/recycle-bin/logs?${params.toString()}`;
+}
+
 function totalRecyclePages(state) {
   return Math.max(1, Math.ceil(state.recycleTotal / state.pageSize));
 }
@@ -208,6 +229,12 @@ function renderRecycleItems(els, state) {
     els.clearRecycleButton.title = state.recycle.length === 0
       ? t("recycle.noRecycleItems")
       : t("recycle.clearCurrentPageTitle", state.recycle.length);
+  }
+  if (els.clearRecycle100Button) {
+    els.clearRecycle100Button.disabled = state.isBusy || state.recycle.length === 0;
+    els.clearRecycle100Button.title = state.recycle.length === 0
+      ? t("recycle.noRecycleItems")
+      : t("recycle.clear100Title");
   }
   if (els.prevRecyclePageButton) {
     els.prevRecyclePageButton.disabled = state.isBusy || state.page <= 1;
@@ -293,7 +320,8 @@ function renderRecycleItems(els, state) {
 }
 
 function renderLogs(els, state) {
-  setText(els.summaryLogCount, String(state.logs.length));
+  const logTotal = Number(state.logTotal ?? state.logs.length);
+  setText(els.summaryLogCount, String(logTotal));
   if (els.recycleLogFilter) {
     els.recycleLogFilter.value = state.logFilter;
   }
@@ -313,7 +341,7 @@ function renderLogs(els, state) {
 
   setText(
     els.recycleLogSummary,
-    t("recycle.logSummary", visibleLogs.length, filteredLogs.length, state.logs.length),
+    t("recycle.logSummary", visibleLogs.length, filteredLogs.length, logTotal),
   );
 
   if (!filteredLogs.length) {
@@ -369,19 +397,24 @@ async function loadAll(els, state) {
 
     applyTranslations(els, state);
 
-    const [recyclePayload, logPayload] = await Promise.all([
-      fetchJson(recyclePageUrl(state)),
-      fetchJson("/api/recycle-bin/logs"),
-    ]);
+    const recyclePayload = await fetchJson(recyclePageUrl(state));
 
     state.recycle = recyclePayload.items || [];
     state.recycleTotal = Number(recyclePayload.count || state.recycle.length);
-    state.logs = logPayload.items || [];
 
     renderRecycleItems(els, state);
     renderLogs(els, state);
 
     setStatus(els, t("recycle.ready"));
+    fetchJson(recycleLogsUrl())
+      .then((logPayload) => {
+        state.logs = logPayload.items || [];
+        state.logTotal = Number(logPayload.count || state.logs.length);
+        renderLogs(els, state);
+      })
+      .catch((error) => {
+        setStatus(els, error.message);
+      });
   } finally {
     setBusyState(els, state, false);
     renderRecycleItems(els, state);
@@ -480,6 +513,51 @@ async function clearRecycleBin(els, state) {
 
     renderRecycleItems(els, state);
     setStatus(els, t("recycle.cleared", removedCount));
+  } finally {
+    setBusyState(els, state, false);
+    renderRecycleItems(els, state);
+    renderLogs(els, state);
+  }
+}
+
+async function clearRecycle100Files(els, state) {
+  if (state.isBusy) return;
+
+  const payload = await fetchJson(recycleRangeUrl(state, 100));
+  const items = payload.items || [];
+  if (!items.length) return;
+
+  const confirmed = await showConfirm(
+    state.systemRecycleSupported
+      ? t("recycle.confirmClear100.messageSystemRecycle", items.length)
+      : t("recycle.confirmClear100.messagePermanent", items.length),
+    {
+      title: t("recycle.confirmClear.title"),
+      confirmText: t("recycle.confirmClear.confirm"),
+      cancelText: t("dialog.buttons.cancel"),
+    },
+  );
+
+  if (!confirmed) return;
+
+  setBusyState(els, state, true);
+  setStatus(els, t("recycle.loading"));
+
+  try {
+    let removedCount = 0;
+    for (const item of items) {
+      const result = await fetchJson("/api/recycle-bin/purge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleted_to: item.deleted_to }),
+      });
+      removedCount += 1;
+      state.itemStatuses[item.deleted_to] = "purged";
+      setStatus(els, t("recycle.purged", result.deleted_to));
+    }
+
+    await loadRecyclePage(els, state);
+    setStatus(els, t("recycle.cleared100", removedCount));
   } finally {
     setBusyState(els, state, false);
     renderRecycleItems(els, state);
@@ -672,6 +750,12 @@ function bindRecycleEvents(els, state) {
     });
   });
 
+  on(els.clearRecycle100Button, "click", () => {
+    clearRecycle100Files(els, state).catch((error) => {
+      setStatus(els, error.message);
+    });
+  });
+
   on(els.clearRecycleLogsButton, "click", () => {
     clearRecycleLogs(els, state).catch((error) => {
       setStatus(els, error.message);
@@ -701,6 +785,10 @@ function renderRecycleInitialState(els) {
   if (els.clearRecycleButton) {
     els.clearRecycleButton.disabled = true;
     els.clearRecycleButton.title = t("recycle.noRecycleItems");
+  }
+  if (els.clearRecycle100Button) {
+    els.clearRecycle100Button.disabled = true;
+    els.clearRecycle100Button.title = t("recycle.noRecycleItems");
   }
 }
 

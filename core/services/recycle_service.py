@@ -130,3 +130,34 @@ def list_recycle_items(log_rows: list[dict[str, str]], deleted_dir: Path) -> lis
             }
         )
     return items
+
+
+def list_recycle_items_from_records(log_rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for log_row in log_rows:
+        if log_row.get("action") in {"restored", "purged"}:
+            continue
+        deleted_to = log_row.get("deleted_to")
+        if not deleted_to:
+            continue
+        file_path = Path(deleted_to)
+        if not file_path.is_file() or file_path.name == ".gitkeep":
+            continue
+        stat = file_path.stat()
+        root = log_row.get("root", "")
+        relative_path = log_row.get("relative_path", "")
+        original_path = str((Path(root) / relative_path).resolve()) if root and relative_path else ""
+        items.append(
+            {
+                "deleted_to": str(file_path),
+                "name": file_path.name,
+                "size": stat.st_size,
+                "deleted_at": log_row.get("timestamp") or datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "root": root,
+                "relative_path": relative_path,
+                "original_path": original_path,
+                "restorable": bool(root and relative_path),
+                "original_exists": bool(original_path and Path(original_path).exists()),
+            }
+        )
+    return items

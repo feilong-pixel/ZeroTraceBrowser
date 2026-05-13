@@ -38,8 +38,19 @@ class RecycleRepository:
             )
             connection.commit()
 
-    def list_records(self, *, include_terminal: bool = True) -> list[dict[str, Any]]:
+    def list_records(
+        self,
+        *,
+        include_terminal: bool = True,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         where = "" if include_terminal else "WHERE action NOT IN ('restored', 'purged')"
+        paging = ""
+        params: list[Any] = []
+        if limit is not None:
+            paging = "LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
         with connect(self.database_path) as connection:
             return [
                 {
@@ -54,9 +65,23 @@ class RecycleRepository:
                     SELECT * FROM recycle_records
                     {where}
                     ORDER BY timestamp DESC, id DESC
-                    """
+                    {paging}
+                    """,
+                    params,
                 ).fetchall()
             ]
+
+    def count_records(self, *, include_terminal: bool = True) -> int:
+        where = "" if include_terminal else "WHERE action NOT IN ('restored', 'purged')"
+        with connect(self.database_path) as connection:
+            return int(
+                connection.execute(
+                    f"""
+                    SELECT COUNT(*) FROM recycle_records
+                    {where}
+                    """
+                ).fetchone()[0]
+            )
 
     def update_action(self, deleted_to: str, action: str) -> bool:
         with connect(self.database_path) as connection:
