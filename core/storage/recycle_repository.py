@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: MIT
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from core.storage.database import connect, init_root_database
+
+
+class RecycleRepository:
+    def __init__(self, database_path: str | Path):
+        self.database_path = init_root_database(database_path)
+
+    def append_record(
+        self,
+        *,
+        timestamp: str,
+        root: str,
+        relative_path: str,
+        deleted_to: str,
+        action: str = "deleted",
+    ) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO recycle_records
+                    (timestamp, root, relative_path, deleted_to, action, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(deleted_to) DO UPDATE SET
+                    timestamp = excluded.timestamp,
+                    root = excluded.root,
+                    relative_path = excluded.relative_path,
+                    action = excluded.action,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (timestamp, root, relative_path, deleted_to, action),
+            )
+            connection.commit()
+
+    def list_records(self, *, include_terminal: bool = True) -> list[dict[str, Any]]:
+        where = "" if include_terminal else "WHERE action NOT IN ('restored', 'purged')"
+        with connect(self.database_path) as connection:
+            return [
+                {
+                    "timestamp": row["timestamp"],
+                    "root": row["root"],
+                    "relative_path": row["relative_path"],
+                    "deleted_to": row["deleted_to"],
+                    "action": row["action"],
+                }
+                for row in connection.execute(
+                    f"""
+                    SELECT * FROM recycle_records
+                    {where}
+                    ORDER BY timestamp DESC, id DESC
+                    """
+                ).fetchall()
+            ]
+
+    def update_action(self, deleted_to: str, action: str) -> bool:
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE recycle_records
+                SET action = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE deleted_to = ?
+                """,
+                (action, deleted_to),
+            )
+            connection.commit()
+            return cursor.rowcount > 0

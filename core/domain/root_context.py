@@ -16,6 +16,7 @@ class RootContext:
       root.json
       hash_db.json
       duplicates.json
+      workspace.sqlite3
       deleted/
       indexes/
       logs/
@@ -77,6 +78,10 @@ class RootContext:
     @property
     def duplicates_path(self) -> Path:
         return self.data_dir / "duplicates.json"
+
+    @property
+    def database_path(self) -> Path:
+        return self.data_dir / "workspace.sqlite3"
 
     @property
     def deleted_dir(self) -> Path:
