@@ -8,6 +8,8 @@ from .artifact_context import *
 from .duplicates_context import *
 from .task_context import *
 from .cleanup_context import *
+from .similarity_context import *
+from .iphone_context import *
 
 
 class RouteContext:

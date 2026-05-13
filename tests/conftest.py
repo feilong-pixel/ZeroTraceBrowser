@@ -18,10 +18,12 @@ from core.context_modules import (
     cleanup_context,
     duplicates_context,
     image_context,
+    iphone_context,
     recycle_context,
     root_workspace,
     route_facade,
     settings_context,
+    similarity_context,
     task_context,
 )
 
@@ -35,10 +37,12 @@ PATCH_MODULES = (
     cleanup_context,
     duplicates_context,
     image_context,
+    iphone_context,
     recycle_context,
     root_workspace,
     route_facade,
     settings_context,
+    similarity_context,
     task_context,
 )
 
