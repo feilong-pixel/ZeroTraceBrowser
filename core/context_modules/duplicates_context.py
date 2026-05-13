@@ -81,6 +81,24 @@ def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
     return result
 
 
+def migrate_legacy_duplicates_json(active_root: str, json_path: Path) -> dict[str, Any] | None:
+    try:
+        with json_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    destination_root = read_duplicates_destination_root(json_path)
+    if destination_root and destination_root != str(Path(active_root).expanduser().resolve()):
+        return None
+
+    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+    DuplicateResultRepository(database_path).save_result(payload, source_path=json_path)
+    return DuplicateResultRepository(database_path).load_result()
+
+
 def clear_duplicates_path_cache() -> None:
     global DUPLICATES_PATH_CACHE, DUPLICATES_ROOT_CACHE
     DUPLICATES_PATH_CACHE = (0.0, None)
@@ -105,12 +123,12 @@ def get_latest_duplicates_result_root() -> Path | None:
         if cached_root is None or cached_root.exists():
             return cached_root
 
-    target = get_latest_duplicates_path(active_root)
-    if target is not None and target.exists():
-        destination_root = read_duplicates_destination_root(target)
+    payload = load_database_duplicates_payload(active_root)
+    if payload is not None:
+        destination_root = str(payload.get("destination_root", ""))
     else:
-        payload = load_database_duplicates_payload(active_root)
-        destination_root = str(payload.get("destination_root", "")) if payload else ""
+        target = get_latest_duplicates_path(active_root)
+        destination_root = read_duplicates_destination_root(target) if target is not None and target.exists() else ""
     if not destination_root:
         DUPLICATES_ROOT_CACHE = (now, active_root, None)
         return None
@@ -127,16 +145,16 @@ def load_duplicates_payload(
 ) -> dict[str, Any]:
     settings = load_settings()
     active_root = str(Path(settings["active_root"]).resolve())
-    target = json_path or get_latest_duplicates_path(active_root)
     offset = max(0, offset)
     limit = max(1, limit) if limit is not None else None
     method_filter = str(method or "").strip().lower()
     is_paged_request = offset != 0 or limit is not None or bool(method_filter)
 
-    database_payload = None
-    if target is None or not target.exists():
-        database_payload = load_database_duplicates_payload(active_root)
-    if (target is None or not target.exists()) and database_payload is None:
+    database_payload = None if json_path is not None else load_database_duplicates_payload(active_root)
+    target = json_path or (None if database_payload is not None else get_latest_duplicates_path(active_root))
+    if database_payload is None and target is not None and target.exists():
+        database_payload = migrate_legacy_duplicates_json(active_root, target)
+    if database_payload is None and (target is None or not target.exists()):
         result = {
             "available": False,
             "json_path": "",
@@ -159,13 +177,13 @@ def load_duplicates_payload(
             )
         return result
 
-    if database_payload is not None:
-        payload = database_payload
-        result_path = ""
-    else:
+    if database_payload is None:
         with target.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
         result_path = str(target)
+    else:
+        payload = database_payload
+        result_path = ""
 
     destination_root_path = get_duplicates_root_from_payload(payload)
     destination_root = str(destination_root_path) if destination_root_path else ""
@@ -262,14 +280,20 @@ def load_duplicates_payload(
 def load_duplicates_summary() -> dict[str, Any]:
     settings = load_settings()
     active_root = str(Path(settings["active_root"]).resolve())
+    database_summary = DuplicateResultRepository(
+        RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+    ).load_summary()
+    if database_summary.get("available"):
+        return {"available": True, "group_count": database_summary.get("group_count", 0)}
+
     target = get_latest_duplicates_path(active_root)
     if target is None or not target.exists():
-        database_summary = DuplicateResultRepository(
-            RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-        ).load_summary()
-        if database_summary.get("available"):
-            return {"available": True, "group_count": database_summary.get("group_count", 0)}
         return {"available": False, "group_count": 0}
+
+    migrated = migrate_legacy_duplicates_json(active_root, target)
+    if migrated is not None:
+        group_count = migrated.get("group_count")
+        return {"available": True, "group_count": group_count if isinstance(group_count, int) else 0}
 
     try:
         with target.open("r", encoding="utf-8") as handle:

@@ -49,8 +49,9 @@ itself and is useful during diagnostics.
 ### `data/roots/<root_id>/duplicates.json`
 
 Legacy root-scoped duplicate detection result. Current task buttons write the
-same result shape directly to `workspace.sqlite3`; the duplicates page keeps
-JSON compatibility for older workspaces and tests.
+same result shape directly to `workspace.sqlite3`, and the duplicates page reads
+from SQLite first. When an older JSON result is encountered, it is imported into
+the root database and then served from there.
 
 Top-level fields:
 
@@ -87,8 +88,8 @@ Notes:
 - Item `path` values are relative to `destination_root` and must still be
   resolved through path-safety helpers when used for file access.
 
-Migration status: active task writes now target SQLite. Legacy JSON can still be
-read while older results exist.
+Migration status: active task writes and duplicates-page reads now target
+SQLite. Legacy JSON can still be imported while older results exist.
 
 ## Image Index Cache
 

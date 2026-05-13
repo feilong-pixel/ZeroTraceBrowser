@@ -9,6 +9,8 @@ from tests.test_api_user_flow import create_test_image
 
 import app as ztb_app
 import core.context as ztb_context
+from core.domain.root_context import RootContext
+from core.storage.duplicates_repository import DuplicateResultRepository
 
 
 def write_duplicates_json(path: Path, destination_root: Path, groups: list[dict]) -> Path:
@@ -29,6 +31,20 @@ def write_duplicates_json(path: Path, destination_root: Path, groups: list[dict]
     return path
 
 
+def save_duplicates_db(root: Path, groups: list[dict], destination_root: Path | None = None) -> Path:
+    database_path = RootContext.from_root(root, ztb_app.ROOT_DATA_DIR).database_path
+    DuplicateResultRepository(database_path).save_result(
+        {
+            "generated_at": "2026-04-23T12:34:56",
+            "destination_root": str(destination_root or root),
+            "group_count": len(groups),
+            "groups": groups,
+        },
+        source_path=database_path,
+    )
+    return database_path
+
+
 def test_duplicates_api_loads_latest_result_and_filters_unavailable_groups(api_client) -> None:
     client, workspace, image_root, _ = api_client
     archive_root = workspace / "archive"
@@ -37,8 +53,7 @@ def test_duplicates_api_loads_latest_result_and_filters_unavailable_groups(api_c
 
     client.post("/api/settings/roots", json={"path": str(archive_root)})
 
-    json_path = write_duplicates_json(
-        ztb_app.TASK_LOG_DIR / "latest" / "duplicates.json",
+    database_path = save_duplicates_db(
         archive_root,
         [
             {
@@ -71,7 +86,8 @@ def test_duplicates_api_loads_latest_result_and_filters_unavailable_groups(api_c
     assert response.status_code == 200
     payload = response.json()
     assert payload["available"] is True
-    assert payload["json_path"] == str(json_path)
+    assert payload["json_path"] == ""
+    assert payload["database_path"] == str(database_path)
     assert payload["destination_root"] == str(archive_root)
     assert payload["active_root_matches"] is True
     assert payload["group_count"] == 1
@@ -103,8 +119,7 @@ def test_duplicates_thumbnail_and_open_result_root(api_client, monkeypatch) -> N
     create_test_image(archive_root / "same.jpg")
     create_test_image(archive_root / "same_dup1.jpg", color=(90, 120, 45))
     client.post("/api/settings/roots", json={"path": str(archive_root)})
-    write_duplicates_json(
-        ztb_app.TASK_LOG_DIR / "latest" / "duplicates.json",
+    save_duplicates_db(
         archive_root,
         [
             {
@@ -139,8 +154,7 @@ def test_duplicates_thumbnail_returns_placeholder_for_video(api_client) -> None:
     archive_root.mkdir()
     (archive_root / "clip.mp4").write_bytes(b"not a real video")
     client.post("/api/settings/roots", json={"path": str(archive_root)})
-    write_duplicates_json(
-        ztb_context.root_duplicates_path(archive_root),
+    save_duplicates_db(
         archive_root,
         [
             {
@@ -182,7 +196,7 @@ def test_duplicates_api_can_return_only_requested_page(api_client) -> None:
         )
 
     client.post("/api/settings/roots", json={"path": str(archive_root)})
-    write_duplicates_json(ztb_app.TASK_LOG_DIR / "latest" / "duplicates.json", archive_root, groups)
+    save_duplicates_db(archive_root, groups)
 
     response = client.get("/api/duplicates", params={"offset": 0, "limit": 1, "method": "strict"})
 
@@ -215,6 +229,41 @@ def test_duplicates_api_reports_unavailable_when_no_result_exists(api_client) ->
     }
 
 
+def test_duplicates_api_migrates_legacy_json_to_database(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "same.jpg")
+    create_test_image(archive_root / "same_dup1.jpg", color=(10, 20, 30))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+
+    legacy_path = write_duplicates_json(
+        ztb_context.root_duplicates_path(archive_root),
+        archive_root,
+        [
+            {
+                "group_id": "legacy_dup",
+                "reason": "strict",
+                "hash": "legacy-hash",
+                "kept_path": "same.jpg",
+                "items": [
+                    {"role": "kept", "path": "same.jpg"},
+                    {"role": "duplicate", "path": "same_dup1.jpg"},
+                ],
+            },
+        ],
+    )
+
+    response = client.get("/api/duplicates")
+
+    assert response.status_code == 200
+    payload = response.json()
+    database_path = RootContext.from_root(archive_root, ztb_app.ROOT_DATA_DIR).database_path
+    assert payload["json_path"] == ""
+    assert payload["database_path"] == str(database_path)
+    assert payload["groups"][0]["group_id"] == "legacy_dup"
+    assert DuplicateResultRepository(database_path).load_summary()["source_path"] == str(legacy_path)
+
+
 def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:
     client, workspace, _, _ = api_client
     archive_a = workspace / "archive_a"
@@ -228,8 +277,7 @@ def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:
     client.post("/api/settings/roots", json={"path": str(archive_b)})
     client.post("/api/settings/active-root", json={"path": str(archive_a)})
 
-    older = write_duplicates_json(
-        ztb_app.TASK_LOG_DIR / "task_a" / "duplicates.json",
+    save_duplicates_db(
         archive_a,
         [
             {
@@ -244,8 +292,7 @@ def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:
             },
         ],
     )
-    newer = write_duplicates_json(
-        ztb_app.TASK_LOG_DIR / "task_b" / "duplicates.json",
+    save_duplicates_db(
         archive_b,
         [
             {
@@ -260,15 +307,13 @@ def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:
             },
         ],
     )
-    older.touch()
-    newer.touch()
-
     response = client.get("/api/duplicates")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["destination_root"] == str(archive_a)
-    assert payload["json_path"] == str(older)
+    assert payload["json_path"] == ""
+    assert payload["database_path"]
     assert payload["group_count"] == 1
     assert payload["groups"][0]["group_id"] == "dup_a"
 
@@ -280,8 +325,7 @@ def test_duplicates_api_ignores_latest_result_for_different_active_root(api_clie
     create_test_image(other_root / "same.jpg")
     create_test_image(other_root / "same_dup1.jpg", color=(10, 20, 30))
 
-    write_duplicates_json(
-        ztb_app.TASK_LOG_DIR / "task_other" / "duplicates.json",
+    save_duplicates_db(
         other_root,
         [
             {

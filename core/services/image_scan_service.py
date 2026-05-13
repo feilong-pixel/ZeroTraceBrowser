@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import threading
 import time
 import warnings
@@ -388,7 +389,7 @@ def scan_lightweight_image_metadata_into_cache(
         if items:
             try:
                 save_image_index_cache(index_dir, cache_key, items)
-            except FileNotFoundError:
+            except (FileNotFoundError, OSError, sqlite3.Error):
                 pass
 
 

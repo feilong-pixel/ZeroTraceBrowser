@@ -24,6 +24,7 @@ class ImageIndexRepository:
         duplicate_group_count: int | None = None,
         timeline_entries: list[dict[str, str]] | None = None,
     ) -> None:
+        init_root_database(self.database_path)
         with connect(self.database_path) as connection:
             connection.execute(
                 """
@@ -184,6 +185,7 @@ class ImageIndexRepository:
         entries: list[dict[str, str]],
         generated_at: str,
     ) -> None:
+        init_root_database(self.database_path)
         with connect(self.database_path) as connection:
             connection.execute(
                 """
