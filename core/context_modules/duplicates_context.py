@@ -3,6 +3,8 @@ from .settings_context import load_settings
 from .root_workspace import root_duplicates_path
 from .artifact_context import load_artifact_index
 from .image_context import resolve_under_root
+from core.domain.root_context import RootContext
+from core.storage.duplicates_repository import DuplicateResultRepository
 
 
 def iter_duplicates_result_paths() -> list[Path]:
@@ -71,6 +73,14 @@ def get_latest_duplicates_path(active_root: str | None = None) -> Path | None:
     return latest
 
 
+def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
+    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+    result = DuplicateResultRepository(database_path).load_result()
+    if result is None:
+        return None
+    return result
+
+
 def clear_duplicates_path_cache() -> None:
     global DUPLICATES_PATH_CACHE, DUPLICATES_ROOT_CACHE
     DUPLICATES_PATH_CACHE = (0.0, None)
@@ -96,11 +106,14 @@ def get_latest_duplicates_result_root() -> Path | None:
             return cached_root
 
     target = get_latest_duplicates_path(active_root)
-    if target is None or not target.exists():
+    if target is not None and target.exists():
+        destination_root = read_duplicates_destination_root(target)
+    else:
+        payload = load_database_duplicates_payload(active_root)
+        destination_root = str(payload.get("destination_root", "")) if payload else ""
+    if not destination_root:
         DUPLICATES_ROOT_CACHE = (now, active_root, None)
         return None
-
-    destination_root = read_duplicates_destination_root(target)
     root = Path(destination_root).expanduser().resolve() if destination_root else None
     DUPLICATES_ROOT_CACHE = (now, active_root, root)
     return root
@@ -120,7 +133,10 @@ def load_duplicates_payload(
     method_filter = str(method or "").strip().lower()
     is_paged_request = offset != 0 or limit is not None or bool(method_filter)
 
+    database_payload = None
     if target is None or not target.exists():
+        database_payload = load_database_duplicates_payload(active_root)
+    if (target is None or not target.exists()) and database_payload is None:
         result = {
             "available": False,
             "json_path": "",
@@ -143,8 +159,13 @@ def load_duplicates_payload(
             )
         return result
 
-    with target.open("r", encoding="utf-8") as handle:
-        payload = json.load(handle)
+    if database_payload is not None:
+        payload = database_payload
+        result_path = ""
+    else:
+        with target.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        result_path = str(target)
 
     destination_root_path = get_duplicates_root_from_payload(payload)
     destination_root = str(destination_root_path) if destination_root_path else ""
@@ -222,7 +243,8 @@ def load_duplicates_payload(
 
     return {
         "available": True,
-        "json_path": str(target),
+        "json_path": result_path,
+        "database_path": str(RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path) if database_payload is not None else "",
         "generated_at": payload.get("generated_at"),
         "destination_root": destination_root,
         "active_root": active_root,
@@ -242,6 +264,11 @@ def load_duplicates_summary() -> dict[str, Any]:
     active_root = str(Path(settings["active_root"]).resolve())
     target = get_latest_duplicates_path(active_root)
     if target is None or not target.exists():
+        database_summary = DuplicateResultRepository(
+            RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+        ).load_summary()
+        if database_summary.get("available"):
+            return {"available": True, "group_count": database_summary.get("group_count", 0)}
         return {"available": False, "group_count": 0}
 
     try:

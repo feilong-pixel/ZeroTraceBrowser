@@ -1,8 +1,8 @@
 # Data Format Inventory
 
-This document records the current file-backed data formats before the SQLite
-migration is wired into runtime flows. The first storage pass keeps these files
-as the production source of truth and only adds matching table APIs.
+This document records the remaining file-backed data formats during the SQLite
+migration. Task duplicate results and hash DB records now write directly to the
+root workspace database; several files remain as compatibility or audit formats.
 
 ## Root Workspace
 
@@ -47,7 +47,9 @@ itself and is useful during diagnostics.
 
 ### `data/roots/<root_id>/duplicates.json`
 
-Root-scoped duplicate detection result used by the duplicates page.
+Legacy root-scoped duplicate detection result. Current task buttons write the
+same result shape directly to `workspace.sqlite3`; the duplicates page keeps
+JSON compatibility for older workspaces and tests.
 
 Top-level fields:
 
@@ -84,8 +86,8 @@ Notes:
 - Item `path` values are relative to `destination_root` and must still be
   resolved through path-safety helpers when used for file access.
 
-Migration recommendation: first SQLite target. It benefits from method counts,
-pagination, and active-root lookup.
+Migration status: active task writes now target SQLite. Legacy JSON can still be
+read while older results exist.
 
 ## Image Index Cache
 
@@ -209,11 +211,11 @@ Common files:
 ```text
 organizer.log
 duplicate_report.csv
-duplicates.json
 ```
 
-Migration recommendation: store task summary metadata later, but keep task logs
-and reports as files unless the UI starts querying them directly.
+Current task duplicate results and hash DB records are written to
+`data/roots/<root_id>/workspace.sqlite3`. Task logs and CSV duplicate reports
+remain files unless the UI starts querying them directly.
 
 ## Initial Migration Priority
 

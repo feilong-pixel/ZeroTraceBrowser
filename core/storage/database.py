@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def root_database_path(root_context: RootContext) -> Path:
@@ -132,6 +132,22 @@ def init_root_database(database_path: str | Path) -> Path:
                 action TEXT NOT NULL DEFAULT 'deleted',
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(deleted_to)
+            );
+
+            CREATE TABLE IF NOT EXISTS hash_db_metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                source_path TEXT NOT NULL DEFAULT '',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS hash_db_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                method TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                path TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(method, hash, path)
             );
             """
         )

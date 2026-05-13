@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import uuid
 from datetime import datetime
@@ -296,6 +297,42 @@ def test_duplicates_json_is_written_for_detected_duplicates(work_dir: Path) -> N
     assert group["items"][1]["path"] == expected_duplicate_path
 
 
+def test_organize_images_can_write_duplicates_directly_to_sqlite(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first_file = create_media_file(src_dir / "camera1" / "same_name.jpg", content="first")
+    create_media_file(src_dir / "camera2" / "different_name.jpg", content="first")
+    target_dir = expected_target_dir(first_file, dst_dir)
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+        duplicates_db_path=str(sqlite_path),
+    )
+
+    assert sqlite_path.exists()
+    assert not (work_dir / "duplicates.json").exists()
+    assert not (work_dir / "hash_db.json").exists()
+    with sqlite3.connect(sqlite_path) as connection:
+        duplicate_result = connection.execute(
+            "SELECT destination_root, group_count FROM duplicate_results WHERE id = 1"
+        ).fetchone()
+        hash_record_count = connection.execute("SELECT COUNT(*) FROM hash_db_records").fetchone()[0]
+    assert duplicate_result == (str(dst_dir.resolve()), 1)
+    assert hash_record_count == 2
+    assert (target_dir / "same_name.jpg").exists()
+    assert (target_dir / "same_name_dup1.jpg").exists()
+
+
 def test_duplicate_names_follow_kept_file_name_sequence(work_dir: Path) -> None:
     src_dir = work_dir / "src"
     dst_dir = work_dir / "dst"
@@ -395,6 +432,26 @@ def test_rebuild_hash_db_replace_rebuilds_only_target_root(work_dir: Path) -> No
     strict_paths = [path for paths in db["strict"].values() for path in paths]
     assert len(strict_paths) == 1
     assert strict_paths[0].endswith(str(Path("organized_a") / "2026" / "04" / "16" / "a.jpg"))
+
+
+def test_rebuild_hash_db_can_write_directly_to_sqlite(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_media_file(root / "2026" / "04" / "16" / "a.jpg", content="first")
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    db = load_hash_db()
+
+    assert stats["db_path"] == str(sqlite_path.resolve())
+    assert sqlite_path.exists()
+    assert not (work_dir / "hash_db.json").exists()
+    assert len(db["strict"]) == 1
+    with sqlite3.connect(sqlite_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM hash_db_records").fetchone()[0] == 1
 
 
 def test_rebuild_hash_db_reuses_cached_strict_hash_for_unchanged_files(

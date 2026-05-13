@@ -8,6 +8,7 @@ from pathlib import Path
 from core.domain.root_context import RootContext
 from core.storage.database import init_root_database, root_database_path
 from core.storage.duplicates_repository import DuplicateResultRepository
+from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.recycle_repository import RecycleRepository
 
@@ -37,6 +38,8 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "image_items",
         "timeline_entries",
         "recycle_records",
+        "hash_db_metadata",
+        "hash_db_records",
     }.issubset(tables)
 
 
@@ -135,6 +138,31 @@ def test_image_index_repository_round_trips_summary_images_and_timeline(tmp_path
     assert repository.load_timeline_entries("digest") == [
         {"key": "2026-05", "label": "2026-05", "index_label": "202605"}
     ]
+
+
+def test_hash_db_repository_round_trips_current_hash_records(tmp_path: Path) -> None:
+    repository = HashDbRepository(tmp_path / "workspace.sqlite3")
+    payload = {
+        "phash": {"abc": [str(tmp_path / "a.jpg"), str(tmp_path / "b.jpg")]},
+        "strict": {"def": [str(tmp_path / "c.jpg")]},
+    }
+
+    repository.save_hash_db(payload, source_path=tmp_path / "hash_db.json")
+    repository.save_hash_db(payload, source_path=tmp_path / "hash_db.json")
+
+    summary = repository.load_summary()
+    assert repository.load_hash_db() == payload
+    assert summary == {
+        "available": True,
+        "source_path": str(tmp_path / "hash_db.json"),
+        "updated_at": summary["updated_at"],
+        "record_count": 2,
+        "path_count": 3,
+        "method_counts": {
+            "phash": {"record_count": 1, "path_count": 2},
+            "strict": {"record_count": 1, "path_count": 1},
+        },
+    }
 
 
 def test_recycle_repository_updates_lifecycle_action(tmp_path: Path) -> None:

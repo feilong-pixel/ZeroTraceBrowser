@@ -9,6 +9,9 @@ from pathlib import Path
 import app as ztb_app
 import core.context as ztb_context
 import core.routes.tasks_route as tasks_routes
+from core.domain.root_context import RootContext
+from core.storage.duplicates_repository import DuplicateResultRepository
+from core.storage.hash_db_repository import HashDbRepository
 from tests.test_api_duplicates import write_duplicates_json
 from tests.test_api_user_flow import create_test_image
 
@@ -176,11 +179,8 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
         task["status"] = "completed"
         task["finished_at"] = datetime.now().isoformat()
 
-        json_index = command.index("--duplicates-json-path") + 1
-        Path(command[json_index]).write_text(
-            '{"destination_root":"","group_count":0,"groups":[]}',
-            encoding="utf-8",
-        )
+        assert "--duplicates-json-path" not in command
+        assert "--duplicates-db-path" in command
 
     monkeypatch.setattr(ztb_app, "run_organizer_task", mark_rebuild_completed)
 
@@ -190,7 +190,8 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
     task = response.json()
     assert task["task_type"] == "rebuild_hash_db"
     assert task["status"] == "completed"
-    assert task["outputs"]["duplicates_json_exists"] is True
+    assert task["outputs"]["duplicates_json_exists"] is False
+    assert task["outputs"]["database_path"].endswith("workspace.sqlite3")
     assert task["params"]["root"] == str(image_root)
 
     query_response = client.get(f"/api/tasks/{task['task_id']}")
@@ -257,58 +258,58 @@ def test_rebuild_hash_db_keeps_results_separate_per_root(api_client, monkeypatch
         task["finished_at"] = datetime.now().isoformat()
 
         root_index = command.index("--rebuild-hash-db-root") + 1
-        json_index = command.index("--duplicates-json-path") + 1
+        db_index = command.index("--duplicates-db-path") + 1
         rebuild_root = Path(command[root_index])
-        json_path = Path(command[json_index])
+        database_path = Path(command[db_index])
 
         if rebuild_root == root_a:
-            write_duplicates_json(
-                json_path,
-                root_a,
-                [
-                    {
-                        "group_id": "dup_a",
-                        "reason": "strict",
-                        "hash": "hash_a",
-                        "kept_path": "same.jpg",
-                        "items": [
-                            {"role": "kept", "path": "same.jpg"},
-                            {"role": "duplicate", "path": "same_dup1.jpg"},
-                        ],
-                    },
-                ],
-            )
+            payload_root = root_a
+            group_id = "dup_a"
+            hash_value = "hash_a"
+            kept = "same.jpg"
+            duplicate = "same_dup1.jpg"
         elif rebuild_root == root_b:
-            write_duplicates_json(
-                json_path,
-                root_b,
-                [
-                    {
-                        "group_id": "dup_b",
-                        "reason": "strict",
-                        "hash": "hash_b",
-                        "kept_path": "other.jpg",
-                        "items": [
-                            {"role": "kept", "path": "other.jpg"},
-                            {"role": "duplicate", "path": "other_dup1.jpg"},
-                        ],
-                    },
-                ],
-            )
+            payload_root = root_b
+            group_id = "dup_b"
+            hash_value = "hash_b"
+            kept = "other.jpg"
+            duplicate = "other_dup1.jpg"
         else:
             raise AssertionError(f"Unexpected rebuild root: {rebuild_root}")
+        DuplicateResultRepository(database_path).save_result(
+            {
+                "generated_at": "2026-04-23T12:34:56",
+                "destination_root": str(payload_root),
+                "group_count": 1,
+                "groups": [
+                    {
+                        "group_id": group_id,
+                        "reason": "strict",
+                        "hash": hash_value,
+                        "kept_path": kept,
+                        "items": [
+                            {"role": "kept", "path": kept},
+                            {"role": "duplicate", "path": duplicate},
+                        ],
+                    },
+                ],
+            },
+            source_path=database_path,
+        )
 
     monkeypatch.setattr(ztb_app, "run_organizer_task", mark_rebuild_completed)
 
     first_response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root_a))
     assert first_response.status_code == 200
     first_task = first_response.json()
-    assert first_task["outputs"]["duplicates_json_exists"] is True
+    assert first_task["outputs"]["duplicates_json_exists"] is False
+    assert first_task["outputs"]["database_exists"] is True
 
     second_response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root_b))
     assert second_response.status_code == 200
     second_task = second_response.json()
-    assert second_task["outputs"]["duplicates_json_exists"] is True
+    assert second_task["outputs"]["duplicates_json_exists"] is False
+    assert second_task["outputs"]["database_exists"] is True
 
     client.post("/api/settings/active-root", json={"path": str(root_a)})
     payload_a = client.get("/api/duplicates").json()
@@ -345,39 +346,43 @@ def test_run_organizer_publishes_duplicates_and_shared_hash_db(api_client, monke
     first_task = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination)).json()
     second_task = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination)).json()
 
-    assert first_task["outputs"]["duplicates_json_path"] == second_task["outputs"]["duplicates_json_path"]
+    assert first_task["outputs"]["database_path"] == second_task["outputs"]["database_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
-    assert first_task["outputs"]["duplicates_json_path"].endswith("duplicates.json")
-    assert first_task["outputs"]["hash_db_path"].endswith("hash_db.json")
-    assert first_task["outputs"]["duplicates_json_path"] == str(ztb_context.root_duplicates_path(destination))
-    assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB": first_task["outputs"]["hash_db_path"]}
-    assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB": second_task["outputs"]["hash_db_path"]}
+    assert first_task["outputs"]["duplicates_json_path"] == ""
+    assert first_task["outputs"]["hash_db_path"].endswith("workspace.sqlite3")
+    assert first_task["outputs"]["database_path"].endswith("workspace.sqlite3")
+    assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"]}
+    assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": second_task["outputs"]["database_path"]}
 
     first_command = captured[0]["command"]
     assert isinstance(first_command, list)
-    assert first_command[first_command.index("--duplicates-json-path") + 1] == first_task["outputs"]["duplicates_json_path"]
+    assert "--duplicates-json-path" not in first_command
+    assert first_command[first_command.index("--duplicates-db-path") + 1] == first_task["outputs"]["database_path"]
 
 
 def test_run_organizer_updates_published_duplicates(api_client, monkeypatch) -> None:
     client, workspace, image_root, _ = api_client
     destination = workspace / "organized"
     destination.mkdir(parents=True, exist_ok=True)
-    published_path = ztb_context.root_duplicates_path(destination)
-    write_duplicates_json(
-        published_path,
-        destination,
-        [
-            {
-                "group_id": "old_dup",
-                "reason": "strict",
-                "hash": "old_hash",
-                "kept_path": "a.jpg",
-                "items": [
-                    {"role": "kept", "path": "a.jpg"},
-                    {"role": "duplicate", "path": "b.jpg"},
-                ],
-            },
-        ],
+    database_path = RootContext.from_root(destination, ztb_app.ROOT_DATA_DIR).database_path
+    DuplicateResultRepository(database_path).save_result(
+        {
+            "destination_root": str(destination),
+            "group_count": 1,
+            "groups": [
+                {
+                    "group_id": "old_dup",
+                    "reason": "strict",
+                    "hash": "old_hash",
+                    "kept_path": "a.jpg",
+                    "items": [
+                        {"role": "kept", "path": "a.jpg"},
+                        {"role": "duplicate", "path": "b.jpg"},
+                    ],
+                },
+            ],
+        },
+        source_path=database_path,
     )
     monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
 
@@ -388,10 +393,10 @@ def test_run_organizer_updates_published_duplicates(api_client, monkeypatch) -> 
         env: dict[str, str] | None = None,
     ) -> None:
         task = ztb_app.TASK_REGISTRY.tasks[task_id]
-        json_index = command.index("--duplicates-json-path") + 1
-        Path(command[json_index]).write_text(
-            '{"destination_root":"updated","group_count":0,"groups":[]}',
-            encoding="utf-8",
+        database_path = Path(command[command.index("--duplicates-db-path") + 1])
+        DuplicateResultRepository(database_path).save_result(
+            {"destination_root": "updated", "group_count": 0, "groups": []},
+            source_path=database_path,
         )
         task["output_lines"] = ["fake organizer finished"]
         task["return_code"] = 0
@@ -404,7 +409,60 @@ def test_run_organizer_updates_published_duplicates(api_client, monkeypatch) -> 
     response = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination))
 
     assert response.status_code == 200
-    assert json.loads(published_path.read_text(encoding="utf-8"))["destination_root"] == "updated"
+    assert DuplicateResultRepository(database_path).load_summary()["destination_root"] == "updated"
+
+
+def test_run_organizer_writes_task_results_to_root_database(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    destination = workspace / "organized"
+    destination.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+
+    def mark_completed_with_database_outputs(
+        task_id: str,
+        command: list[str],
+        workdir: Path,
+        env: dict[str, str] | None = None,
+    ) -> None:
+        database_path = Path(command[command.index("--duplicates-db-path") + 1])
+        DuplicateResultRepository(database_path).save_result(
+            {
+                "destination_root": str(destination),
+                "group_count": 1,
+                "groups": [
+                    {
+                        "group_id": "dup_db",
+                        "reason": "strict",
+                        "hash": "hash_db",
+                        "kept_path": "a.jpg",
+                        "items": [
+                            {"role": "kept", "path": "a.jpg"},
+                            {"role": "duplicate", "path": "b.jpg"},
+                        ],
+                    },
+                ],
+            },
+            source_path=database_path,
+        )
+        HashDbRepository(database_path).save_hash_db(
+            {"phash": {}, "strict": {"hash_db": [str(destination / "a.jpg")]}},
+            source_path=database_path,
+        )
+        task = ztb_app.TASK_REGISTRY.tasks[task_id]
+        task["output_lines"] = ["fake organizer finished"]
+        task["return_code"] = 0
+        task["status"] = "completed"
+        task["finished_at"] = datetime.now().isoformat()
+        ztb_app.summarize_task_root(task)
+
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_completed_with_database_outputs)
+
+    response = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination))
+
+    assert response.status_code == 200
+    database_path = RootContext.from_root(destination, ztb_app.ROOT_DATA_DIR).database_path
+    assert DuplicateResultRepository(database_path).load_summary()["group_count"] == 1
+    assert HashDbRepository(database_path).load_summary()["path_count"] == 1
 
 
 def test_rebuild_hash_db_reuses_duplicates_and_hash_db_paths_for_same_root(api_client, monkeypatch) -> None:
@@ -432,10 +490,66 @@ def test_rebuild_hash_db_reuses_duplicates_and_hash_db_paths_for_same_root(api_c
     first_task = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root)).json()
     second_task = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root)).json()
 
-    assert first_task["outputs"]["duplicates_json_path"] == second_task["outputs"]["duplicates_json_path"]
+    assert first_task["outputs"]["duplicates_json_path"] == ""
+    assert first_task["outputs"]["database_path"] == second_task["outputs"]["database_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
-    assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB": first_task["outputs"]["hash_db_path"]}
-    assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB": second_task["outputs"]["hash_db_path"]}
+    assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"]}
+    assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": second_task["outputs"]["database_path"]}
+
+
+def test_rebuild_hash_db_writes_task_results_to_root_database(api_client, monkeypatch) -> None:
+    client, workspace, _, _ = api_client
+    root = workspace / "archive"
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+
+    def mark_rebuild_completed_with_database_outputs(
+        task_id: str,
+        command: list[str],
+        workdir: Path,
+        env: dict[str, str] | None = None,
+    ) -> None:
+        database_path = Path(command[command.index("--duplicates-db-path") + 1])
+        DuplicateResultRepository(database_path).save_result(
+            {
+                "destination_root": str(root),
+                "group_count": 1,
+                "groups": [
+                    {
+                        "group_id": "dup_rebuild_db",
+                        "reason": "phash",
+                        "hash": "hash_rebuild_db",
+                        "kept_path": "keep.jpg",
+                        "items": [
+                            {"role": "kept", "path": "keep.jpg"},
+                            {"role": "duplicate", "path": "dup.jpg"},
+                        ],
+                    },
+                ],
+            },
+            source_path=database_path,
+        )
+        HashDbRepository(database_path).save_hash_db(
+            {"phash": {"hash_rebuild_db": [str(root / "keep.jpg")]}, "strict": {}},
+            source_path=database_path,
+        )
+        task = ztb_app.TASK_REGISTRY.tasks[task_id]
+        task["output_lines"] = ["fake rebuild finished"]
+        task["return_code"] = 0
+        task["status"] = "completed"
+        task["finished_at"] = datetime.now().isoformat()
+        ztb_app.summarize_task_root(task)
+
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_rebuild_completed_with_database_outputs)
+
+    response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root))
+
+    assert response.status_code == 200
+    database_path = RootContext.from_root(root, ztb_app.ROOT_DATA_DIR).database_path
+    assert DuplicateResultRepository(database_path).load_summary()["method_counts"] == {"phash": 1}
+    assert HashDbRepository(database_path).load_summary()["method_counts"] == {
+        "phash": {"record_count": 1, "path_count": 1}
+    }
 
 
 def test_rebuild_hash_db_persists_rebuild_root_separately_from_destination_defaults(api_client, monkeypatch) -> None:
@@ -472,22 +586,25 @@ def test_completed_task_saves_root_summary_for_index_reuse(api_client, monkeypat
     ) -> None:
         create_test_image(destination / "2026" / "04" / "25" / "a.jpg")
         create_test_image(destination / "2026" / "04" / "25" / "b.jpg", color=(10, 20, 30))
-        json_path = Path(ztb_app.TASK_REGISTRY.tasks[task_id]["outputs"]["duplicates_json_path"])
-        write_duplicates_json(
-            json_path,
-            destination,
-            [
-                {
-                    "group_id": "dup_1",
-                    "reason": "strict",
-                    "hash": "hash_1",
-                    "kept_path": "2026/04/25/a.jpg",
-                    "items": [
-                        {"role": "kept", "path": "2026/04/25/a.jpg"},
-                        {"role": "duplicate", "path": "2026/04/25/b.jpg"},
-                    ],
-                },
-            ],
+        database_path = Path(ztb_app.TASK_REGISTRY.tasks[task_id]["outputs"]["database_path"])
+        DuplicateResultRepository(database_path).save_result(
+            {
+                "destination_root": str(destination),
+                "group_count": 1,
+                "groups": [
+                    {
+                        "group_id": "dup_1",
+                        "reason": "strict",
+                        "hash": "hash_1",
+                        "kept_path": "2026/04/25/a.jpg",
+                        "items": [
+                            {"role": "kept", "path": "2026/04/25/a.jpg"},
+                            {"role": "duplicate", "path": "2026/04/25/b.jpg"},
+                        ],
+                    },
+                ],
+            },
+            source_path=database_path,
         )
         task = ztb_app.TASK_REGISTRY.tasks[task_id]
         task["output_lines"] = ["fake organizer finished"]
@@ -529,22 +646,25 @@ def test_completed_rebuild_task_saves_root_summary_for_index_reuse(api_client, m
         workdir: Path,
         env: dict[str, str] | None = None,
     ) -> None:
-        json_path = Path(ztb_app.TASK_REGISTRY.tasks[task_id]["outputs"]["duplicates_json_path"])
-        write_duplicates_json(
-            json_path,
-            rebuild_root,
-            [
-                {
-                    "group_id": "dup_rebuild",
-                    "reason": "strict",
-                    "hash": "hash_rebuild",
-                    "kept_path": "keep.jpg",
-                    "items": [
-                        {"role": "kept", "path": "keep.jpg"},
-                        {"role": "duplicate", "path": "dup.jpg"},
-                    ],
-                },
-            ],
+        database_path = Path(ztb_app.TASK_REGISTRY.tasks[task_id]["outputs"]["database_path"])
+        DuplicateResultRepository(database_path).save_result(
+            {
+                "destination_root": str(rebuild_root),
+                "group_count": 1,
+                "groups": [
+                    {
+                        "group_id": "dup_rebuild",
+                        "reason": "strict",
+                        "hash": "hash_rebuild",
+                        "kept_path": "keep.jpg",
+                        "items": [
+                            {"role": "kept", "path": "keep.jpg"},
+                            {"role": "duplicate", "path": "dup.jpg"},
+                        ],
+                    },
+                ],
+            },
+            source_path=database_path,
         )
         task = ztb_app.TASK_REGISTRY.tasks[task_id]
         task["output_lines"] = ["fake rebuild finished"]

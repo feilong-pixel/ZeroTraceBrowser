@@ -63,6 +63,7 @@ class TaskRegistry:
                 "duplicate_report_exists": output_exists(outputs["duplicate_report_path"]),
                 "duplicates_json_exists": output_exists(outputs["duplicates_json_path"]),
                 "hash_db_exists": output_exists(outputs["hash_db_path"]),
+                "database_exists": output_exists(outputs.get("database_path", "")),
             },
             "output_lines": task["output_lines"][-40:],
             "return_code": task.get("return_code"),

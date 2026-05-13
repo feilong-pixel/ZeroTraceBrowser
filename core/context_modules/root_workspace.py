@@ -46,6 +46,10 @@ def root_duplicates_path(root: str | Path) -> Path:
     return RootContext.from_root(root, ROOT_DATA_DIR).duplicates_path
 
 
+def root_database_path(root: str | Path) -> Path:
+    return RootContext.from_root(root, ROOT_DATA_DIR).database_path
+
+
 def migrate_legacy_image_indexes(root: str | Path) -> None:
     normalized = Path(root).expanduser().resolve()
     cache_key = image_scan_cache_key(normalized, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)

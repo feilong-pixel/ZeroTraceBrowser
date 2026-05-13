@@ -2,6 +2,7 @@
 
 import json
 import os
+import sqlite3
 
 
 DEFAULT_DB_PATH = os.path.join(
@@ -11,6 +12,37 @@ DEFAULT_DB_PATH = os.path.join(
 
 def get_db_path() -> str:
     return os.environ.get("IMAGE_ORGANIZER_HASH_DB", DEFAULT_DB_PATH)
+
+
+def get_sqlite_db_path() -> str:
+    return os.environ.get("IMAGE_ORGANIZER_HASH_DB_SQLITE", "")
+
+
+def connect_sqlite_hash_db() -> sqlite3.Connection:
+    db_path = get_sqlite_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS hash_db_metadata (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            source_path TEXT NOT NULL DEFAULT '',
+            raw_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS hash_db_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            method TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            path TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(method, hash, path)
+        );
+        """
+    )
+    return connection
 
 
 def _normalize_db(db: dict) -> dict[str, dict[str, list[str]]]:
@@ -29,6 +61,22 @@ def _normalize_db(db: dict) -> dict[str, dict[str, list[str]]]:
 
 def load_hash_db() -> dict[str, dict[str, list[str]]]:
     # Load the persisted hash database and remove missing file references.
+    if get_sqlite_db_path().strip():
+        with connect_sqlite_hash_db() as connection:
+            rows = connection.execute(
+                """
+                SELECT method, hash, path
+                FROM hash_db_records
+                ORDER BY method, hash, position, id
+                """
+            ).fetchall()
+        db: dict[str, dict[str, list[str]]] = {"phash": {}, "strict": {}}
+        for row in rows:
+            method = row["method"]
+            db.setdefault(method, {})
+            db[method].setdefault(row["hash"], []).append(row["path"])
+        return clean_hash_db(db)
+
     db_path = get_db_path()
     if not os.path.exists(db_path):
         return {"phash": {}, "strict": {}}
@@ -45,6 +93,34 @@ def load_hash_db() -> dict[str, dict[str, list[str]]]:
 def save_hash_db(db: dict[str, dict[str, list[str]]]) -> None:
     # Persist the cleaned database to disk.
     db = clean_hash_db(db)
+    if get_sqlite_db_path().strip():
+        with connect_sqlite_hash_db() as connection:
+            connection.execute(
+                """
+                INSERT INTO hash_db_metadata (id, source_path, raw_json, updated_at)
+                VALUES (1, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    source_path = excluded.source_path,
+                    raw_json = excluded.raw_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (get_sqlite_db_path(), json.dumps(db, ensure_ascii=False)),
+            )
+            connection.execute("DELETE FROM hash_db_records")
+            for method, records in db.items():
+                for hash_value, paths in records.items():
+                    for position, path in enumerate(paths):
+                        connection.execute(
+                            """
+                            INSERT OR IGNORE INTO hash_db_records
+                                (method, hash, path, position)
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (method, hash_value, path, position),
+                        )
+            connection.commit()
+        return
+
     db_path = get_db_path()
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)

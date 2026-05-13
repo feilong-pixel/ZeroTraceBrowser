@@ -107,6 +107,7 @@ def main():
         help=texts["rebuild_hash_method_help"],
     )
     parser.add_argument("--duplicates-json-path", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--duplicates-db-path", default="", help=argparse.SUPPRESS)
     parser.add_argument("--lang", choices=("zh", "en", "ja"), default="en", help=texts["lang_help"])
     parser.add_argument("--log-path", default="", help=argparse.SUPPRESS)
 
@@ -127,7 +128,7 @@ def main():
             ),
         )
         duplicate_stats = None
-        if args.duplicates_json_path:
+        if args.duplicates_json_path or args.duplicates_db_path:
             merge_existing_methods = None
             if args.rebuild_hash_db_mode == "append":
                 merge_existing_methods = (
@@ -137,7 +138,7 @@ def main():
                 )
             duplicate_stats = rebuild_duplicate_results_json(
                 root_dir,
-                os.path.abspath(args.duplicates_json_path),
+                os.path.abspath(args.duplicates_json_path) if args.duplicates_json_path else "",
                 args.rebuild_hash_method,
                 args.phash_threshold,
                 scan_progress_callback=lambda count: emit_progress(
@@ -147,6 +148,7 @@ def main():
                     texts["rebuild_duplicates_group_progress"].format(count=count)
                 ),
                 merge_existing_methods=merge_existing_methods,
+                sqlite_db_path=os.path.abspath(args.duplicates_db_path) if args.duplicates_db_path else None,
             )
         print(
             texts["rebuild_hash_db_done"].format(
@@ -190,6 +192,7 @@ def main():
             texts["organize_progress"].format(count=count)
         ),
         duplicates_json_path=os.path.abspath(args.duplicates_json_path) if args.duplicates_json_path else None,
+        duplicates_db_path=os.path.abspath(args.duplicates_db_path) if args.duplicates_db_path else None,
     )
 
     print(texts["done_message"].format(log_path=log_path))

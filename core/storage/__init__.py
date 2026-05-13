@@ -2,8 +2,7 @@
 
 """Root-scoped SQLite storage APIs.
 
-These repositories are intentionally not wired into the production routes yet.
-They provide the database surface that future JSON migration steps can adopt
-incrementally.
+The task and duplicate-result flows now use these repositories for root-scoped
+SQLite writes and reads. Some legacy JSON/CSV formats remain as compatibility
+inputs while the migration proceeds incrementally.
 """
-

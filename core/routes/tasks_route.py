@@ -63,11 +63,11 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             lang,
             "--log-path",
             str(log_path),
-            "--duplicates-json-path",
-            outputs["duplicates_json_path"],
+            "--duplicates-db-path",
+            outputs["database_path"],
         ]
 
-        task_env = {"IMAGE_ORGANIZER_HASH_DB": outputs["hash_db_path"]}
+        task_env = {"IMAGE_ORGANIZER_HASH_DB_SQLITE": outputs["database_path"]}
 
         task = {
             "task_id": task_id,
@@ -122,13 +122,13 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             payload.hash_method,
             "--phash-threshold",
             "4",
-            "--duplicates-json-path",
-            outputs["duplicates_json_path"],
+            "--duplicates-db-path",
+            outputs["database_path"],
             "--lang",
             lang,
         ]
 
-        task_env = {"IMAGE_ORGANIZER_HASH_DB": outputs["hash_db_path"]}
+        task_env = {"IMAGE_ORGANIZER_HASH_DB_SQLITE": outputs["database_path"]}
 
         task = {
             "task_id": task_id,

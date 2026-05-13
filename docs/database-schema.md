@@ -7,9 +7,9 @@ workspace owns its own database:
 data/roots/<root_id>/workspace.sqlite3
 ```
 
-The storage APIs in `core/storage/` initialize and use this database, but the
-runtime routes still read the existing JSON/CSV files until a later migration
-step switches them over.
+The task result flow writes duplicate results and hash DB records directly to
+this database. Duplicate-result reads prefer SQLite for the active root while
+retaining legacy JSON compatibility during the migration.
 
 ## Versioning
 
@@ -34,7 +34,7 @@ One current duplicate result per root database.
 | `generated_at` | TEXT | From `duplicates.json`. |
 | `destination_root` | TEXT | Normalized root path from the result payload. |
 | `group_count` | INTEGER | Stored top-level count or computed group count. |
-| `source_path` | TEXT | Source JSON path used by future migration jobs. |
+| `source_path` | TEXT | Source path or database path used by the migration/write job. |
 | `raw_json` | TEXT | Original top-level payload for compatibility/debugging. |
 | `updated_at` | TEXT | SQLite timestamp. |
 
@@ -134,6 +134,31 @@ Stores the current CSV delete-log shape in table form.
 
 Unique key: `deleted_to`.
 
+## Hash DB
+
+### `hash_db_metadata`
+
+Stores the current hash database source and raw payload for compatibility.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | Always `1` for the current hash DB snapshot. |
+| `source_path` | TEXT | Source path or database path used by the migration/write job. |
+| `raw_json` | TEXT | Normalized hash DB payload. |
+| `updated_at` | TEXT | SQLite timestamp. |
+
+### `hash_db_records`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | Internal row id. |
+| `method` | TEXT | `phash` or `strict`. |
+| `hash` | TEXT | Hash value. |
+| `path` | TEXT | Absolute image path recorded by MediaArchiveOrganizer. |
+| `position` | INTEGER | Original path order for a hash bucket. |
+
+Unique key: `(method, hash, path)`.
+
 ## API Surface
 
 Initial repository APIs:
@@ -161,7 +186,13 @@ core.storage.recycle_repository.RecycleRepository
   append_record(timestamp, root, relative_path, deleted_to, action="deleted")
   list_records(include_terminal=True)
   update_action(deleted_to, action)
+
+core.storage.hash_db_repository.HashDbRepository
+  save_hash_db(payload, source_path="")
+  load_hash_db()
+  load_summary()
+  clear_hash_db()
 ```
 
 These APIs are intentionally table-oriented. Future migration work can adjust
-or add methods before production routes switch from JSON/CSV reads to SQLite.
+or add methods as remaining JSON/CSV formats move to SQLite.
