@@ -38,20 +38,18 @@ SKIP_SCAN_DIR_NAMES = {
 EXCLUDED_SCAN_DIRS = SKIP_SCAN_DIR_NAMES
 SUPPORTED_LANGUAGES = {"zh", "en", "ja"}
 
-# Legacy paths are read only for migration/compatibility. New runtime data must
-# live under data/roots/<root_id>/.
+# Legacy paths are retained only for safe cleanup/open-path compatibility. New
+# runtime data must live under data/roots/<root_id>/.
 THUMBNAIL_DIR = DATA_DIR / "thumbnails"
 IMAGE_INDEX_DIR = THUMBNAIL_DIR / "_indexes"
 DELETED_DIR = DATA_DIR / "deleted"
 LOG_DIR = DATA_DIR / "logs"
 
-# Legacy task-log root kept only for discovering older duplicates results.
 TASK_LOG_DIR = LOG_DIR / "tasks"
 ARTIFACT_INDEX_DIR = ROOT_DATA_DIR / "_indexes"
 
 TASK_REGISTRY = TaskRegistry()
 DUPLICATES_PATH_CACHE_TTL_SECONDS = 10.0
-DUPLICATES_PATH_CACHE: tuple[float, Path | None] = (0.0, None)
 DUPLICATES_ROOT_CACHE: tuple[float, str, Path | None] = (0.0, "", None)
 ARTIFACT_INDEX_FILENAMES = {
     "duplicates": "duplicates_by_root.json",

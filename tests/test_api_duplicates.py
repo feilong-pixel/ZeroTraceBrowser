@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from tests.test_api_user_flow import create_test_image
@@ -11,24 +10,6 @@ import app as ztb_app
 import core.context as ztb_context
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
-
-
-def write_duplicates_json(path: Path, destination_root: Path, groups: list[dict]) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "generated_at": "2026-04-23T12:34:56",
-                "destination_root": str(destination_root),
-                "group_count": len(groups),
-                "groups": groups,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    return path
 
 
 def save_duplicates_db(root: Path, groups: list[dict], destination_root: Path | None = None) -> Path:
@@ -86,7 +67,6 @@ def test_duplicates_api_loads_latest_result_and_filters_unavailable_groups(api_c
     assert response.status_code == 200
     payload = response.json()
     assert payload["available"] is True
-    assert payload["json_path"] == ""
     assert payload["database_path"] == str(database_path)
     assert payload["destination_root"] == str(archive_root)
     assert payload["active_root_matches"] is True
@@ -219,7 +199,6 @@ def test_duplicates_api_reports_unavailable_when_no_result_exists(api_client) ->
     assert response.status_code == 200
     assert response.json() == {
         "available": False,
-        "json_path": "",
         "generated_at": None,
         "destination_root": "",
         "active_root": str(image_root),
@@ -227,41 +206,6 @@ def test_duplicates_api_reports_unavailable_when_no_result_exists(api_client) ->
         "groups": [],
         "group_count": 0,
     }
-
-
-def test_duplicates_api_migrates_legacy_json_to_database(api_client) -> None:
-    client, workspace, *_ = api_client
-    archive_root = workspace / "archive"
-    create_test_image(archive_root / "same.jpg")
-    create_test_image(archive_root / "same_dup1.jpg", color=(10, 20, 30))
-    client.post("/api/settings/roots", json={"path": str(archive_root)})
-
-    legacy_path = write_duplicates_json(
-        ztb_context.root_duplicates_path(archive_root),
-        archive_root,
-        [
-            {
-                "group_id": "legacy_dup",
-                "reason": "strict",
-                "hash": "legacy-hash",
-                "kept_path": "same.jpg",
-                "items": [
-                    {"role": "kept", "path": "same.jpg"},
-                    {"role": "duplicate", "path": "same_dup1.jpg"},
-                ],
-            },
-        ],
-    )
-
-    response = client.get("/api/duplicates")
-
-    assert response.status_code == 200
-    payload = response.json()
-    database_path = RootContext.from_root(archive_root, ztb_app.ROOT_DATA_DIR).database_path
-    assert payload["json_path"] == ""
-    assert payload["database_path"] == str(database_path)
-    assert payload["groups"][0]["group_id"] == "legacy_dup"
-    assert DuplicateResultRepository(database_path).load_summary()["source_path"] == str(legacy_path)
 
 
 def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:
@@ -312,7 +256,6 @@ def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["destination_root"] == str(archive_a)
-    assert payload["json_path"] == ""
     assert payload["database_path"]
     assert payload["group_count"] == 1
     assert payload["groups"][0]["group_id"] == "dup_a"

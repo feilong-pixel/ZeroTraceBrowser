@@ -1,76 +1,8 @@
 from .base import *
 from .settings_context import load_settings
-from .root_workspace import root_duplicates_path
-from .artifact_context import load_artifact_index
 from .image_context import resolve_under_root
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
-
-
-def iter_duplicates_result_paths() -> list[Path]:
-    latest_dir_path = TASK_LOG_DIR / "latest" / "duplicates.json"
-    candidates: list[Path] = []
-    if latest_dir_path.exists():
-        candidates.append(latest_dir_path)
-
-    candidates.extend(
-        path for path in ROOT_DATA_DIR.glob("*/duplicates.json")
-        if path.exists()
-    )
-
-    candidates.extend(
-        path for path in TASK_LOG_DIR.rglob("duplicates.json")
-        if path != latest_dir_path
-    )
-    return sorted(candidates, key=lambda path: path.stat().st_mtime, reverse=True)
-
-
-def read_duplicates_destination_root(json_path: Path) -> str:
-    try:
-        with json_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return ""
-
-    destination_root = payload.get("destination_root", "")
-    return str(Path(destination_root).expanduser().resolve()) if destination_root else ""
-
-
-def get_latest_duplicates_path(active_root: str | None = None) -> Path | None:
-    global DUPLICATES_PATH_CACHE
-
-    now = time.monotonic()
-    cached_at, cached_path = DUPLICATES_PATH_CACHE
-    if active_root is None and now - cached_at <= DUPLICATES_PATH_CACHE_TTL_SECONDS:
-        if cached_path is None or cached_path.exists():
-            return cached_path
-
-    if active_root:
-        root_scoped_path = root_duplicates_path(active_root)
-        if root_scoped_path.exists():
-            return root_scoped_path
-
-        indexed_path = load_artifact_index("duplicates").get(str(Path(active_root).expanduser().resolve()), "").strip()
-        if indexed_path:
-            indexed_candidate = Path(indexed_path).expanduser().resolve()
-            if indexed_candidate.exists():
-                root_scoped_path.parent.mkdir(parents=True, exist_ok=True)
-                if not root_scoped_path.exists():
-                    shutil.copy2(indexed_candidate, root_scoped_path)
-                return root_scoped_path
-
-    candidates = iter_duplicates_result_paths()
-    if active_root:
-        normalized_active_root = str(Path(active_root).expanduser().resolve())
-        for candidate in candidates:
-            if read_duplicates_destination_root(candidate) == normalized_active_root:
-                return candidate
-        return None
-
-    latest = candidates[0] if candidates else None
-    if active_root is None:
-        DUPLICATES_PATH_CACHE = (now, latest)
-    return latest
 
 
 def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
@@ -81,27 +13,8 @@ def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
     return result
 
 
-def migrate_legacy_duplicates_json(active_root: str, json_path: Path) -> dict[str, Any] | None:
-    try:
-        with json_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-
-    destination_root = read_duplicates_destination_root(json_path)
-    if destination_root and destination_root != str(Path(active_root).expanduser().resolve()):
-        return None
-
-    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-    DuplicateResultRepository(database_path).save_result(payload, source_path=json_path)
-    return DuplicateResultRepository(database_path).load_result()
-
-
 def clear_duplicates_path_cache() -> None:
-    global DUPLICATES_PATH_CACHE, DUPLICATES_ROOT_CACHE
-    DUPLICATES_PATH_CACHE = (0.0, None)
+    global DUPLICATES_ROOT_CACHE
     DUPLICATES_ROOT_CACHE = (0.0, "", None)
 
 
@@ -127,8 +40,7 @@ def get_latest_duplicates_result_root() -> Path | None:
     if payload is not None:
         destination_root = str(payload.get("destination_root", ""))
     else:
-        target = get_latest_duplicates_path(active_root)
-        destination_root = read_duplicates_destination_root(target) if target is not None and target.exists() else ""
+        destination_root = ""
     if not destination_root:
         DUPLICATES_ROOT_CACHE = (now, active_root, None)
         return None
@@ -138,7 +50,6 @@ def get_latest_duplicates_result_root() -> Path | None:
 
 
 def load_duplicates_payload(
-    json_path: Path | None = None,
     offset: int = 0,
     limit: int | None = None,
     method: str | None = None,
@@ -150,14 +61,10 @@ def load_duplicates_payload(
     method_filter = str(method or "").strip().lower()
     is_paged_request = offset != 0 or limit is not None or bool(method_filter)
 
-    database_payload = None if json_path is not None else load_database_duplicates_payload(active_root)
-    target = json_path or (None if database_payload is not None else get_latest_duplicates_path(active_root))
-    if database_payload is None and target is not None and target.exists():
-        database_payload = migrate_legacy_duplicates_json(active_root, target)
-    if database_payload is None and (target is None or not target.exists()):
+    database_payload = load_database_duplicates_payload(active_root)
+    if database_payload is None:
         result = {
             "available": False,
-            "json_path": "",
             "generated_at": None,
             "destination_root": "",
             "active_root": active_root,
@@ -177,14 +84,7 @@ def load_duplicates_payload(
             )
         return result
 
-    if database_payload is None:
-        with target.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        result_path = str(target)
-    else:
-        payload = database_payload
-        result_path = ""
-
+    payload = database_payload
     destination_root_path = get_duplicates_root_from_payload(payload)
     destination_root = str(destination_root_path) if destination_root_path else ""
     groups = []
@@ -261,7 +161,6 @@ def load_duplicates_payload(
 
     return {
         "available": True,
-        "json_path": result_path,
         "database_path": str(RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path) if database_payload is not None else "",
         "generated_at": payload.get("generated_at"),
         "destination_root": destination_root,
@@ -286,24 +185,4 @@ def load_duplicates_summary() -> dict[str, Any]:
     if database_summary.get("available"):
         return {"available": True, "group_count": database_summary.get("group_count", 0)}
 
-    target = get_latest_duplicates_path(active_root)
-    if target is None or not target.exists():
-        return {"available": False, "group_count": 0}
-
-    migrated = migrate_legacy_duplicates_json(active_root, target)
-    if migrated is not None:
-        group_count = migrated.get("group_count")
-        return {"available": True, "group_count": group_count if isinstance(group_count, int) else 0}
-
-    try:
-        with target.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return {"available": False, "group_count": 0}
-
-    group_count = payload.get("group_count")
-    if not isinstance(group_count, int):
-        groups = payload.get("groups", [])
-        group_count = len(groups) if isinstance(groups, list) else 0
-
-    return {"available": True, "group_count": group_count}
+    return {"available": False, "group_count": 0}

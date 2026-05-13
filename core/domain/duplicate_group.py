@@ -18,7 +18,7 @@ class DuplicateItem(BaseModel):
 class DuplicateGroup(BaseModel):
     """
     Duplicate file group for ZeroTraceBrowser.
-    Corresponds to each item in the ``groups`` array of ``duplicates.json``.
+    Corresponds to each group persisted in the root database.
     """
 
     # Group identifier
@@ -44,7 +44,7 @@ class DuplicateGroup(BaseModel):
 
     @classmethod
     def from_json_group(cls, data: dict[str, Any]) -> DuplicateGroup:
-        """Safely build from a group dict in duplicates.json."""
+        """Safely build from a duplicate group payload."""
         raw_items: list[dict[str, Any]] = data.get("items", [])
         items = []
         for item in raw_items:

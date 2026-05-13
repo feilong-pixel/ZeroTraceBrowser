@@ -34,7 +34,7 @@ class DeleteImageUseCase:
 
     In phase 2 of the refactor, the direct service function calls below
     will be replaced with repository abstractions (FileRepository,
-    LogRepository, ThumbnailRepository, CacheRepository).
+    LogRepository and ThumbnailRepository).
     """
 
     def __init__(

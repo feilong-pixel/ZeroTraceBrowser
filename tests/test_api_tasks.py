@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 
 import app as ztb_app
-import core.context as ztb_context
 import core.routes.tasks_route as tasks_routes
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
-from tests.test_api_duplicates import write_duplicates_json
 from tests.test_api_user_flow import create_test_image
 
 
@@ -190,7 +187,6 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
     task = response.json()
     assert task["task_type"] == "rebuild_hash_db"
     assert task["status"] == "completed"
-    assert task["outputs"]["duplicates_json_exists"] is False
     assert task["outputs"]["database_path"].endswith("workspace.sqlite3")
     assert task["params"]["root"] == str(image_root)
 
@@ -302,13 +298,11 @@ def test_rebuild_hash_db_keeps_results_separate_per_root(api_client, monkeypatch
     first_response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root_a))
     assert first_response.status_code == 200
     first_task = first_response.json()
-    assert first_task["outputs"]["duplicates_json_exists"] is False
     assert first_task["outputs"]["database_exists"] is True
 
     second_response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root_b))
     assert second_response.status_code == 200
     second_task = second_response.json()
-    assert second_task["outputs"]["duplicates_json_exists"] is False
     assert second_task["outputs"]["database_exists"] is True
 
     client.post("/api/settings/active-root", json={"path": str(root_a)})
@@ -348,7 +342,6 @@ def test_run_organizer_publishes_duplicates_and_shared_hash_db(api_client, monke
 
     assert first_task["outputs"]["database_path"] == second_task["outputs"]["database_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
-    assert first_task["outputs"]["duplicates_json_path"] == ""
     assert first_task["outputs"]["hash_db_path"].endswith("workspace.sqlite3")
     assert first_task["outputs"]["database_path"].endswith("workspace.sqlite3")
     assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"]}
@@ -490,7 +483,6 @@ def test_rebuild_hash_db_reuses_duplicates_and_hash_db_paths_for_same_root(api_c
     first_task = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root)).json()
     second_task = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(root)).json()
 
-    assert first_task["outputs"]["duplicates_json_path"] == ""
     assert first_task["outputs"]["database_path"] == second_task["outputs"]["database_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
     assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"]}

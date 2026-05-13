@@ -1,6 +1,6 @@
 from .base import *
 from .settings_context import save_root_summary, get_active_image_root, save_image_index_summary_metadata_service
-from .root_workspace import ensure_root_workspace, root_task_log_dir, root_hash_db_path, root_duplicates_path, root_database_path, root_image_index_dir
+from .root_workspace import ensure_root_workspace, root_task_log_dir, root_database_path, root_image_index_dir
 from .artifact_context import get_hash_db_path
 from .image_context import iter_image_files, clear_image_list_cache
 from core.domain.root_context import RootContext
@@ -21,7 +21,6 @@ def build_task_outputs(
     publish_duplicates: bool = False,
 ) -> dict[str, str]:
     log_str = str(log_path) if log_path else ""
-    duplicate_json_path = ""
     hash_db_path = str(get_hash_db_path(target_root))
     database_path = ""
 
@@ -32,16 +31,12 @@ def build_task_outputs(
         hash_db_path = database_path
     elif target_root:
         ensure_root_workspace(target_root)
-        duplicate_json_path = str(log_path.with_name("duplicates.json")) if log_path else ""
-        hash_db_path = str(root_hash_db_path(target_root))
+        hash_db_path = str(root_database_path(target_root))
         database_path = str(root_database_path(target_root))
-    elif log_path:
-        duplicate_json_path = str(log_path.with_name("duplicates.json"))
 
     return {
         "log_path": log_str,
         "duplicate_report_path": str(log_path.with_name("duplicate_report.csv")) if log_path else "",
-        "duplicates_json_path": duplicate_json_path,
         "hash_db_path": hash_db_path,
         "database_path": database_path,
     }
@@ -84,19 +79,6 @@ def summarize_task_root(task: dict[str, Any]) -> None:
     persist_task_outputs_to_database(task, root)
     image_count = sum(1 for _ in iter_image_files(root)) if root.exists() else 0
     duplicate_group_count: int | None = None
-    duplicates_json_path = str(task.get("outputs", {}).get("duplicates_json_path", "")).strip()
-    if task.get("task_type") in {"organizer", "rebuild_hash_db"} and duplicates_json_path:
-        try:
-            with Path(duplicates_json_path).open("r", encoding="utf-8") as handle:
-                payload = json.load(handle)
-            raw_group_count = payload.get("group_count")
-            if isinstance(raw_group_count, int):
-                duplicate_group_count = raw_group_count
-            else:
-                groups = payload.get("groups", [])
-                duplicate_group_count = len(groups) if isinstance(groups, list) else None
-        except (OSError, json.JSONDecodeError):
-            duplicate_group_count = None
     if duplicate_group_count is None and task.get("task_type") in {"organizer", "rebuild_hash_db"}:
         summary = DuplicateResultRepository(RootContext.from_root(root, ROOT_DATA_DIR, ensure=True).database_path).load_summary()
         raw_group_count = summary.get("group_count")
@@ -122,18 +104,6 @@ def persist_task_outputs_to_database(task: dict[str, Any], root: Path) -> None:
         return
 
     database_path = RootContext.from_root(root, ROOT_DATA_DIR, ensure=True).database_path
-
-    duplicates_json_path = str(outputs.get("duplicates_json_path", "")).strip()
-    if duplicates_json_path:
-        path = Path(duplicates_json_path)
-        if path.exists() and path.is_file():
-            try:
-                with path.open("r", encoding="utf-8") as handle:
-                    payload = json.load(handle)
-                if isinstance(payload, dict):
-                    DuplicateResultRepository(database_path).save_result(payload, source_path=path)
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                pass
 
     hash_db_path = str(outputs.get("hash_db_path", "")).strip()
     if hash_db_path:

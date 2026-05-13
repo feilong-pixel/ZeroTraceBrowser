@@ -61,7 +61,6 @@ class TaskRegistry:
                 **outputs,
                 "log_exists": output_exists(outputs["log_path"]),
                 "duplicate_report_exists": output_exists(outputs["duplicate_report_path"]),
-                "duplicates_json_exists": output_exists(outputs["duplicates_json_path"]),
                 "hash_db_exists": output_exists(outputs["hash_db_path"]),
                 "database_exists": output_exists(outputs.get("database_path", "")),
             },
@@ -81,6 +80,7 @@ class TaskRegistry:
             task = self.tasks[task_id]
 
         try:
+            output_queue = __import__("queue").Queue()
             env = os.environ.copy()
             if env_overrides:
                 env.update(env_overrides)
@@ -95,12 +95,37 @@ class TaskRegistry:
             )
             output_lines: list[str] = []
             assert process.stdout is not None
-            for line in process.stdout:
-                clean_line = line.rstrip()
-                if clean_line:
-                    output_lines.append(clean_line)
+
+            def read_stdout() -> None:
+                assert process.stdout is not None
+                for line in process.stdout:
+                    clean_line = line.rstrip()
+                    if clean_line:
+                        output_queue.put(clean_line)
+
+            threading.Thread(target=read_stdout, daemon=True).start()
+            last_heartbeat_at = datetime.now()
+
+            while process.poll() is None:
+                try:
+                    line = output_queue.get(timeout=0.5)
+                    output_lines.append(line)
+                    last_heartbeat_at = datetime.now()
                     with self.lock:
                         task["output_lines"] = output_lines[-200:]
+                except Exception:
+                    if (datetime.now() - last_heartbeat_at).total_seconds() >= 5:
+                        output_lines.append("__ZTB_TASK_STILL_RUNNING__")
+                        last_heartbeat_at = datetime.now()
+                        with self.lock:
+                            task["output_lines"] = output_lines[-200:]
+
+            while not output_queue.empty():
+                line = output_queue.get_nowait()
+                output_lines.append(line)
+                with self.lock:
+                    task["output_lines"] = output_lines[-200:]
+
             return_code = process.wait()
             with self.lock:
                 task["return_code"] = return_code

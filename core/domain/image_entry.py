@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class ImageEntry(BaseModel):
     """
-    Index entry for ZeroTraceBrowser, corresponding to each item in index.json / summary.json.
+    Index entry for ZeroTraceBrowser, corresponding to each indexed image item.
 
     Fields align with the return structure of :func:`image_scan_service.image_metadata_from_path`,
     All optional field defaults match the production code (empty string, 0, or None).

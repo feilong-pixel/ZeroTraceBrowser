@@ -65,22 +65,22 @@ def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None
         ],
     }
 
-    repository.save_result(payload, source_path=tmp_path / "duplicates.json")
-    repository.save_result(payload, source_path=tmp_path / "duplicates.json")
+    repository.save_result(payload, source_path=tmp_path / "workspace.sqlite3")
+    repository.save_result(payload, source_path=tmp_path / "workspace.sqlite3")
 
     assert repository.load_summary() == {
         "available": True,
         "generated_at": "2026-05-13T10:00:00",
         "destination_root": str(tmp_path / "images"),
         "group_count": 1,
-        "source_path": str(tmp_path / "duplicates.json"),
+        "source_path": str(tmp_path / "workspace.sqlite3"),
         "method_counts": {"strict": 1},
     }
     assert repository.load_result() == {
         "generated_at": "2026-05-13T10:00:00",
         "destination_root": str(tmp_path / "images"),
         "group_count": 1,
-        "source_path": str(tmp_path / "duplicates.json"),
+        "source_path": str(tmp_path / "workspace.sqlite3"),
         "groups": [
             {
                 "group_id": "dup_0001",

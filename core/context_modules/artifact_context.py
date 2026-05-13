@@ -1,6 +1,6 @@
 from .base import *
 from .settings_context import load_settings
-from .root_workspace import ensure_root_workspace, root_hash_db_path, root_duplicates_path
+from .root_workspace import ensure_root_workspace, root_hash_db_path
 
 
 def get_artifact_index_dir() -> Path:

@@ -14,8 +14,6 @@ class RootContext:
     The current layout is:
     data/roots/<root_id>/
       root.json
-      hash_db.json
-      duplicates.json
       workspace.sqlite3
       deleted/
       indexes/

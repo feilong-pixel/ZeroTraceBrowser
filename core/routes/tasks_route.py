@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 import threading
 import uuid
@@ -165,19 +164,5 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
         return ctx.serialize_task(task)
-
-    # GET /api/tasks/{task_id}/duplicates
-    @router.get("/api/tasks/{task_id}/duplicates")
-    def get_task_duplicates(task_id: str) -> dict[str, Any]:
-        task = ctx.TASK_REGISTRY.get(task_id)
-        if task is None:
-            raise HTTPException(status_code=404, detail="Task not found")
-
-        json_path = Path(task["outputs"]["duplicates_json_path"])
-        if not json_path.exists():
-            raise HTTPException(status_code=404, detail="duplicates.json not found")
-
-        with json_path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
 
     return router

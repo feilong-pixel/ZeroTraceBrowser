@@ -34,11 +34,9 @@ function getTasksElements() {
     taskFinishedAt: $("#taskFinishedAt"),
     logPath: $("#logPath"),
     csvPath: $("#csvPath"),
-    jsonPath: $("#jsonPath"),
     hashDbPath: $("#hashDbPath"),
     openLogPathButton: $("#openLogPathButton"),
     openCsvPathButton: $("#openCsvPathButton"),
-    openJsonPathButton: $("#openJsonPathButton"),
     openHashDbPathButton: $("#openHashDbPathButton"),
     backToGalleryLink: $("#backToGalleryLink"),
   };
@@ -82,6 +80,10 @@ function setTaskLog(els, value) {
 function setTaskStatus(els, value) {
   setText(els.taskStatus, value);
   setText(els.liveOutputStatus, value);
+}
+
+function localizeTaskOutputLine(line) {
+  return line === "__ZTB_TASK_STILL_RUNNING__" ? t("tasks.stillRunning") : line;
 }
 
 function setOutputPath(input, button, path, exists) {
@@ -170,13 +172,12 @@ function updateSummary(els, task) {
   setText(els.taskFinishedAt, formatDisplayTime(task?.finished_at));
   setOutputPath(els.logPath, els.openLogPathButton, task?.outputs?.log_path || "", task?.outputs?.log_exists);
   setOutputPath(els.csvPath, els.openCsvPathButton, task?.outputs?.duplicate_report_path || "", task?.outputs?.duplicate_report_exists);
-  setOutputPath(els.jsonPath, els.openJsonPathButton, task?.outputs?.duplicates_json_path || "", task?.outputs?.duplicates_json_exists);
   setOutputPath(els.hashDbPath, els.openHashDbPathButton, task?.outputs?.hash_db_path || "", task?.outputs?.hash_db_exists);
 
   setTaskLog(
     els,
     task?.output_lines?.length
-      ? task.output_lines.join("\n")
+      ? task.output_lines.map(localizeTaskOutputLine).join("\n")
       : t("tasks.noTaskOutput"),
   );
 }
@@ -439,7 +440,6 @@ function bindTasksEvents(els, state) {
   [
     [els.openLogPathButton, els.logPath],
     [els.openCsvPathButton, els.csvPath],
-    [els.openJsonPathButton, els.jsonPath],
     [els.openHashDbPathButton, els.hashDbPath],
   ].forEach(([button, input]) => {
     on(button, "click", () => {
@@ -466,7 +466,6 @@ function renderTasksInitialState(els) {
   setText(els.taskFinishedAt, "-");
   setOutputPath(els.logPath, els.openLogPathButton, "", false);
   setOutputPath(els.csvPath, els.openCsvPathButton, "", false);
-  setOutputPath(els.jsonPath, els.openJsonPathButton, "", false);
   setOutputPath(els.hashDbPath, els.openHashDbPathButton, "", false);
   setTaskLog(els, t("tasks.noTaskStarted"));
 }

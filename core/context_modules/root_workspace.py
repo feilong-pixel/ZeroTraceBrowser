@@ -50,119 +50,6 @@ def root_database_path(root: str | Path) -> Path:
     return RootContext.from_root(root, ROOT_DATA_DIR).database_path
 
 
-def migrate_legacy_image_indexes(root: str | Path) -> None:
-    normalized = Path(root).expanduser().resolve()
-    cache_key = image_scan_cache_key(normalized, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
-    legacy_dir = IMAGE_INDEX_DIR
-    scoped_dir = root_image_index_dir(normalized)
-    if legacy_dir.resolve() == scoped_dir.resolve() or not legacy_dir.exists():
-        return
-
-    for legacy_path in (
-        image_index_cache_path_service(legacy_dir, cache_key),
-        image_index_summary_path_service(legacy_dir, cache_key),
-        timeline_index_cache_path_service(legacy_dir, cache_key),
-    ):
-        if not legacy_path.exists() or not legacy_path.is_file():
-            continue
-        target_path = scoped_dir / legacy_path.name
-        if target_path.exists():
-            continue
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(legacy_path), str(target_path))
-
-    for candidate in (legacy_dir, legacy_dir.parent):
-        try:
-            candidate.rmdir()
-        except OSError:
-            break
-
-
-def cache_digest_from_index_path(path: Path) -> str:
-    name = path.name
-    for suffix in (".summary.json", ".timeline.json", ".json"):
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
-    return path.stem
-
-
-def read_index_summary_root(summary_path: Path) -> tuple[str, int | None, int | None, str]:
-    try:
-        with summary_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return "", None, None, ""
-
-    root = str(payload.get("root", "")).strip()
-    total = payload.get("total")
-    duplicate_group_count = payload.get("duplicate_group_count")
-    generated_at = str(payload.get("generated_at", "")).strip()
-    return (
-        normalize_root_value(root) if root else "",
-        total if isinstance(total, int) else None,
-        duplicate_group_count if isinstance(duplicate_group_count, int) else None,
-        generated_at,
-    )
-
-
-def canonicalize_root_image_indexes(root: str | Path) -> None:
-    normalized = normalize_root_value(root)
-    index_dir = root_image_index_dir(normalized)
-    if not index_dir.exists():
-        return
-
-    cache_key = image_scan_cache_key(Path(normalized), SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
-    current_paths = {
-        "full": image_index_cache_path_service(index_dir, cache_key),
-        "summary": image_index_summary_path_service(index_dir, cache_key),
-        "timeline": timeline_index_cache_path_service(index_dir, cache_key),
-    }
-    current_digest = cache_digest_from_index_path(current_paths["summary"])
-
-    candidates: list[tuple[tuple[int, int, str], str]] = []
-    for summary_path in index_dir.glob("*.summary.json"):
-        summary_root, total, duplicate_group_count, generated_at = read_index_summary_root(summary_path)
-        if summary_root != normalized:
-            continue
-        digest = cache_digest_from_index_path(summary_path)
-        score = (
-            1 if isinstance(duplicate_group_count, int) else 0,
-            total if isinstance(total, int) else -1,
-            generated_at,
-        )
-        candidates.append((score, digest))
-
-    if not candidates:
-        return
-
-    _, selected_digest = max(candidates, key=lambda item: item[0])
-    selected_paths = {
-        "full": index_dir / f"{selected_digest}.json",
-        "summary": index_dir / f"{selected_digest}.summary.json",
-        "timeline": index_dir / f"{selected_digest}.timeline.json",
-    }
-
-    for kind, selected_path in selected_paths.items():
-        if not selected_path.exists():
-            continue
-        target_path = current_paths[kind]
-        if selected_path.resolve() == target_path.resolve():
-            continue
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(selected_path, target_path)
-
-    for _, digest in candidates:
-        if digest == current_digest:
-            continue
-        for path in (
-            index_dir / f"{digest}.json",
-            index_dir / f"{digest}.summary.json",
-            index_dir / f"{digest}.timeline.json",
-        ):
-            if path.exists() and path.is_file():
-                path.unlink()
-
-
 def ensure_root_workspace(root: str | Path) -> Path:
     normalized = normalize_root_value(root)
     workspace_context = RootContext.from_root(normalized, ROOT_DATA_DIR, ensure=True)
@@ -181,8 +68,6 @@ def ensure_root_workspace(root: str | Path) -> Path:
             ),
             encoding="utf-8",
         )
-    migrate_legacy_image_indexes(normalized)
-    canonicalize_root_image_indexes(normalized)
     return workspace
 
 

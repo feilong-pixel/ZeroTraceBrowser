@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 import app as ztb_app
 import core.context as ztb_context
-from core.services.image_index_service import (
-    image_index_cache_path,
-    image_index_summary_path,
-    image_scan_cache_key,
-    timeline_index_cache_path,
-)
 
 
 def test_config_uses_local_cors_origin(api_client) -> None:
@@ -268,16 +261,6 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
     client.post("/api/settings/roots", json={"path": str(other_root)})
     client.post("/api/settings/active-root", json={"path": str(image_root)})
 
-    cache_key = image_scan_cache_key(image_root, ztb_app.SUPPORTED_EXTENSIONS, ztb_app.SKIP_SCAN_DIR_NAMES)
-    image_index_dir = ztb_context.root_image_index_dir(image_root)
-    image_index_path = image_index_cache_path(image_index_dir, cache_key)
-    image_summary_path = image_index_summary_path(image_index_dir, cache_key)
-    timeline_path = timeline_index_cache_path(image_index_dir, cache_key)
-    index_payload = {"items": [{"relative_path": "photo.jpg", "name": "photo.jpg"}]}
-    for path in (image_index_path, image_summary_path, timeline_path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("{}" if path == timeline_path else json.dumps(index_payload), encoding="utf-8")
-
     thumbnail_path = ztb_app.thumbnail_path_for(image_root, "photo.jpg")
     thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
     thumbnail_path.write_text("thumb", encoding="utf-8")
@@ -324,9 +307,6 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
     assert payload["cleanup"]["removed"]["delete_log_rows"] == 1
     assert payload["cleanup"]["removed"]["recycle_files"] == 1
     assert recycled_paths == [deleted_copy]
-    assert not image_index_path.exists()
-    assert not image_summary_path.exists()
-    assert not timeline_path.exists()
     assert not duplicates_path.exists()
     assert not hash_db_path.exists()
     assert not thumbnail_path.exists()

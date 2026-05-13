@@ -43,12 +43,6 @@ def get_root_summary(root: str | Path) -> dict[str, Any]:
     normalized_root = Path(root).expanduser().resolve()
     cache_key = image_scan_cache_key(normalized_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     metadata = load_image_index_summary_metadata_service(root_image_index_dir(normalized_root), cache_key)
-    if not (
-        isinstance(metadata.get("total"), int)
-        or isinstance(metadata.get("duplicate_group_count"), int)
-        or str(metadata.get("generated_at", "")).strip()
-    ):
-        metadata = load_image_index_summary_metadata_service(IMAGE_INDEX_DIR, cache_key)
     if (
         isinstance(metadata.get("total"), int)
         or isinstance(metadata.get("duplicate_group_count"), int)

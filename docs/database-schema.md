@@ -9,11 +9,10 @@ data/roots/<root_id>/workspace.sqlite3
 
 The task result flow writes duplicate results and hash DB records directly to
 this database. The index-page flow writes image index, summary, and timeline
-data directly to the same database. Duplicate and image-index reads prefer
-SQLite for the active root; legacy duplicate JSON is imported into SQLite when
-encountered during the migration. Recycle-bin current state also writes to
-SQLite, while CSV delete logs remain as audit history. Viewer EXIF metadata is
-cached in SQLite after the first `/api/exif` read.
+data directly to the same database. Duplicate and image-index reads use SQLite
+for the active root. Recycle-bin current state also writes to SQLite, while CSV
+delete logs remain as audit history. Viewer EXIF metadata is cached in SQLite
+after the first `/api/exif` read.
 
 ## Versioning
 
@@ -35,7 +34,7 @@ One current duplicate result per root database.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | INTEGER PRIMARY KEY | Always `1` for the current result. |
-| `generated_at` | TEXT | From `duplicates.json`. |
+| `generated_at` | TEXT | Duplicate result generation time. |
 | `destination_root` | TEXT | Normalized root path from the result payload. |
 | `group_count` | INTEGER | Stored top-level count or computed group count. |
 | `source_path` | TEXT | Source path or database path used by the migration/write job. |
@@ -221,4 +220,4 @@ core.storage.exif_repository.ExifRepository
 ```
 
 These APIs are intentionally table-oriented. Future migration work can adjust
-or add methods as remaining JSON/CSV formats move to SQLite.
+or add methods as remaining audit formats move to SQLite.

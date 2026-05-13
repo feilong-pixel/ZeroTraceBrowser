@@ -1,10 +1,9 @@
 # Data Format Inventory
 
-This document records the remaining file-backed data formats during the SQLite
-migration. Task duplicate results, hash DB records, image index data, and
-current recycle records now write directly to the root workspace database.
-Viewer EXIF metadata is cached in the same database after the first read;
-several files remain as compatibility or audit formats.
+This document records the file-backed formats that intentionally remain after
+the page data migration. Task duplicate results, hash DB records, image index
+data, current recycle records, and viewer EXIF metadata now write to the root
+workspace database.
 
 ## Root Workspace
 
@@ -45,127 +44,18 @@ Typical fields:
 Migration recommendation: keep as JSON for now. It describes the workspace
 itself and is useful during diagnostics.
 
-## Duplicate Results
+## Database-Backed Runtime Data
 
-### `data/roots/<root_id>/duplicates.json`
+`data/roots/<root_id>/workspace.sqlite3` is the active store for:
 
-Legacy root-scoped duplicate detection result. Current task buttons write the
-same result shape directly to `workspace.sqlite3`, and the duplicates page reads
-from SQLite first. When an older JSON result is encountered, it is imported into
-the root database and then served from there.
+- duplicate results used by the duplicates page
+- hash DB records produced by task and rebuild flows
+- image index, summary, and timeline data used by the index page
+- recycle-bin current state
+- viewer EXIF metadata cache
 
-Top-level fields:
-
-```json
-{
-  "generated_at": "2026-04-23T12:34:56",
-  "destination_root": "D:/Photos",
-  "group_count": 2,
-  "groups": []
-}
-```
-
-Each group contains:
-
-```json
-{
-  "group_id": "dup_0001",
-  "reason": "strict",
-  "hash": "abc123",
-  "kept_path": "2026/04/23/kept.jpg",
-  "items": [
-    {"role": "kept", "path": "2026/04/23/kept.jpg"},
-    {"role": "duplicate", "path": "2026/04/23/kept_dup1.jpg"}
-  ]
-}
-```
-
-Notes:
-
-- `destination_root` must match the active root before the UI treats the result
-  as current.
-- `reason` currently behaves as the detection method, commonly `strict` or
-  `phash`.
-- Item `path` values are relative to `destination_root` and must still be
-  resolved through path-safety helpers when used for file access.
-
-Migration status: active task writes and duplicates-page reads now target
-SQLite. Legacy JSON can still be imported while older results exist.
-
-## Image Index Cache
-
-### `data/roots/<root_id>/indexes/<digest>.json`
-
-Legacy full image index cache. Current index-page scan writes the same data to
-`workspace.sqlite3`.
-
-Top-level fields:
-
-```json
-{
-  "generated_at": "2026-05-13T10:00:00",
-  "root": "D:/Photos",
-  "items": []
-}
-```
-
-Each item is the scan metadata returned by the image scanner:
-
-```json
-{
-  "relative_path": "2026/04/23/photo.jpg",
-  "path": "2026/04/23/photo.jpg",
-  "name": "photo.jpg",
-  "size": 12345,
-  "captured_at": "",
-  "modified_at": "2026-05-13T10:00:00",
-  "timeline_time": "2026-05-13 10:00:00",
-  "timeline_ts": 1778643600,
-  "timeline_source": "file",
-  "exists": true
-}
-```
-
-Optional fields observed or expected by domain models include `hash`, `width`,
-and `height`.
-
-### `data/roots/<root_id>/indexes/<digest>.summary.json`
-
-Legacy fast first-paint summary cache. Current reads prefer SQLite summary rows
-and use this JSON only for older workspaces.
-
-Fields:
-
-```json
-{
-  "generated_at": "2026-05-13T10:00:00",
-  "root": "D:/Photos",
-  "total": 1200,
-  "duplicate_group_count": 15,
-  "items": []
-}
-```
-
-`items` is a preview slice, not necessarily the full index.
-
-### `data/roots/<root_id>/indexes/<digest>.timeline.json`
-
-Legacy timeline navigation cache. Current reads prefer SQLite timeline rows.
-
-Fields:
-
-```json
-{
-  "generated_at": "2026-05-13T10:00:00",
-  "root": "D:/Photos",
-  "entries": [
-    {"key": "2026-05", "label": "2026-05", "index_label": "202605"}
-  ]
-}
-```
-
-Migration status: active index-page writes now target SQLite. Legacy JSON can
-still be read while older cache files exist.
+The application no longer writes or imports page runtime data from
+`duplicates.json` or `indexes/*.json` files.
 
 ## Viewer Metadata
 
@@ -173,8 +63,8 @@ Viewer EXIF reads are stored in `workspace.sqlite3` table
 `image_exif_cache`. The cache is keyed by relative path plus file size and
 mtime signature, so edits to the source image force a fresh metadata read.
 
-No legacy JSON format exists for this data. The cache is derived from the
-original image file and can be rebuilt by opening the image in the viewer.
+The cache is derived from the original image file and can be rebuilt by opening
+the image in the viewer.
 
 ## Logs
 
@@ -231,13 +121,8 @@ Current task duplicate results and hash DB records are written to
 `data/roots/<root_id>/workspace.sqlite3`. Task logs and CSV duplicate reports
 remain files unless the UI starts querying them directly.
 
-## Initial Migration Priority
+## Remaining Candidates
 
-Recommended order:
-
-1. Duplicate results. Done for active task writes.
-2. Image index, summary, and timeline cache. Done for active index-page writes.
-3. Recycle/delete lifecycle records. Done for active recycle-bin state.
-4. Viewer EXIF metadata cache. Done for active viewer reads.
-5. Task summary metadata.
-6. Optional audit logs.
+Task logs, task CSV reports, `settings.json`, `root.json`, and audit CSV files
+remain file-backed by design. Copy logs can be considered later if the UI starts
+querying them directly.

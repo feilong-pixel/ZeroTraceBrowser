@@ -13,7 +13,7 @@
         <section class="tasks-page-header">
           <div>
             <h1 data-i18n="tasks.pageTitle">MediaArchiveOrganizer Tasks</h1>
-            <p class="intro" data-i18n="tasks.pageIntro">Run organizer jobs and generate logs, CSV, and duplicates.json.</p>
+            <p class="intro" data-i18n="tasks.pageIntro">Run organizer jobs and write results to the root database.</p>
           </div>
         </section>
 
@@ -149,14 +149,6 @@
             </div>
 
             <div class="task-output-path-item">
-              <label for="jsonPath" data-i18n="tasks.jsonPath">JSON Path</label>
-              <div class="task-output-path-row">
-                <input id="jsonPath" type="text" readonly value="-" />
-                <button id="openJsonPathButton" type="button" class="ghost task-output-open-button" data-output-input="jsonPath" disabled data-i18n="tasks.openDirectory">Open</button>
-              </div>
-            </div>
-
-            <div class="task-output-path-item">
               <label for="hashDbPath" data-i18n="tasks.hashDbPath">Hash DB Path</label>
               <div class="task-output-path-row">
                 <input id="hashDbPath" type="text" readonly value="-" />
@@ -183,6 +175,6 @@
       </div>
     </div>
 
-    <script type="module" src="./js/app.js?v=20260424-io9"></script>
+    <script type="module" src="./js/app.js?v=20260513-db-cleanup"></script>
   </body>
   </html>

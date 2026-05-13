@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -16,7 +15,6 @@ from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, r
 from core.services.image_index_service import (
     build_timeline_index_entries,
     digest_for_cache_key,
-    image_index_summary_path,
     image_scan_cache_key,
     save_image_index_cache,
     save_image_index_summary,
@@ -56,33 +54,6 @@ def indexed_image(relative_path: str, value: str) -> dict[str, object]:
         "timeline_ts": int(timeline_dt.timestamp()),
         "timeline_source": "file",
     }
-
-
-def write_image_index_summary_json(
-    index_dir: Path,
-    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
-    items: list[dict[str, object]],
-    *,
-    total: int | None = None,
-    generated_at: str = "2026-05-13T10:00:00",
-    duplicate_group_count: int | None = None,
-) -> Path:
-    path = image_index_summary_path(index_dir, cache_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "generated_at": generated_at,
-                "root": cache_key[0],
-                "total": total,
-                "duplicate_group_count": duplicate_group_count,
-                "items": items,
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    return path
 
 
 def windows_filetime_from_unix(timestamp: float) -> tuple[int, int]:
@@ -425,71 +396,8 @@ def test_async_scan_writes_index_under_root_indexes(api_client, monkeypatch) -> 
         ztb_app.SKIP_SCAN_DIR_NAMES,
     )
     assert repository.load_summary(digest_for_cache_key(cache_key))["total"] == 1
+    assert not any(index_dir.glob("*.json"))
     assert not (ztb_context.root_thumbnail_dir(image_root) / "_indexes").exists()
-
-
-def test_legacy_root_thumbnail_indexes_are_migrated_to_root_indexes(api_client) -> None:
-    _, workspace, image_root, _ = api_client
-    legacy_index_dir = workspace / "thumbnails" / "_indexes"
-    cache_key = image_scan_cache_key(
-        image_root,
-        ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.SKIP_SCAN_DIR_NAMES,
-    )
-    save_image_index_cache(
-        legacy_index_dir,
-        cache_key,
-        [indexed_image("photo.jpg", "2024-01-01T00:00:00")],
-    )
-
-    ztb_context.ensure_root_workspace(image_root)
-
-    scoped_index_dir = ztb_context.root_image_index_dir(image_root)
-    assert any(scoped_index_dir.glob("*.json"))
-    assert not legacy_index_dir.exists()
-    assert not (workspace / "thumbnails").exists()
-
-
-def test_root_indexes_are_canonicalized_when_cache_key_changes(api_client) -> None:
-    _, _, image_root, _ = api_client
-    index_dir = ztb_context.root_image_index_dir(image_root)
-    old_cache_key = image_scan_cache_key(
-        image_root,
-        ztb_app.SUPPORTED_EXTENSIONS,
-        {*ztb_app.SKIP_SCAN_DIR_NAMES, "legacy_skip_dir"},
-    )
-    current_cache_key = image_scan_cache_key(
-        image_root,
-        ztb_app.SUPPORTED_EXTENSIONS,
-        ztb_app.SKIP_SCAN_DIR_NAMES,
-    )
-    old_summary_path = image_index_summary_path(index_dir, old_cache_key)
-    current_summary_path = image_index_summary_path(index_dir, current_cache_key)
-
-    write_image_index_summary_json(
-        old_summary_path.parent,
-        old_cache_key,
-        [indexed_image("old.jpg", "2024-01-01T00:00:00")],
-        total=7,
-        generated_at="2026-05-05T21:50:42",
-        duplicate_group_count=3,
-    )
-    write_image_index_summary_json(
-        current_summary_path.parent,
-        current_cache_key,
-        [indexed_image("new.jpg", "2024-01-02T00:00:00")],
-        total=7,
-        generated_at="2026-05-06T09:06:42",
-    )
-
-    ztb_context.ensure_root_workspace(image_root)
-
-    assert current_summary_path.exists()
-    with current_summary_path.open("r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    assert payload["duplicate_group_count"] == 3
-    assert [item["relative_path"] for item in payload["items"]] == ["old.jpg"]
-    assert not old_summary_path.exists()
 
 
 def test_timeline_index_is_loaded_from_saved_directory_cache(api_client, monkeypatch) -> None:
