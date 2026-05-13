@@ -19,6 +19,7 @@ function getDuplicatesElements() {
     nextPageButton: $("#nextPageButton"),
     refreshDuplicatesButton: $("#refreshDuplicatesButton"),
     bulkDeleteDuplicatesButton: $("#bulkDeleteDuplicatesButton"),
+    bulkDelete100DuplicatesButton: $("#bulkDelete100DuplicatesButton"),
     duplicateMethodFilter: $("#duplicateMethodFilter"),
 
     summaryGroupCount: $("#summaryGroupCount"),
@@ -142,6 +143,9 @@ function setBusyState(els, state, isBusy) {
 
   if (els.bulkDeleteDuplicatesButton) {
     els.bulkDeleteDuplicatesButton.disabled = isBusy || els.bulkDeleteDuplicatesButton.disabled;
+  }
+  if (els.bulkDelete100DuplicatesButton) {
+    els.bulkDelete100DuplicatesButton.disabled = isBusy || els.bulkDelete100DuplicatesButton.disabled;
   }
   if (els.refreshDuplicatesButton) {
     els.refreshDuplicatesButton.disabled = isBusy;
@@ -362,6 +366,13 @@ function renderDuplicatesPage(els, state) {
     els.bulkDeleteDuplicatesButton.title =
       state.methodFilter === "strict"
         ? t("duplicates.bulkStrictTitle", bulkItems.length)
+        : t("duplicates.bulkDisabledForPhash");
+  }
+  if (els.bulkDelete100DuplicatesButton) {
+    els.bulkDelete100DuplicatesButton.disabled = state.methodFilter !== "strict" || bulkItems.length === 0;
+    els.bulkDelete100DuplicatesButton.title =
+      state.methodFilter === "strict"
+        ? t("duplicates.bulkStrict100Title")
         : t("duplicates.bulkDisabledForPhash");
   }
 
@@ -606,6 +617,66 @@ async function bulkDeleteStrictDuplicates(els, state) {
   }
 }
 
+async function bulkDelete100StrictDuplicates(els, state) {
+  if (state.isBusy) {
+    return;
+  }
+
+  if (state.methodFilter !== "strict") {
+    const message = t("duplicates.bulkDisabledForPhash");
+    setSummaryStatus(els, message);
+    await showAlert(message, {
+      title: t("dialog.title.warning"),
+      confirmText: t("dialog.buttons.ok"),
+    });
+    return;
+  }
+
+  const offset = (state.page - 1) * state.pageSize;
+  const payload = await fetchJson(`/api/duplicates?offset=${offset}&limit=100&method=strict`);
+  const items = strictDuplicateItems({ ...state, payload, methodFilter: "strict" });
+  if (!items.length) {
+    const message = t("duplicates.noStrictDuplicatesToDelete");
+    setSummaryStatus(els, message);
+    await showAlert(message, {
+      title: t("dialog.title.warning"),
+      confirmText: t("dialog.buttons.ok"),
+    });
+    return;
+  }
+
+  if (
+    !(await showConfirm(
+      t("duplicates.confirmBulkStrict100Delete", items.length),
+      {
+        title: t("duplicates.bulkMove100ToRecycle"),
+        confirmText: t("duplicates.bulkConfirm"),
+        cancelText: t("dialog.buttons.cancel"),
+      },
+    ))
+  ) {
+    return;
+  }
+
+  setBusyState(els, state, true);
+  setSummaryStatus(els, t("duplicates.bulkDeleting", items.length));
+
+  try {
+    let deletedCount = 0;
+    for (const item of items) {
+      await postJson("/api/delete", { relative_path: item.path });
+      deletedCount += 1;
+      markDeletedPathInState(state, item.groupId, item.path);
+    }
+
+    await loadDuplicatesPage(els, state);
+    setSummaryStatus(els, t("duplicates.bulkDeleted", deletedCount));
+  } finally {
+    setBusyState(els, state, false);
+    renderDuplicatesPage(els, state);
+  }
+}
+
 async function confirmLeaveWhileBusy() {
   return showConfirm(
     t("duplicates.confirmLeaveWhileBusy"),
@@ -672,6 +743,13 @@ function bindDuplicatesEvents(els, state) {
     });
   });
 
+  on(els.bulkDelete100DuplicatesButton, "click", () => {
+    bulkDelete100StrictDuplicates(els, state).catch((error) => {
+      setSummaryStatus(els, error.message);
+      renderDuplicatesPage(els, state);
+    });
+  });
+
   on(els.duplicateMethodFilter, "change", () => {
     state.methodFilter = els.duplicateMethodFilter.value || "phash";
     state.page = 1;
@@ -726,6 +804,10 @@ function renderDuplicatesInitialState(els) {
   if (els.bulkDeleteDuplicatesButton) {
     els.bulkDeleteDuplicatesButton.disabled = true;
     els.bulkDeleteDuplicatesButton.title = t("duplicates.bulkDisabledForPhash");
+  }
+  if (els.bulkDelete100DuplicatesButton) {
+    els.bulkDelete100DuplicatesButton.disabled = true;
+    els.bulkDelete100DuplicatesButton.title = t("duplicates.bulkDisabledForPhash");
   }
   setPaginationVisible(els, false);
 }

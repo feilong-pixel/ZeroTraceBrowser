@@ -117,8 +117,12 @@ export default {
     bulkDeleted: (count) => `このページの${count}件をごみ箱へ移動しました`,
     bulkDeleting: (count) => `このページの${count}件を処理中...`,
     bulkDisabledForPhash: "類似画像は手動確認が必要なため一括削除できません",
-    bulkMoveToRecycle: "一括削除",
+    bulkMove100ToRecycle: "次の100グループを移動",
+    bulkMoveToRecycle: "現在ページの重複を移動",
+    bulkStrict100Title: "現在ページから最大100グループの重複ファイルをごみ箱へ移動",
     bulkStrictTitle: (count) => `このページの${count}件を一括削除`,
+    confirmBulkStrict100Delete: (count) =>
+            `現在ページから最大100グループ内の${count}件の重複ファイルをごみ箱へ移動します。保持ファイルは削除しません。続行しますか？`,
     confirmBulkStrictDelete: (count) =>
             `このページの${count}件の重複ファイルをごみ箱へ移動します。保持ファイルは削除しません。続行しますか？`,
     deleteSelected: "削除",

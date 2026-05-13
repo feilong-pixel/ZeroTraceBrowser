@@ -117,8 +117,12 @@ export default {
     bulkDeleted: (count) => `Moved ${count} files from this page to the Recycle Bin.`,
     bulkDeleting: (count) => `Moving ${count} files from this page to the Recycle Bin...`,
     bulkDisabledForPhash: "pHash similarity results require manual review and cannot be bulk deleted.",
-    bulkMoveToRecycle: "Move duplicates",
+    bulkMove100ToRecycle: "Move next 100 groups",
+    bulkMoveToRecycle: "Move current page duplicates",
+    bulkStrict100Title: "Move strict duplicate files from the next 100 groups to the Recycle Bin",
     bulkStrictTitle: (count) => `Move ${count} strict duplicate files from this page to the Recycle Bin`,
+    confirmBulkStrict100Delete: (count) =>
+            `This will move ${count} strict duplicate files from up to 100 groups starting at the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
     confirmBulkStrictDelete: (count) =>
             `This will move ${count} strict duplicate files from the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
     deleteSelected: "Delete",
