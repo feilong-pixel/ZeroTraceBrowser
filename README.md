@@ -219,18 +219,24 @@ git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
 cd ZeroTraceBrowser
 ```
 
-### 2. Create a Virtual Environment
+### 2. Create the Shared Virtual Environment
 
 Requires **Python 3.10 or later**.
 
 ```powershell
-python -m venv venv
+python -m venv ~\.virtualenvs\venv
+```
+
+The project scripts use this Python interpreter:
+
+```text
+~\.virtualenvs\venv\Scripts\python.exe
 ```
 
 ### 3. Install Dependencies
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 4. Start the Server
@@ -244,7 +250,7 @@ Recommended:
 Or run Uvicorn directly:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
 ### 5. Open in Browser
@@ -280,7 +286,26 @@ Recommended:
 Or run pytest directly:
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest -q
+~\.virtualenvs\venv\Scripts\python.exe -m pytest -q
+```
+
+---
+
+## First-time Setup
+
+```powershell
+git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
+cd ZeroTraceBrowser
+python -m venv ~\.virtualenvs\venv
+~\.virtualenvs\venv\Scripts\python.exe -m pip install --upgrade pip
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+.\start.ps1
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
 ```
 
 ---

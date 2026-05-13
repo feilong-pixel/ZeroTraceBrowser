@@ -24,19 +24,20 @@ This project is intended for local use. It does not require a database, cloud se
 - Terminal: PowerShell
 - Browser: Microsoft Edge, Chrome, Firefox, or another modern browser
 
-It is recommended to use a repo-local virtual environment under the project root:
+It is recommended to use the shared user virtual environment:
 
 ```text
-.\venv\
+~\.virtualenvs\venv\
 ```
 
-This prevents dependencies from being installed into the system Python or another project's virtual environment.
+This prevents dependencies from being installed into the system Python while keeping the project scripts consistent across local checkouts.
 
 ## 3. Python Dependencies
 
 Dependencies are managed by `requirements.txt`. The current dependency set includes:
 
 - `fastapi`
+- `pydantic`
 - `uvicorn[standard]`
 - `Pillow`
 - `exifread`
@@ -47,6 +48,7 @@ Dependencies are managed by `requirements.txt`. The current dependency set inclu
 Purpose:
 
 - `FastAPI`: backend Web API
+- `Pydantic`: request and response data validation
 - `uvicorn`: local Web server runner
 - `Pillow`: image loading, thumbnail generation, and partial metadata handling
 - `exifread`: EXIF metadata reading
@@ -65,26 +67,26 @@ cd D:\path\to\ZeroTraceBrowser
 Create the virtual environment:
 
 ```powershell
-python -m venv venv
+python -m venv ~\.virtualenvs\venv
 ```
 
-After creation, the project directory will contain:
+After creation, the virtual environment will be available at:
 
 ```text
-venv\
+~\.virtualenvs\venv\
 ```
 
 Common paths:
 
 ```text
-.\venv\Scripts\python.exe
-.\venv\Scripts\pip.exe
+~\.virtualenvs\venv\Scripts\python.exe
+~\.virtualenvs\venv\Scripts\pip.exe
 ```
 
 If you want to activate the virtual environment:
 
 ```powershell
-.\venv\Scripts\Activate.ps1
+~\.virtualenvs\venv\Scripts\Activate.ps1
 ```
 
 If PowerShell blocks script execution, allow it temporarily for the current terminal session:
@@ -93,34 +95,34 @@ If PowerShell blocks script execution, allow it temporarily for the current term
 Set-ExecutionPolicy -Scope Process RemoteSigned
 ```
 
-However, this project recommends using `.\venv\Scripts\python.exe` directly. This makes it clear that you are using the project's own Python even if the virtual environment is not activated.
+However, this project recommends using `~\.virtualenvs\venv\Scripts\python.exe` directly. This makes it clear which Python is used even if the virtual environment is not activated.
 
 ## 5. Install Dependencies
 
 Use the explicit Python path:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Optional: upgrade pip before installation:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install --upgrade pip
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Verify the core dependencies:
 
 ```powershell
-.\venv\Scripts\python.exe -c "import fastapi, uvicorn; from PIL import Image; print('Environment OK')"
+~\.virtualenvs\venv\Scripts\python.exe -c "import fastapi, uvicorn; from PIL import Image; print('Environment OK')"
 ```
 
 If you want to verify EXIF and Windows file-operation dependencies separately:
 
 ```powershell
-.\venv\Scripts\python.exe -c "import exifread; print('exifread OK')"
-.\venv\Scripts\python.exe -c "import win32file, win32con; print('pywin32 OK')"
+~\.virtualenvs\venv\Scripts\python.exe -c "import exifread; print('exifread OK')"
+~\.virtualenvs\venv\Scripts\python.exe -c "import win32file, win32con; print('pywin32 OK')"
 ```
 
 `pywin32` is only needed on Windows. This project is recommended for Windows 10 / Windows 11.
@@ -136,13 +138,13 @@ Recommended:
 The script starts the server from the project root with:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
 You can also run the command manually:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
 When startup succeeds, the terminal usually shows something like:
@@ -168,7 +170,7 @@ The default port is:
 If the port is already in use, temporarily start the server on another port, for example:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8001
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8001
 ```
 
 Then open:
@@ -190,13 +192,13 @@ Recommended:
 The script runs:
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest -q
+~\.virtualenvs\venv\Scripts\python.exe -m pytest -q
 ```
 
 You can also run pytest directly:
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest -q
+~\.virtualenvs\venv\Scripts\python.exe -m pytest -q
 ```
 
 ## 9. Main Files and Directories
@@ -284,7 +286,7 @@ If PowerShell cannot find `python`, check that:
 Always prefer:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 Do not rely only on `pip install ...`, because it may point to the system Python or another environment.
@@ -292,7 +294,7 @@ Do not rely only on `pip install ...`, because it may point to the system Python
 Check the current Python:
 
 ```powershell
-.\venv\Scripts\python.exe -c "import sys; print(sys.executable)"
+~\.virtualenvs\venv\Scripts\python.exe -c "import sys; print(sys.executable)"
 ```
 
 ### Pillow / exifread / pywin32 is missing or fails to import
@@ -300,15 +302,15 @@ Check the current Python:
 If you see errors related to `PIL`, `exifread`, `win32file`, or `win32con`, reinstall dependencies:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 You can also check whether packages are installed in the current virtual environment:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip show Pillow
-.\venv\Scripts\python.exe -m pip show exifread
-.\venv\Scripts\python.exe -m pip show pywin32
+~\.virtualenvs\venv\Scripts\python.exe -m pip show Pillow
+~\.virtualenvs\venv\Scripts\python.exe -m pip show exifread
+~\.virtualenvs\venv\Scripts\python.exe -m pip show pywin32
 ```
 
 ### PowerShell cannot run scripts
@@ -329,7 +331,7 @@ If startup fails because the port is already in use:
 2. Or start manually with another port:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8001
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8001
 ```
 
 ### The page still looks old after changes
@@ -359,13 +361,13 @@ If images do not display, check that:
 2. Create the virtual environment:
 
    ```powershell
-   python -m venv venv
+   python -m venv ~\.virtualenvs\venv
    ```
 
 3. Install dependencies:
 
    ```powershell
-   .\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+   ~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
    ```
 
 4. Start the server:
@@ -401,8 +403,8 @@ If images do not display, check that:
 ## 14. Quick Command Summary
 
 ```powershell
-python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+python -m venv ~\.virtualenvs\venv
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 .\start.ps1
 ```
 
@@ -415,5 +417,5 @@ Tests:
 Manual start:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```

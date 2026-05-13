@@ -219,18 +219,24 @@ git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
 cd ZeroTraceBrowser
 ```
 
-### 2. 仮想環境を作成
+### 2. 共有仮想環境を作成
 
 **Python 3.10 以上**が必要です。
 
 ```powershell
-python -m venv venv
+python -m venv ~\.virtualenvs\venv
+```
+
+プロジェクトのスクリプトは、この Python を使用します。
+
+```text
+~\.virtualenvs\venv\Scripts\python.exe
 ```
 
 ### 3. 依存関係をインストール
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 4. サーバーを起動
@@ -244,7 +250,7 @@ python -m venv venv
 Uvicorn を直接起動することもできます。
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
 ### 5. ブラウザで開く
@@ -280,7 +286,26 @@ http://127.0.0.1:8000
 pytest を直接実行することもできます。
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest -q
+~\.virtualenvs\venv\Scripts\python.exe -m pytest -q
+```
+
+---
+
+## 初回セットアップ
+
+```powershell
+git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
+cd ZeroTraceBrowser
+python -m venv ~\.virtualenvs\venv
+~\.virtualenvs\venv\Scripts\python.exe -m pip install --upgrade pip
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+.\start.ps1
+```
+
+その後、ブラウザで開きます。
+
+```text
+http://127.0.0.1:8000
 ```
 
 ---

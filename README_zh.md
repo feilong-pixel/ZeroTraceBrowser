@@ -219,18 +219,24 @@ git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
 cd ZeroTraceBrowser
 ```
 
-### 2. 创建虚拟环境
+### 2. 创建共享虚拟环境
 
 需要 **Python 3.10 或更高版本**。
 
 ```powershell
-python -m venv venv
+python -m venv ~\.virtualenvs\venv
+```
+
+项目脚本会使用这个 Python：
+
+```text
+~\.virtualenvs\venv\Scripts\python.exe
 ```
 
 ### 3. 安装依赖
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### 4. 启动服务
@@ -244,7 +250,7 @@ python -m venv venv
 也可以直接运行：
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+~\.virtualenvs\venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
 ### 5. 打开浏览器
@@ -280,7 +286,26 @@ http://127.0.0.1:8000
 也可以直接运行：
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest -q
+~\.virtualenvs\venv\Scripts\python.exe -m pytest -q
+```
+
+---
+
+## 初次配置方法
+
+```powershell
+git clone https://github.com/feilong-pixel/ZeroTraceBrowser.git
+cd ZeroTraceBrowser
+python -m venv ~\.virtualenvs\venv
+~\.virtualenvs\venv\Scripts\python.exe -m pip install --upgrade pip
+~\.virtualenvs\venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+.\start.ps1
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:8000
 ```
 
 ---
