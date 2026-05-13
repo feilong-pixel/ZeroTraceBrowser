@@ -563,3 +563,40 @@ def test_rebuild_duplicate_results_json_append_phash_keeps_existing_strict_group
     assert stats["duplicate_group_count"] == 2
     assert payload["group_count"] == 2
     assert [group["reason"] for group in payload["groups"]] == ["strict", "phash"]
+
+
+def test_rebuild_duplicate_results_sqlite_phash_keeps_existing_strict_groups(work_dir: Path) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_media_file(root / "2026" / "04" / "16" / "strict_a.jpg", content="same")
+    create_media_file(root / "2026" / "04" / "16" / "strict_a_dup1.jpg", content="same")
+    create_image_file(root / "2026" / "04" / "17" / "visual_a.jpg", color=(32, 96, 160))
+    visual_dup = create_image_file(root / "2026" / "04" / "17" / "visual_a_dup1.jpg", color=(32, 96, 160))
+    with visual_dup.open("ab") as handle:
+        handle.write(b"metadata")
+
+    rebuild_duplicate_results_json(
+        str(root),
+        "",
+        hash_method="strict",
+        sqlite_db_path=str(sqlite_path),
+    )
+    stats = rebuild_duplicate_results_json(
+        str(root),
+        "",
+        hash_method="phash",
+        phash_threshold=0,
+        merge_existing_methods={"phash"},
+        sqlite_db_path=str(sqlite_path),
+    )
+
+    with sqlite3.connect(sqlite_path) as connection:
+        reasons = [
+            row[0]
+            for row in connection.execute(
+                "SELECT reason FROM duplicate_groups ORDER BY position"
+            ).fetchall()
+        ]
+
+    assert stats["duplicate_group_count"] == 2
+    assert reasons == ["strict", "phash"]

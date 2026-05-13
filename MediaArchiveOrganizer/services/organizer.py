@@ -440,15 +440,28 @@ def load_mergeable_duplicate_groups(
     json_path: str,
     dst_dir: str,
     replace_methods: set[str],
+    sqlite_db_path: str | None = None,
 ) -> list[dict]:
-    if not os.path.exists(json_path):
-        return []
+    payload = None
+    if sqlite_db_path:
+        try:
+            with sqlite3.connect(sqlite_db_path) as connection:
+                connection.row_factory = sqlite3.Row
+                row = connection.execute("SELECT raw_json FROM duplicate_results WHERE id = 1").fetchone()
+            if row is not None:
+                payload = json.loads(row["raw_json"])
+        except (OSError, json.JSONDecodeError, sqlite3.Error):
+            payload = None
 
-    try:
-        with open(json_path, "r", encoding="utf-8") as file_obj:
-            payload = json.load(file_obj)
-    except (OSError, json.JSONDecodeError):
-        return []
+    if payload is None:
+        if not os.path.exists(json_path):
+            return []
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as file_obj:
+                payload = json.load(file_obj)
+        except (OSError, json.JSONDecodeError):
+            return []
 
     if os.path.abspath(str(payload.get("destination_root", ""))) != os.path.abspath(dst_dir):
         return []
@@ -523,7 +536,12 @@ def write_duplicate_groups_json(
 ) -> int:
     payload_groups = build_duplicate_payload_groups(dst_dir, groups)
     if merge_existing_methods:
-        existing_groups = load_mergeable_duplicate_groups(json_path, dst_dir, merge_existing_methods)
+        existing_groups = load_mergeable_duplicate_groups(
+            json_path,
+            dst_dir,
+            merge_existing_methods,
+            sqlite_db_path,
+        )
         payload_groups = merge_duplicate_payload_groups(existing_groups, payload_groups)
 
     payload = {

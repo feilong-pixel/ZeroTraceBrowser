@@ -129,13 +129,11 @@ def main():
         )
         duplicate_stats = None
         if args.duplicates_json_path or args.duplicates_db_path:
-            merge_existing_methods = None
-            if args.rebuild_hash_db_mode == "append":
-                merge_existing_methods = (
-                    {"strict", "phash"}
-                    if args.rebuild_hash_method == "both"
-                    else {args.rebuild_hash_method}
-                )
+            merge_existing_methods = (
+                {"strict", "phash"}
+                if args.rebuild_hash_method == "both"
+                else {args.rebuild_hash_method}
+            )
             duplicate_stats = rebuild_duplicate_results_json(
                 root_dir,
                 os.path.abspath(args.duplicates_json_path) if args.duplicates_json_path else "",
