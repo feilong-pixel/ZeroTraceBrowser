@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from core.schemas import CopyRequest, FileActionRequest
 from core.domain.root_proxy import build_root_proxy
 from core.services.file_operations import resolve_under_root
+from core.storage.exif_repository import ExifRepository
 from core.use_cases.copy_image import CopyImageRequest, CopyImageUseCase
 from core.use_cases.delete_image import DeleteImageRequest, DeleteImageUseCase
 
@@ -90,14 +91,35 @@ def create_images_router(ctx: Any) -> APIRouter:
                 "exif": {},
             }
 
+        stat = image_path.stat()
+        repository = ExifRepository(ctx.root_database_path(root))
+        cached = repository.load_exif(
+            relative_path,
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
+        if cached is not None:
+            return {
+                "relative_path": relative_path,
+                "exif": cached,
+                "from_cache": True,
+            }
+
         try:
             exif = ctx.read_exif_summary(image_path)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Failed to read EXIF: {exc}") from exc
+        repository.save_exif(
+            relative_path,
+            exif,
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
 
         return {
             "relative_path": relative_path,
             "exif": exif,
+            "from_cache": False,
         }
 
     # GET /api/thumbnail

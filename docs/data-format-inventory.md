@@ -2,7 +2,8 @@
 
 This document records the remaining file-backed data formats during the SQLite
 migration. Task duplicate results, hash DB records, image index data, and
-current recycle records now write directly to the root workspace database;
+current recycle records now write directly to the root workspace database.
+Viewer EXIF metadata is cached in the same database after the first read;
 several files remain as compatibility or audit formats.
 
 ## Root Workspace
@@ -166,6 +167,15 @@ Fields:
 Migration status: active index-page writes now target SQLite. Legacy JSON can
 still be read while older cache files exist.
 
+## Viewer Metadata
+
+Viewer EXIF reads are stored in `workspace.sqlite3` table
+`image_exif_cache`. The cache is keyed by relative path plus file size and
+mtime signature, so edits to the source image force a fresh metadata read.
+
+No legacy JSON format exists for this data. The cache is derived from the
+original image file and can be rebuilt by opening the image in the viewer.
+
 ## Logs
 
 ### `data/roots/<root_id>/logs/delete_log.csv`
@@ -228,5 +238,6 @@ Recommended order:
 1. Duplicate results. Done for active task writes.
 2. Image index, summary, and timeline cache. Done for active index-page writes.
 3. Recycle/delete lifecycle records. Done for active recycle-bin state.
-4. Task summary metadata.
-5. Optional audit logs.
+4. Viewer EXIF metadata cache. Done for active viewer reads.
+5. Task summary metadata.
+6. Optional audit logs.

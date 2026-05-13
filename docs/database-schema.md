@@ -12,7 +12,8 @@ this database. The index-page flow writes image index, summary, and timeline
 data directly to the same database. Duplicate and image-index reads prefer
 SQLite for the active root; legacy duplicate JSON is imported into SQLite when
 encountered during the migration. Recycle-bin current state also writes to
-SQLite, while CSV delete logs remain as audit history.
+SQLite, while CSV delete logs remain as audit history. Viewer EXIF metadata is
+cached in SQLite after the first `/api/exif` read.
 
 ## Versioning
 
@@ -22,7 +23,7 @@ Tracks applied schema versions.
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `version` | INTEGER PRIMARY KEY | Current initial version is `1`. |
+| `version` | INTEGER PRIMARY KEY | Current schema version is `3`. |
 | `applied_at` | TEXT | SQLite timestamp. |
 
 ## Duplicate Results
@@ -138,6 +139,21 @@ Stores the current CSV delete-log shape in table form.
 
 Unique key: `deleted_to`.
 
+## Viewer EXIF Cache
+
+### `image_exif_cache`
+
+Stores viewer metadata read from source image files. The file signature prevents
+serving stale EXIF after an image changes.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `relative_path` | TEXT PRIMARY KEY | Path relative to the active image root. |
+| `file_size` | INTEGER | Source file size at cache time. |
+| `mtime_ns` | INTEGER | Source file modification timestamp in nanoseconds. |
+| `raw_json` | TEXT | EXIF summary payload returned by `/api/exif`. |
+| `updated_at` | TEXT | SQLite timestamp. |
+
 ## Hash DB
 
 ### `hash_db_metadata`
@@ -198,6 +214,10 @@ core.storage.hash_db_repository.HashDbRepository
   load_hash_db()
   load_summary()
   clear_hash_db()
+
+core.storage.exif_repository.ExifRepository
+  save_exif(relative_path, payload, file_size, mtime_ns)
+  load_exif(relative_path, file_size, mtime_ns)
 ```
 
 These APIs are intentionally table-oriented. Future migration work can adjust

@@ -8,6 +8,7 @@ from pathlib import Path
 from core.domain.root_context import RootContext
 from core.storage.database import init_root_database, root_database_path
 from core.storage.duplicates_repository import DuplicateResultRepository
+from core.storage.exif_repository import ExifRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.recycle_repository import RecycleRepository
@@ -40,6 +41,7 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "recycle_records",
         "hash_db_metadata",
         "hash_db_records",
+        "image_exif_cache",
     }.issubset(tables)
 
 
@@ -163,6 +165,16 @@ def test_hash_db_repository_round_trips_current_hash_records(tmp_path: Path) -> 
             "strict": {"record_count": 1, "path_count": 1},
         },
     }
+
+
+def test_exif_repository_returns_only_current_file_signature(tmp_path: Path) -> None:
+    repository = ExifRepository(tmp_path / "workspace.sqlite3")
+    payload = {"width": "40", "height": "32", "datetime": "2026-05-13 10:00:00"}
+
+    repository.save_exif("photo.jpg", payload, file_size=123, mtime_ns=456)
+
+    assert repository.load_exif("photo.jpg", file_size=123, mtime_ns=456) == payload
+    assert repository.load_exif("photo.jpg", file_size=124, mtime_ns=456) is None
 
 
 def test_recycle_repository_updates_lifecycle_action(tmp_path: Path) -> None:

@@ -119,6 +119,20 @@ def test_images_use_exif_datetime_priority(api_client) -> None:
     assert item["timeline_source"] == "exif"
 
 
+def test_exif_endpoint_caches_viewer_metadata_in_database(api_client) -> None:
+    client, _, image_root, _ = api_client
+    create_test_image_with_exif_dates(image_root / "photo.jpg")
+
+    first_response = client.get("/api/exif", params={"relative_path": "photo.jpg"})
+    second_response = client.get("/api/exif", params={"relative_path": "photo.jpg"})
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json()["from_cache"] is False
+    assert second_response.json()["from_cache"] is True
+    assert second_response.json()["exif"]["width"] == "40"
+
+
 def test_images_lightweight_page_returns_without_total(api_client) -> None:
     client, workspace, image_root, copy_target = api_client
     for index in range(3):
