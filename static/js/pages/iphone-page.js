@@ -72,10 +72,6 @@ function renderDeviceOptions(els, devices) {
   updateDeviceSummary(els, devices[0]);
 }
 
-function getSelectedDeviceId(els) {
-  return els.iphoneDeviceSelect?.value.trim() || "";
-}
-
 async function detectDevices(els) {
   setStatus(els, t("iphone.detecting"));
   appendLog(els, t("iphone.detecting"));
@@ -93,43 +89,13 @@ async function detectDevices(els) {
   }
 }
 
-async function buildDeviceIndex(els) {
-  const deviceId = getSelectedDeviceId(els);
-  if (!deviceId) {
-    setStatus(els, t("iphone.noDeviceDetected"));
-    appendLog(els, t("iphone.noDeviceDetected"));
-    return;
-  }
-
-  setStatus(els, t("iphone.indexing"));
-  appendLog(els, t("iphone.indexing"));
-  try {
-    const response = await fetch("/api/iphone/index", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_id: deviceId }),
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json();
-    setStatus(els, t("iphone.indexed", data.indexed ?? 0));
-    appendLog(els, t("iphone.indexed", data.indexed ?? 0));
-    setText(els.iphoneDeviceName, data.device_name || deviceId);
-    setText(els.iphoneAlbumCount, String(data.album_count ?? 0));
-    setText(els.iphoneMediaCount, String(data.indexed ?? 0));
-    setText(els.iphoneLastIndexedAt, data.indexed_at || "-");
-  } catch (error) {
-    setStatus(els, t("iphone.indexFailed"));
-    appendLog(els, `${t("iphone.indexFailed")}: ${error.message || error}`);
-  }
-}
-
 function bindIphoneEvents(els) {
   on(els.detectIphoneButton, "click", () => {
     detectDevices(els);
   });
 
   on(els.indexIphoneButton, "click", () => {
-    buildDeviceIndex(els);
+    markPending(els, "iphone.indexPending");
   });
 
   on(els.searchIphoneSimilarButton, "click", () => {
