@@ -14,6 +14,4 @@ from core.context_modules.artifact_context import *
 from core.context_modules.duplicates_context import *
 from core.context_modules.task_context import *
 from core.context_modules.cleanup_context import *
-from core.context_modules.similarity_context import *
-from core.context_modules.iphone_context import *
 from core.context_modules.route_facade import *
