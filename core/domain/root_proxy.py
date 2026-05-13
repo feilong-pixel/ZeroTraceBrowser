@@ -15,6 +15,7 @@ def build_root_proxy(ctx: Any, active_root: Path) -> object:
     - ``.deleted_dir`` – root-scoped deleted/ directory
     - ``.logs_dir`` – root-scoped logs/ directory
     - ``.thumbnails_dir`` – root-scoped thumbnails/ directory
+    - ``.database_path`` – root-scoped SQLite database path
 
     This replaces the repetitive inline ``class _XxxRootProxy``
     definitions that were duplicated in every route handler.
@@ -24,6 +25,7 @@ def build_root_proxy(ctx: Any, active_root: Path) -> object:
         deleted_dir=ctx.root_deleted_dir(active_root),
         logs_dir=ctx.root_log_dir(active_root),
         thumbnails_dir=ctx.root_thumbnail_dir(active_root),
+        database_path=ctx.root_database_path(active_root),
     )
 
 
@@ -39,8 +41,10 @@ class _RootProxy:
         deleted_dir: Path,
         logs_dir: Path,
         thumbnails_dir: Path,
+        database_path: Path,
     ) -> None:
         self.root = root
         self.deleted_dir = deleted_dir
         self.logs_dir = logs_dir
         self.thumbnails_dir = thumbnails_dir
+        self.database_path = database_path

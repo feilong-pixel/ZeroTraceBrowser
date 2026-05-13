@@ -18,6 +18,7 @@ from core.services.recycle_service import (
 from core.services.thumbnail_service import (
     deleted_thumbnail_path_for,
 )
+from core.storage.recycle_repository import RecycleRepository
 
 
 class ClearRecycleRequest(BaseModel):
@@ -75,7 +76,11 @@ class ClearRecycleUseCase:
         removed = 0
 
         # 1. Get all recycle items.
-        log_rows = read_delete_log_rows(self.ctx.logs_dir)
+        database_path = getattr(self.ctx, "database_path", None)
+        if database_path:
+            log_rows = RecycleRepository(database_path).list_records(include_terminal=False)
+        else:
+            log_rows = read_delete_log_rows(self.ctx.logs_dir)
         items = list_recycle_items_service(log_rows, self.ctx.deleted_dir)
 
         for item in items:
@@ -111,6 +116,8 @@ class ClearRecycleUseCase:
 
             # 5. Write purge log entry.
             self._write_log(log_row, recycle_path)
+            if database_path:
+                RecycleRepository(database_path).update_action(str(file_path), "purged")
             removed += 1
 
         # 6. Archive the delete log (if anything was removed).

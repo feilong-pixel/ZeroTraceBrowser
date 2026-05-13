@@ -13,6 +13,7 @@ from core.services.recycle_paths import remove_empty_deleted_parent
 from core.services.thumbnail_service import (
     deleted_thumbnail_path_for,
 )
+from core.storage.recycle_repository import RecycleRepository
 
 
 class PurgeImageRequest(BaseModel):
@@ -109,6 +110,12 @@ class PurgeImageUseCase:
 
     def _find_log_row(self, deleted_path: Path) -> dict | None:
         """Search the delete log (reverse) for a row matching the file path."""
+        database_path = getattr(self.ctx, "database_path", None)
+        if database_path:
+            for row in reversed(RecycleRepository(database_path).list_records()):
+                if row.get("deleted_to", "") == str(deleted_path):
+                    return row
+
         log_path = self.ctx.logs_dir / "delete_log.csv"
         if not log_path.exists():
             return None
@@ -153,12 +160,16 @@ class PurgeImageUseCase:
                 writer = csv.writer(f)
                 writer.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
 
+        timestamp = datetime.now().isoformat()
         with log_path.open("a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow([
-                datetime.now().isoformat(),
+                timestamp,
                 log_row["root"] if log_row else "",
                 log_row["relative_path"] if log_row else "",
                 str(deleted_path),
                 "purged",
             ])
+        database_path = getattr(self.ctx, "database_path", None)
+        if database_path:
+            RecycleRepository(database_path).update_action(str(deleted_path), "purged")

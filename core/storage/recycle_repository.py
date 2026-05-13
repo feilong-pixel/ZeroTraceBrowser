@@ -70,3 +70,16 @@ class RecycleRepository:
             )
             connection.commit()
             return cursor.rowcount > 0
+
+    def clear_records(self, *, actions: set[str] | None = None) -> int:
+        with connect(self.database_path) as connection:
+            if actions:
+                placeholders = ",".join("?" for _ in actions)
+                cursor = connection.execute(
+                    f"DELETE FROM recycle_records WHERE action IN ({placeholders})",
+                    sorted(actions),
+                )
+            else:
+                cursor = connection.execute("DELETE FROM recycle_records")
+            connection.commit()
+            return cursor.rowcount

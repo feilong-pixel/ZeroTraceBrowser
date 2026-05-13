@@ -1,7 +1,37 @@
 from .base import *
 from .settings_context import get_active_image_root
-from .root_workspace import ensure_root_workspace, ensure_log_file, root_log_dir, root_deleted_dir
+from .root_workspace import ensure_root_workspace, ensure_log_file, root_log_dir, root_deleted_dir, root_database_path
 from .system_context import is_windows, move_to_system_recycle_bin
+from core.storage.recycle_repository import RecycleRepository
+
+
+def migrate_delete_log_rows_to_database(root: Path, rows: list[dict[str, str]]) -> None:
+    if not rows:
+        return
+    repository = RecycleRepository(root_database_path(root))
+    for row in rows:
+        deleted_to = str(row.get("deleted_to", "")).strip()
+        if not deleted_to:
+            continue
+        repository.append_record(
+            timestamp=str(row.get("timestamp", "")),
+            root=str(row.get("root", "") or root),
+            relative_path=str(row.get("relative_path", "")),
+            deleted_to=deleted_to,
+            action=str(row.get("action", "deleted") or "deleted"),
+        )
+
+
+def read_recycle_records_from_database(root: Path, *, include_terminal: bool = True) -> list[dict[str, Any]]:
+    repository = RecycleRepository(root_database_path(root))
+    rows = repository.list_records(include_terminal=include_terminal)
+    if rows:
+        return rows
+    legacy_rows = read_delete_log_rows_service(root_log_dir(root))
+    if legacy_rows:
+        migrate_delete_log_rows_to_database(root, legacy_rows)
+        return repository.list_records(include_terminal=include_terminal)
+    return []
 
 def prepare_system_recycle_path(deleted_path: Path, log_row: dict[str, str] | None) -> tuple[Path, Path]:
     thumb_path = deleted_thumbnail_path_for(deleted_path)
@@ -31,18 +61,33 @@ def append_log(log_name: str, *values: str) -> None:
     ensure_root_workspace(root_value)
     ensure_log_file(log_dir, log_name)
     append_log_service(log_dir, log_name, *values)
+    if log_name == "delete_log.csv" and len(values) >= 5:
+        RecycleRepository(root_database_path(root_value)).append_record(
+            timestamp=str(values[0]),
+            root=str(values[1] or root_value),
+            relative_path=str(values[2]),
+            deleted_to=str(values[3]),
+            action=str(values[4] or "deleted"),
+        )
 
 
 def read_delete_log_rows() -> list[dict[str, str]]:
     root = get_active_image_root()
     rows = read_delete_log_rows_service(root_log_dir(root))
-    return rows if rows else read_delete_log_rows_service(LOG_DIR)
+    if rows:
+        migrate_delete_log_rows_to_database(root, rows)
+        return rows
+    db_rows = read_recycle_records_from_database(root)
+    return db_rows if db_rows else read_delete_log_rows_service(LOG_DIR)
 
 
 def write_delete_log_rows(rows: list[dict[str, str]]) -> None:
     root = get_active_image_root()
     ensure_root_workspace(root)
     write_delete_log_rows_service(root_log_dir(root), rows)
+    repository = RecycleRepository(root_database_path(root))
+    repository.clear_records()
+    migrate_delete_log_rows_to_database(root, rows)
 
 
 def archive_delete_log() -> dict[str, Any]:
@@ -53,7 +98,7 @@ def archive_delete_log() -> dict[str, Any]:
 
 def list_recycle_items() -> list[dict[str, Any]]:
     root = get_active_image_root()
-    items = list_recycle_items_service(read_delete_log_rows(), root_deleted_dir(root))
+    items = list_recycle_items_service(read_recycle_records_from_database(root, include_terminal=False), root_deleted_dir(root))
     if items:
         return items
     return list_recycle_items_service(read_delete_log_rows_service(LOG_DIR), DELETED_DIR)

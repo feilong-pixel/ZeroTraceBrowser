@@ -1,9 +1,9 @@
 # Data Format Inventory
 
 This document records the remaining file-backed data formats during the SQLite
-migration. Task duplicate results, hash DB records, and image index data now
-write directly to the root workspace database; several files remain as
-compatibility or audit formats.
+migration. Task duplicate results, hash DB records, image index data, and
+current recycle records now write directly to the root workspace database;
+several files remain as compatibility or audit formats.
 
 ## Root Workspace
 
@@ -170,7 +170,8 @@ still be read while older cache files exist.
 
 ### `data/roots/<root_id>/logs/delete_log.csv`
 
-Delete and recycle lifecycle log.
+Delete and recycle lifecycle audit log. Current recycle-bin state is stored in
+`workspace.sqlite3`; this CSV remains for audit history and legacy import.
 
 Header:
 
@@ -187,9 +188,8 @@ Actions:
 - `restored`
 - `purged`
 
-Migration recommendation: suitable for SQLite after duplicates and image index
-APIs are validated. It needs careful compatibility because restore and purge
-flows depend on audit history.
+Migration status: active delete/restore/purge/clear state now writes to SQLite.
+CSV audit rows are still written for log history and compatibility.
 
 ### `data/roots/<root_id>/logs/copy_log.csv`
 
@@ -227,6 +227,6 @@ Recommended order:
 
 1. Duplicate results. Done for active task writes.
 2. Image index, summary, and timeline cache. Done for active index-page writes.
-3. Recycle/delete lifecycle records.
+3. Recycle/delete lifecycle records. Done for active recycle-bin state.
 4. Task summary metadata.
 5. Optional audit logs.

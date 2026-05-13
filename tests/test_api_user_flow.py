@@ -23,6 +23,7 @@ from core.services.image_index_service import (
     save_timeline_index_cache,
 )
 from core.storage.image_index_repository import ImageIndexRepository
+from core.storage.recycle_repository import RecycleRepository
 
 
 def create_test_image(path: Path, color: tuple[int, int, int] = (32, 96, 160)) -> Path:
@@ -626,6 +627,8 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     assert deleted_to.exists()
     assert_windows_creation_time(deleted_to, original_created_at)
     assert not image_path.exists()
+    recycle_repository = RecycleRepository(ztb_context.root_database_path(added_root))
+    assert recycle_repository.list_records(include_terminal=False)[0]["action"] == "deleted"
 
     images_after_delete_response = client.get("/api/images")
     assert images_after_delete_response.status_code == 200
@@ -651,6 +654,7 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     assert image_path.exists()
     assert_windows_creation_time(image_path, original_created_at)
     assert not deleted_to.exists()
+    assert recycle_repository.list_records()[0]["action"] == "restored"
 
     images_after_restore_response = client.get("/api/images")
     assert images_after_restore_response.status_code == 200

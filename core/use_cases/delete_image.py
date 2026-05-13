@@ -11,6 +11,7 @@ from core.services.file_operations import move_file_preserve_times, resolve_unde
 from core.services.image_scan_service import clear_image_list_cache
 from core.services.recycle_paths import build_deleted_path
 from core.services.thumbnail_service import thumbnail_path_for
+from core.storage.recycle_repository import RecycleRepository
 
 
 class DeleteImageRequest(BaseModel):
@@ -113,12 +114,22 @@ class DeleteImageUseCase:
                 writer = csv.writer(f)
                 writer.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
 
+        timestamp = datetime.now().isoformat()
         with log_path.open("a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow([
-                datetime.now().isoformat(),
+                timestamp,
                 str(root),
                 relative_path,
                 str(deleted_path),
                 "deleted",
             ])
+        database_path = getattr(self.ctx, "database_path", None)
+        if database_path:
+            RecycleRepository(database_path).append_record(
+                timestamp=timestamp,
+                root=str(root),
+                relative_path=relative_path,
+                deleted_to=str(deleted_path),
+                action="deleted",
+            )

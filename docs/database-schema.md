@@ -11,7 +11,8 @@ The task result flow writes duplicate results and hash DB records directly to
 this database. The index-page flow writes image index, summary, and timeline
 data directly to the same database. Duplicate and image-index reads prefer
 SQLite for the active root; legacy duplicate JSON is imported into SQLite when
-encountered during the migration.
+encountered during the migration. Recycle-bin current state also writes to
+SQLite, while CSV delete logs remain as audit history.
 
 ## Versioning
 
