@@ -14,6 +14,8 @@ const LOAD_MORE_RECHECK_DELAY_MS = 220;
 const LOAD_MORE_EMPTY_RECHECK_DELAY_MS = 1600;
 const IMAGE_PAGE_SIZE = 48;
 const THUMBNAIL_CONCURRENCY = 3;
+const GALLERY_VIEW_STATE_KEY = "zerotrace.galleryViewState";
+const GALLERY_SCROLL_SAVE_INTERVAL_MS = 250;
 
 function getIndexElements() {
   return {
@@ -77,6 +79,9 @@ function createIndexState() {
     uiRefreshTimer: 0,
     loadMoreRecheckTimer: 0,
     hasPendingUiRefresh: false,
+    pendingRestoreScrollTop: null,
+    hasRestoredScroll: false,
+    lastScrollSaveAt: 0,
     timelineIndexEntries: [],
     virtual: {
       rows: [],
@@ -96,6 +101,35 @@ function setStatus(els, message, isError = false) {
   if (!els.statusMessage) return;
   els.statusMessage.textContent = message;
   els.statusMessage.style.color = isError ? "var(--danger)" : "";
+}
+
+function readGalleryViewState(root) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(GALLERY_VIEW_STATE_KEY) || "{}");
+    return saved?.root === root ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveGalleryViewState(els, state) {
+  if (!els.galleryScroller || !state.config?.active_root) return;
+
+  const payload = {
+    root: state.config.active_root,
+    scrollTop: els.galleryScroller.scrollTop,
+    query: els.searchInput?.value.trim() || "",
+    dateStart: els.dateStartInput?.value || "",
+    dateEnd: els.dateEndInput?.value || "",
+    duplicateGroupId: state.activeDuplicateGroupId || "",
+    savedAt: Date.now(),
+  };
+
+  try {
+    sessionStorage.setItem(GALLERY_VIEW_STATE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore private-mode or quota failures; navigation should continue normally.
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -952,6 +986,8 @@ function applyFilter(els, state, options = {}) {
 }
 
 function openViewer(els, state, path) {
+  saveGalleryViewState(els, state);
+
   const params = new URLSearchParams();
 
   params.set("path", path);
@@ -1284,6 +1320,31 @@ async function loadMoreImages(els, state, options = {}) {
     return null;
   } finally {
     state.isLoadingMoreImages = false;
+  }
+}
+
+async function restoreGalleryScrollPosition(els, state) {
+  if (!els.galleryScroller || state.hasRestoredScroll) return;
+  const targetTop = Number(state.pendingRestoreScrollTop);
+  if (!Number.isFinite(targetTop) || targetTop <= 0) return;
+
+  state.hasRestoredScroll = true;
+  const applyTargetScroll = () => {
+    els.galleryScroller.scrollTop = Math.min(targetTop, Math.max(0, state.virtual.totalHeight));
+    renderVirtualGalleryViewport(els, state);
+    updateStickyHeader(els, state);
+  };
+
+  applyFilter(els, state, { resetScroll: false });
+  applyTargetScroll();
+
+  while (
+    state.hasMoreImages &&
+    state.virtual.totalHeight < targetTop + els.galleryScroller.clientHeight
+  ) {
+    const loaded = await loadMoreImages(els, state, { refreshUi: true });
+    applyTargetScroll();
+    if (loaded !== true) break;
   }
 }
 
@@ -1657,6 +1718,11 @@ function bindIndexEvents(els, state) {
   on(els.galleryScroller, "scroll", () => {
     scheduleVirtualGalleryRender(els, state);
     maybeLoadMoreImages(els, state);
+    const now = Date.now();
+    if (now - state.lastScrollSaveAt > GALLERY_SCROLL_SAVE_INTERVAL_MS) {
+      state.lastScrollSaveAt = now;
+      saveGalleryViewState(els, state);
+    }
   });
 
   on(els.galleryIndex, "wheel", () => markTimelineIndexUserScroll(state));
@@ -1667,6 +1733,8 @@ function bindIndexEvents(els, state) {
   on(window, "resize", () => {
     rebuildVirtualGallery(els, state);
   });
+
+  on(window, "pagehide", () => saveGalleryViewState(els, state));
 }
 
 async function initializeIndexPage(els, state) {
@@ -1701,11 +1769,24 @@ async function initializeIndexPage(els, state) {
     els.dateFilterPanel?.classList.remove("is-hidden");
   }
 
+  const savedViewState = readGalleryViewState(state.config.active_root);
+  if (
+    savedViewState &&
+    (savedViewState.query || "") === query &&
+    (savedViewState.dateStart || "") === startDate &&
+    (savedViewState.dateEnd || "") === endDate &&
+    (savedViewState.duplicateGroupId || "") === (duplicateGroupId || "")
+  ) {
+    state.pendingRestoreScrollTop = Number(savedViewState.scrollTop) || null;
+  }
+
   translatePage(els, state);
   await loadImages(els, state);
+  restoreGalleryScrollPosition(els, state);
 
   if (
     selected &&
+    !state.pendingRestoreScrollTop &&
     state.filtered.some((item) => item.relative_path === selected)
   ) {
     state.selectedPaths.add(selected);
