@@ -9,6 +9,7 @@ import { initViewerPage } from "./pages/viewer-page.js?v=20260513-viewer-media";
 import { initDuplicatesPage } from "./pages/duplicates-page.js?v=20260424-io10";
 import { initRecyclePage } from "./pages/recycle-page.js?v=20260424-io9";
 import { initTasksPage } from "./pages/tasks-page.js?v=20260513-db-cleanup";
+import { initIphonePage } from "./pages/iphone-page.js?v=20260513-iphone";
 
 function initApp() {
   applyStoredDisplayStyle();
@@ -21,6 +22,7 @@ function initApp() {
   initDuplicatesPage();
   initRecyclePage();
   initTasksPage();
+  initIphonePage();
 }
 
 // Wait for the DOM to be fully loaded before initializing the app

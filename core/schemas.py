@@ -54,6 +54,13 @@ class RebuildHashDbTaskRequest(BaseModel):
     lang: str = Field(default="en")
 
 
+class SimilaritySearchRequest(BaseModel):
+    relative_path: str = Field(..., min_length=1)
+    method: str = Field(default="phash")
+    threshold: int = Field(default=8, ge=0, le=64)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
 class RestoreDeletedRequest(BaseModel):
     deleted_to: str = Field(..., min_length=1)
 
