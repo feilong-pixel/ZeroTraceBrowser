@@ -61,6 +61,10 @@ class SimilaritySearchRequest(BaseModel):
     limit: int = Field(default=50, ge=1, le=200)
 
 
+class IphoneIndexRequest(BaseModel):
+    device_id: str = Field(..., min_length=1)
+
+
 class RestoreDeletedRequest(BaseModel):
     deleted_to: str = Field(..., min_length=1)
 
