@@ -193,6 +193,7 @@ def main():
     print(texts["mode_selected"].format(mode=args.mode))
     print(texts["duplicate_detection_selected"].format(mode=args.duplicate_detection, threshold=args.phash_threshold))
 
+    skip_existing_exact = args.skip_existing_exact and args.duplicate_detection in {"strict", "both"}
     stats = organize_images(
         src_dir,
         dst_dir,
@@ -206,11 +207,11 @@ def main():
         ),
         duplicates_json_path=os.path.abspath(args.duplicates_json_path) if args.duplicates_json_path else None,
         duplicates_db_path=os.path.abspath(args.duplicates_db_path) if args.duplicates_db_path else None,
-        skip_existing_exact=args.skip_existing_exact,
+        skip_existing_exact=skip_existing_exact,
         task_id=args.task_id,
     )
 
-    print(format_organize_summary(texts, stats, include_skip=args.skip_existing_exact))
+    print(format_organize_summary(texts, stats, include_skip=skip_existing_exact))
     print(texts["done_message"].format(log_path=log_path))
 
 

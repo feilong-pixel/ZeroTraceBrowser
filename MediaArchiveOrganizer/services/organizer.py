@@ -911,6 +911,8 @@ def organize_images(
     skipped_existing_bytes = 0
     task_id = task_id or os.environ.get("IMAGE_ORGANIZER_TASK_ID", "").strip()
 
+    skip_existing_exact = skip_existing_exact and duplicate_detection in {"strict", "both"}
+
     # Load the persisted hash database and file-content hash cache once per run.
     hash_db = load_hash_db()
     hash_cache = load_hash_cache()

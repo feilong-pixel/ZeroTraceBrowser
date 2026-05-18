@@ -128,6 +128,7 @@ def test_run_organizer_accepts_both_duplicate_detection(api_client, monkeypatch)
         task["status"] = "completed"
         task["finished_at"] = datetime.now().isoformat()
         assert command[command.index("--duplicate-detection") + 1] == "both"
+        assert "--skip-existing-exact" in command
 
     monkeypatch.setattr(ztb_app, "run_organizer_task", mark_completed)
 
@@ -412,8 +413,10 @@ def test_run_organizer_publishes_duplicates_and_shared_hash_db(api_client, monke
 
     monkeypatch.setattr(ztb_app, "run_organizer_task", mark_completed_with_capture)
 
-    first_task = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination)).json()
-    second_task = client.post("/api/tasks/run-organizer", json=organizer_payload(image_root, destination)).json()
+    data = organizer_payload(image_root, destination)
+    data["duplicate_detection"] = "both"
+    first_task = client.post("/api/tasks/run-organizer", json=data).json()
+    second_task = client.post("/api/tasks/run-organizer", json=data).json()
 
     assert first_task["outputs"]["database_path"] == second_task["outputs"]["database_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]

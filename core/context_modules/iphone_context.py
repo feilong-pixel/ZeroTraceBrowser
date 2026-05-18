@@ -15,46 +15,12 @@ from fastapi import HTTPException
 
 from .settings_context import load_settings
 from .root_workspace import root_database_path
-from core.storage.database import connect
+from core.storage.iphone_repository import IphoneRepository
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
 
 
 IPHONE_DEVICE_PROBE_TIMEOUT_SECONDS = 20
 IPHONE_INDEX_TIMEOUT_SECONDS = 600
-
-
-def _init_iphone_tables(database_path: str | Path) -> None:
-    with connect(database_path) as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS iphone_devices (
-                device_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                kind TEXT NOT NULL DEFAULT 'mtp',
-                dcim_available INTEGER NOT NULL DEFAULT 0,
-                album_count INTEGER NOT NULL DEFAULT 0,
-                media_count INTEGER NOT NULL DEFAULT 0,
-                indexed_at TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS iphone_photo_index (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                device_id TEXT NOT NULL,
-                album TEXT NOT NULL DEFAULT '',
-                filename TEXT NOT NULL,
-                size INTEGER NOT NULL DEFAULT 0,
-                modified_at TEXT NOT NULL DEFAULT '',
-                strict_hash TEXT NOT NULL DEFAULT '',
-                phash TEXT NOT NULL DEFAULT '',
-                indexed_at TEXT NOT NULL DEFAULT '',
-                raw_json TEXT NOT NULL DEFAULT '{}',
-                UNIQUE(device_id, album, filename),
-                FOREIGN KEY(device_id) REFERENCES iphone_devices(device_id) ON DELETE CASCADE
-            );
-            """
-        )
-        connection.commit()
 
 
 def _run_iphone_device_probe() -> list[dict[str, Any]]:
@@ -311,7 +277,6 @@ def build_iphone_photo_index(device_id: str) -> dict[str, Any]:
     settings = load_settings()
     active_root = Path(settings["active_root"]).expanduser().resolve()
     database_path = root_database_path(active_root)
-    _init_iphone_tables(database_path)
 
     indexed_at = datetime.now(timezone.utc).isoformat()
     with tempfile.TemporaryDirectory(prefix="ztb_iphone_index_") as temp_name:
@@ -334,45 +299,12 @@ def build_iphone_photo_index(device_id: str) -> dict[str, Any]:
 
     device_name = indexed_records[0].get("device_name", normalized_device_id) if indexed_records else normalized_device_id
     albums = {str(item.get("album", "")) for item in indexed_records if str(item.get("album", "")).strip()}
-    with connect(database_path) as connection:
-        connection.execute(
-            """
-            INSERT INTO iphone_devices (
-                device_id, name, kind, dcim_available, album_count, media_count, indexed_at
-            ) VALUES (?, ?, 'mtp', 1, ?, ?, ?)
-            ON CONFLICT(device_id) DO UPDATE SET
-                name = excluded.name,
-                dcim_available = excluded.dcim_available,
-                album_count = excluded.album_count,
-                media_count = excluded.media_count,
-                indexed_at = excluded.indexed_at,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (normalized_device_id, str(device_name), len(albums), len(indexed_records), indexed_at),
-        )
-        connection.execute("DELETE FROM iphone_photo_index WHERE device_id = ?", (normalized_device_id,))
-        connection.executemany(
-            """
-            INSERT OR REPLACE INTO iphone_photo_index (
-                device_id, album, filename, size, modified_at, strict_hash, phash, indexed_at, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    normalized_device_id,
-                    str(item.get("album", "")),
-                    str(item.get("filename", "")),
-                    int(item.get("size") or 0),
-                    str(item.get("modified_at", "")),
-                    str(item.get("strict_hash", "")),
-                    str(item.get("phash", "")),
-                    indexed_at,
-                    json.dumps({k: v for k, v in item.items() if k != "temp_path"}, ensure_ascii=False),
-                )
-                for item in indexed_records
-            ],
-        )
-        connection.commit()
+    IphoneRepository(database_path).save_index(
+        device_id=normalized_device_id,
+        device_name=str(device_name),
+        indexed_at=indexed_at,
+        records=indexed_records,
+    )
 
     return {
         "status": "indexed",

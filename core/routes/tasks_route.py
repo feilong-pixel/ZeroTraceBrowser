@@ -41,6 +41,10 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             src_path,
             "Destination directory must not be the source directory or one of its children",
         )
+        skip_existing_exact = payload.skip_existing_exact and payload.duplicate_detection in {"strict", "both"}
+        if payload.skip_existing_exact and payload.duplicate_detection not in {"strict", "both"}:
+            payload.skip_existing_exact = False
+
         ctx.remember_task_defaults(payload)
         ctx.clear_duplicates_path_cache()
 
@@ -67,7 +71,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             "--task-id",
             task_id,
         ]
-        if payload.skip_existing_exact:
+        if skip_existing_exact:
             command.append("--skip-existing-exact")
 
         task_env = {

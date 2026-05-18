@@ -231,6 +231,8 @@ async function runTask(els, state) {
   setTaskRunning(els, state, true);
 
   try {
+    const skipExistingExact =
+      ["strict", "both"].includes(els.duplicateSelect.value) && Boolean(els.skipExistingExactCheckbox.checked);
     const task = await fetchJson("/api/tasks/run-organizer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -240,7 +242,7 @@ async function runTask(els, state) {
         mode: els.modeSelect.value,
         duplicate_detection: els.duplicateSelect.value,
         phash_threshold: Number(els.thresholdInput.value || 0),
-        skip_existing_exact: Boolean(els.skipExistingExactCheckbox.checked),
+        skip_existing_exact: skipExistingExact,
         lang: state.currentLang,
       }),
     });
@@ -315,6 +317,15 @@ function syncMaintenanceState(els, state) {
 function toggleThreshold(els) {
   if (!els.thresholdInput || !els.duplicateSelect) return;
   els.thresholdInput.disabled = !["phash", "both"].includes(els.duplicateSelect.value);
+}
+
+function toggleSkipExistingExact(els) {
+  if (!els.skipExistingExactCheckbox || !els.duplicateSelect) return;
+  const canSkipExistingExact = ["strict", "both"].includes(els.duplicateSelect.value);
+  els.skipExistingExactCheckbox.disabled = !canSkipExistingExact;
+  if (!canSkipExistingExact) {
+    els.skipExistingExactCheckbox.checked = false;
+  }
 }
 
 function toggleRebuildThreshold(els) {
@@ -400,6 +411,7 @@ async function initializeTasksPage(els, state) {
     applyTranslations(els, state);
     syncMaintenanceState(els, state);
     toggleThreshold(els);
+    toggleSkipExistingExact(els);
     toggleRebuildThreshold(els);
     await restoreRunningTask(els, state);
   } catch (error) {
@@ -433,6 +445,7 @@ async function restoreRunningTask(els, state) {
 function bindTasksEvents(els, state) {
   on(els.duplicateSelect, "change", () => {
     toggleThreshold(els);
+    toggleSkipExistingExact(els);
   });
 
   on(els.hashMethodSelect, "change", () => {

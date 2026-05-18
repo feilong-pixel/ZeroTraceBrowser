@@ -464,7 +464,7 @@ def test_organize_images_skips_existing_exact_files_in_sqlite(
     assert hash_record_count == 1
 
 
-def test_skip_existing_exact_uses_sha256_even_when_duplicate_detection_is_phash(
+def test_skip_existing_exact_is_ignored_when_duplicate_detection_is_phash(
     work_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -509,10 +509,10 @@ def test_skip_existing_exact_uses_sha256_even_when_duplicate_detection_is_phash(
         ).fetchone()
 
     assert (target_dir / "first_name.jpg").exists()
-    assert not (target_dir / "second_name.jpg").exists()
-    assert skipped_count == 1
-    assert strict_count == 1
-    assert task_row == (2, 1, 1)
+    assert (target_dir / "second_name.jpg").exists()
+    assert skipped_count == 0
+    assert strict_count == 0
+    assert task_row == (2, 2, 0)
 
 
 def test_organize_summary_hides_skip_fields_when_skip_existing_is_off() -> None:

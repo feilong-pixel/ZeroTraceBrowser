@@ -436,7 +436,7 @@ export default {
     runRebuildTask: "Rebuild",
     runTask: "Start",
     showHashMaintenance: "Show duplicate result maintenance",
-    skipExistingExactHelp: "When a photo with the exact same SHA-256 is detected, only an organizer record is created and the file is not copied again. Recommended for long-term users to save disk space. New users or short-term users can enable it as needed.",
+    skipExistingExactHelp: "Available when duplicate detection is Strict or Both. When a photo with the exact same SHA-256 is detected, only an organizer record is created and the file is not copied again.",
     skipExistingExactLabel: "Do not save duplicates already in the gallery (recommended for long-term users)",
     sourceDir: "Source folder",
     taskConfig: "Task config",
