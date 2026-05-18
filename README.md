@@ -174,7 +174,7 @@ ZeroTraceBrowser/
 │       ├── logs/               # Operation logs (CSV)
 │       ├── indexes/            # Image index / timeline index
 │       ├── tasks/              # Task scoped outputs
-│       ├── hash_db.sqlite3     # Content hash database
+│       ├── workspace.sqlite3    # Per-root SQLite workspace
 │       └── duplicates.json     # Duplicate detection results
 
 ├── MediaArchiveOrganizer/      # Image analysis and organization engine
@@ -361,7 +361,7 @@ ZeroTraceBrowser stores runtime data for each image root under `data/roots/<root
 * Delete logs (logs/, CSV format)
 * App-level recycle files (deleted/)
 * Duplicate results (duplicates.json)
-* Content hash database (hash_db.sqlite3)
+* Per-root SQLite workspace (workspace.sqlite3), including hash data, duplicate results, task records, and caches
 * Task outputs (tasks/)
 
 This data improves browsing speed, preserves operation history, and keeps state isolated between image roots. Original images remain in the image directories configured by the user.

@@ -15,7 +15,7 @@ It provides a local Web interface for:
 - Generating Hash DB and duplicate detection results
 - Managing the app-level recycle area and runtime data
 
-This project is intended for local use. It does not require a database, cloud service, or external account.
+This project is intended for local use. It does not require a cloud service, external database server, or external account. Runtime data is stored locally, including per-root SQLite workspaces under `data/roots/<root_id>/workspace.sqlite3`.
 
 ## 2. Recommended Environment
 
@@ -232,7 +232,7 @@ ZeroTraceBrowser/
 │       ├── logs/               # Operation logs (CSV)
 │       ├── indexes/            # Image index / timeline index
 │       ├── tasks/              # Task scoped outputs
-│       ├── hash_db.sqlite3     # Content hash database
+│       ├── workspace.sqlite3    # Per-root SQLite workspace
 │       └── duplicates.json     # Duplicate detection results
 ```
 
@@ -250,7 +250,7 @@ It may contain:
 - `indexes/`: image index and timeline index
 - `tasks/`: task outputs
 - `duplicates.json`: duplicate image results
-- `hash_db.sqlite3`: Hash DB
+- `workspace.sqlite3`: per-root SQLite workspace for hash data, duplicate results, task records, and caches
 
 ## 10. Local Settings File
 
@@ -279,7 +279,7 @@ If PowerShell cannot find `python`, check that:
 
 - Python is installed
 - Python is added to the system `PATH`
-- Or use the Python Launcher: `py -m venv venv`
+- Or use the Python Launcher: `py -m venv ~\.virtualenvs\venv`
 
 ### Dependencies were installed into the wrong environment
 
