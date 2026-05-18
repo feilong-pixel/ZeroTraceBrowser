@@ -105,6 +105,7 @@ def remember_task_defaults(payload: OrganizerTaskRequest) -> None:
         payload.mode,
         payload.duplicate_detection,
         payload.phash_threshold,
+        payload.skip_existing_exact,
     )
 
 

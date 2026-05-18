@@ -24,6 +24,20 @@ def normalize_phash_threshold(value: Any) -> int:
         return 4
 
 
+def normalize_bool(value: Any, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    if isinstance(value, int):
+        return bool(value)
+    return default
+
+
 def normalize_task_lang(language: str) -> str:
     return {"zh": "zh", "en": "en", "ja": "ja"}.get(language, language)
 
@@ -63,6 +77,7 @@ class SettingsStore:
                 "mode": "copy",
                 "duplicate_detection": "phash",
                 "phash_threshold": 4,
+                "skip_existing_exact": True,
                 "rebuild_phash_threshold": 4,
             },
         }
@@ -122,6 +137,7 @@ class SettingsStore:
                 str(task_defaults.get("duplicate_detection", "phash")).strip(),
             ),
             "phash_threshold": normalize_phash_threshold(task_defaults.get("phash_threshold", 4)),
+            "skip_existing_exact": normalize_bool(task_defaults.get("skip_existing_exact", True)),
             "rebuild_phash_threshold": normalize_phash_threshold(
                 task_defaults.get("rebuild_phash_threshold", task_defaults.get("phash_threshold", 4)),
             ),
@@ -158,7 +174,15 @@ class SettingsStore:
             "task_defaults": settings["task_defaults"],
         }
 
-    def remember_task_defaults(self, src: str, dst: str, mode: str, duplicate_detection: str, phash_threshold: Any) -> None:
+    def remember_task_defaults(
+        self,
+        src: str,
+        dst: str,
+        mode: str,
+        duplicate_detection: str,
+        phash_threshold: Any,
+        skip_existing_exact: Any = True,
+    ) -> None:
         settings = self.load()
         existing_defaults = settings.get("task_defaults", {})
         settings["task_defaults"] = {
@@ -168,6 +192,7 @@ class SettingsStore:
             "mode": normalize_task_mode(mode),
             "duplicate_detection": normalize_duplicate_detection(duplicate_detection),
             "phash_threshold": normalize_phash_threshold(phash_threshold),
+            "skip_existing_exact": normalize_bool(skip_existing_exact),
             "rebuild_phash_threshold": normalize_phash_threshold(
                 existing_defaults.get("rebuild_phash_threshold", existing_defaults.get("phash_threshold", 4)),
             ),
@@ -213,6 +238,7 @@ class SettingsStore:
                 str(task_defaults.get("duplicate_detection", "phash")).strip(),
             ),
             "phash_threshold": normalize_phash_threshold(task_defaults.get("phash_threshold", 4)),
+            "skip_existing_exact": normalize_bool(task_defaults.get("skip_existing_exact", True)),
             "rebuild_phash_threshold": normalize_phash_threshold(task_defaults.get("rebuild_phash_threshold", 4)),
         }
         self.save(settings)

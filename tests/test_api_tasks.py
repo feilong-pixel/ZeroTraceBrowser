@@ -10,6 +10,7 @@ import core.routes.tasks_route as tasks_routes
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
+from core.storage.task_repository import TaskRunRepository
 from tests.test_api_user_flow import create_test_image
 
 
@@ -35,6 +36,7 @@ def organizer_payload(src: Path, dst: Path) -> dict[str, object]:
         "mode": "copy",
         "duplicate_detection": "strict",
         "phash_threshold": 4,
+        "skip_existing_exact": True,
         "lang": "en",
     }
 
@@ -97,6 +99,12 @@ def test_run_organizer_task_starts_completes_and_can_be_queried(api_client, monk
     assert task["outputs"]["log_exists"] is True
     assert task["params"]["src"] == str(image_root)
     assert task["params"]["dst"] == str(destination)
+    saved_run = TaskRunRepository(task["outputs"]["database_path"]).load_task(task["task_id"])
+    assert saved_run is not None
+    assert saved_run["task_type"] == "organizer"
+    assert saved_run["source_root"] == str(image_root)
+    assert saved_run["destination_root"] == str(destination)
+    assert saved_run["skip_existing_exact"] == 1
 
     query_response = client.get(f"/api/tasks/{task['task_id']}")
     assert query_response.status_code == 200
@@ -221,6 +229,12 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
     assert task["status"] == "completed"
     assert task["outputs"]["database_path"].endswith("workspace.sqlite3")
     assert task["params"]["root"] == str(image_root)
+    saved_run = TaskRunRepository(task["outputs"]["database_path"]).load_task(task["task_id"])
+    assert saved_run is not None
+    assert saved_run["task_type"] == "rebuild_hash_db"
+    assert saved_run["source_root"] == ""
+    assert saved_run["destination_root"] == str(image_root)
+    assert saved_run["duplicate_detection"] == "strict"
 
     query_response = client.get(f"/api/tasks/{task['task_id']}")
     assert query_response.status_code == 200
@@ -405,13 +419,21 @@ def test_run_organizer_publishes_duplicates_and_shared_hash_db(api_client, monke
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
     assert first_task["outputs"]["hash_db_path"].endswith("workspace.sqlite3")
     assert first_task["outputs"]["database_path"].endswith("workspace.sqlite3")
-    assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"]}
-    assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": second_task["outputs"]["database_path"]}
+    assert captured[0]["env"] == {
+        "IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"],
+        "IMAGE_ORGANIZER_TASK_ID": first_task["task_id"],
+    }
+    assert captured[1]["env"] == {
+        "IMAGE_ORGANIZER_HASH_DB_SQLITE": second_task["outputs"]["database_path"],
+        "IMAGE_ORGANIZER_TASK_ID": second_task["task_id"],
+    }
 
     first_command = captured[0]["command"]
     assert isinstance(first_command, list)
     assert "--duplicates-json-path" not in first_command
     assert first_command[first_command.index("--duplicates-db-path") + 1] == first_task["outputs"]["database_path"]
+    assert first_command[first_command.index("--task-id") + 1] == first_task["task_id"]
+    assert "--skip-existing-exact" in first_command
 
 
 def test_run_organizer_updates_published_duplicates(api_client, monkeypatch) -> None:
@@ -546,8 +568,14 @@ def test_rebuild_hash_db_reuses_duplicates_and_hash_db_paths_for_same_root(api_c
 
     assert first_task["outputs"]["database_path"] == second_task["outputs"]["database_path"]
     assert first_task["outputs"]["hash_db_path"] == second_task["outputs"]["hash_db_path"]
-    assert captured[0]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"]}
-    assert captured[1]["env"] == {"IMAGE_ORGANIZER_HASH_DB_SQLITE": second_task["outputs"]["database_path"]}
+    assert captured[0]["env"] == {
+        "IMAGE_ORGANIZER_HASH_DB_SQLITE": first_task["outputs"]["database_path"],
+        "IMAGE_ORGANIZER_TASK_ID": first_task["task_id"],
+    }
+    assert captured[1]["env"] == {
+        "IMAGE_ORGANIZER_HASH_DB_SQLITE": second_task["outputs"]["database_path"],
+        "IMAGE_ORGANIZER_TASK_ID": second_task["task_id"],
+    }
 
 
 def test_rebuild_hash_db_writes_task_results_to_root_database(api_client, monkeypatch) -> None:
@@ -622,6 +650,26 @@ def test_rebuild_hash_db_persists_rebuild_root_separately_from_destination_defau
     config = client.get("/api/config").json()
     assert config["task_defaults"]["dst"] == str(destination)
     assert config["task_defaults"]["rebuild_root"] == str(rebuild_root)
+
+
+def test_run_organizer_persists_skip_existing_exact_default(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    destination = workspace / "organized"
+    rebuild_root = workspace / "rebuild_root"
+    rebuild_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_task_completed)
+
+    organizer_data = organizer_payload(image_root, destination)
+    organizer_data["skip_existing_exact"] = False
+    organizer_response = client.post("/api/tasks/run-organizer", json=organizer_data)
+    assert organizer_response.status_code == 200
+
+    rebuild_response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_payload(rebuild_root))
+    assert rebuild_response.status_code == 200
+
+    config = client.get("/api/config").json()
+    assert config["task_defaults"]["skip_existing_exact"] is False
 
 
 def test_rebuild_hash_db_persists_rebuild_phash_threshold_separately(api_client, monkeypatch) -> None:

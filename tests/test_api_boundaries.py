@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -161,9 +160,13 @@ def test_clear_recycle_bin_clears_active_root_recycle_items(api_client, monkeypa
 
     def fake_system_recycle(path: Path) -> None:
         recycled_paths.append(path)
-        path.unlink()
+        if path.is_dir():
+            ztb_context.shutil.rmtree(path)
+        else:
+            path.unlink()
 
     monkeypatch.setattr(ztb_app, "move_to_system_recycle_bin", fake_system_recycle)
+    monkeypatch.setattr(ztb_context, "move_to_system_recycle_bin", fake_system_recycle)
 
     clear_response = client.post("/api/recycle-bin/clear", json={"confirm": True})
 
@@ -208,9 +211,13 @@ def test_purge_uses_original_filename_for_legacy_recycle_item(api_client, monkey
 
     def fake_system_recycle(path: Path) -> None:
         recycled_paths.append(path)
-        path.unlink()
+        if path.is_dir():
+            ztb_context.shutil.rmtree(path)
+        else:
+            path.unlink()
 
     monkeypatch.setattr(ztb_app, "move_to_system_recycle_bin", fake_system_recycle)
+    monkeypatch.setattr(ztb_context, "move_to_system_recycle_bin", fake_system_recycle)
 
     response = client.post("/api/recycle-bin/purge", json={"deleted_to": str(deleted_to)})
 
@@ -290,9 +297,13 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
 
     def fake_system_recycle(path: Path) -> None:
         recycled_paths.append(path)
-        path.unlink()
+        if path.is_dir():
+            ztb_context.shutil.rmtree(path)
+        else:
+            path.unlink()
 
     monkeypatch.setattr(ztb_app, "move_to_system_recycle_bin", fake_system_recycle)
+    monkeypatch.setattr(ztb_context, "move_to_system_recycle_bin", fake_system_recycle)
 
     response = client.post(
         "/api/settings/remove-root",
@@ -306,12 +317,49 @@ def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.Monk
     assert payload["cleanup"]["removed"]["root_workspace_dirs"] == 1
     assert payload["cleanup"]["removed"]["delete_log_rows"] == 1
     assert payload["cleanup"]["removed"]["recycle_files"] == 1
-    assert recycled_paths == [deleted_copy]
+    assert recycled_paths == [deleted_copy, ztb_context.root_data_dir(image_root)]
     assert not duplicates_path.exists()
     assert not hash_db_path.exists()
     assert not thumbnail_path.exists()
     assert not deleted_thumbnail_path.exists()
     assert ztb_app.read_delete_log_rows() == []
+
+
+def test_remove_root_cleanup_reports_locked_workspace_without_500(
+    api_client,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, workspace, image_root, _ = api_client
+    other_root = workspace / "other_images"
+    other_root.mkdir()
+    client.post("/api/settings/roots", json={"path": str(other_root)})
+    workspace_dir = ztb_context.root_data_dir(image_root)
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    ztb_app.init_root_database(workspace_dir / "workspace.sqlite3")
+
+    def fake_system_recycle(path: Path) -> None:
+        if path == workspace_dir:
+            raise PermissionError("locked")
+        if path.is_dir():
+            ztb_context.shutil.rmtree(path)
+        else:
+            path.unlink()
+
+    monkeypatch.setattr(ztb_app, "move_to_system_recycle_bin", fake_system_recycle)
+    monkeypatch.setattr(ztb_context, "move_to_system_recycle_bin", fake_system_recycle)
+
+    response = client.post(
+        "/api/settings/remove-root",
+        json={"path": str(image_root), "cleanup_root_data": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert str(image_root) not in payload["image_roots"]
+    assert payload["cleanup"]["removed"]["root_workspace_dirs"] == 0
+    assert payload["cleanup"]["removed"]["root_workspace_delete_errors"] == 1
+    assert payload["cleanup"]["errors"][0]["path"] == str(workspace_dir)
+    assert payload["cleanup"]["errors"][0]["operation"] == "move_to_system_recycle_bin"
 
 
 def test_run_organizer_rejects_destination_inside_source(api_client) -> None:

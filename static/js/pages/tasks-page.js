@@ -16,6 +16,7 @@ function getTasksElements() {
     modeSelect: $("#modeSelect"),
     duplicateSelect: $("#duplicateSelect"),
     thresholdInput: $("#thresholdInput"),
+    skipExistingExactCheckbox: $("#skipExistingExactCheckbox"),
     langSelect: $("#langSelect"),
 
     runTaskButton: $("#runTaskButton"),
@@ -239,6 +240,7 @@ async function runTask(els, state) {
         mode: els.modeSelect.value,
         duplicate_detection: els.duplicateSelect.value,
         phash_threshold: Number(els.thresholdInput.value || 0),
+        skip_existing_exact: Boolean(els.skipExistingExactCheckbox.checked),
         lang: state.currentLang,
       }),
     });
@@ -385,6 +387,7 @@ async function initializeTasksPage(els, state) {
     setSelectValue(els.modeSelect, taskDefaults.mode, "copy");
     setSelectValue(els.duplicateSelect, taskDefaults.duplicate_detection, "phash");
     els.thresholdInput.value = String(normalizeThreshold(taskDefaults.phash_threshold));
+    els.skipExistingExactCheckbox.checked = taskDefaults.skip_existing_exact !== false;
     els.rebuildThresholdInput.value = String(
       normalizeThreshold(taskDefaults.rebuild_phash_threshold ?? taskDefaults.phash_threshold),
     );

@@ -57,6 +57,68 @@ def connect_sqlite_hash_db() -> sqlite3.Connection:
 
         CREATE INDEX IF NOT EXISTS idx_file_hash_cache_file_signature
             ON file_hash_cache(file_name, size, mtime_ns);
+
+        CREATE TABLE IF NOT EXISTS task_runs (
+            task_id TEXT PRIMARY KEY,
+            task_type TEXT NOT NULL DEFAULT 'organizer',
+            status TEXT NOT NULL DEFAULT 'running',
+            source_root TEXT NOT NULL DEFAULT '',
+            destination_root TEXT NOT NULL DEFAULT '',
+            mode TEXT NOT NULL DEFAULT 'copy',
+            duplicate_detection TEXT NOT NULL DEFAULT 'phash',
+            phash_threshold INTEGER NOT NULL DEFAULT 4,
+            skip_existing_exact INTEGER NOT NULL DEFAULT 1,
+            scanned_count INTEGER NOT NULL DEFAULT 0,
+            saved_count INTEGER NOT NULL DEFAULT 0,
+            skipped_existing_count INTEGER NOT NULL DEFAULT 0,
+            skipped_existing_bytes INTEGER NOT NULL DEFAULT 0,
+            similar_group_count INTEGER NOT NULL DEFAULT 0,
+            log_path TEXT NOT NULL DEFAULT '',
+            duplicate_report_path TEXT NOT NULL DEFAULT '',
+            error TEXT,
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finished_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS task_skipped_existing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            source_path TEXT NOT NULL,
+            existing_path TEXT NOT NULL,
+            strict_hash TEXT NOT NULL,
+            file_name TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0,
+            recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(task_id) REFERENCES task_runs(task_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_task_skipped_existing_task_id
+            ON task_skipped_existing(task_id);
+
+        CREATE INDEX IF NOT EXISTS idx_task_skipped_existing_strict_hash
+            ON task_skipped_existing(strict_hash);
+
+        CREATE TABLE IF NOT EXISTS skipped_existing_index (
+            strict_hash TEXT NOT NULL,
+            source_fingerprint TEXT NOT NULL,
+            source_path TEXT NOT NULL DEFAULT '',
+            existing_path TEXT NOT NULL,
+            file_name TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0,
+            first_task_id TEXT NOT NULL DEFAULT '',
+            last_task_id TEXT NOT NULL DEFAULT '',
+            first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            seen_count INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (strict_hash, source_fingerprint)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_skipped_existing_index_existing_path
+            ON skipped_existing_index(existing_path);
+
+        CREATE INDEX IF NOT EXISTS idx_skipped_existing_index_last_seen_at
+            ON skipped_existing_index(last_seen_at);
         """
     )
     return connection
@@ -151,6 +213,96 @@ def insert_hash_record(method: str, hash_value: str, path: str) -> None:
             VALUES (?, ?, ?, ?)
             """,
             (method, hash_value, path, position),
+        )
+        connection.commit()
+
+
+def record_skipped_existing(
+    task_id: str,
+    source_path: str,
+    existing_path: str,
+    strict_hash: str,
+    size: int,
+) -> None:
+    if not get_sqlite_db_path().strip() or not task_id:
+        return
+
+    source_abs = os.path.abspath(source_path)
+    existing_abs = os.path.abspath(existing_path)
+    file_name = os.path.basename(source_abs)
+    source_fingerprint = f"{file_name}|{size}|{strict_hash}"
+    with connect_sqlite_hash_db() as connection:
+        connection.execute(
+            """
+            INSERT INTO task_skipped_existing
+                (task_id, source_path, existing_path, strict_hash, file_name, size)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (task_id, source_abs, existing_abs, strict_hash, file_name, size),
+        )
+        connection.execute(
+            """
+            INSERT INTO skipped_existing_index
+                (
+                    strict_hash, source_fingerprint, source_path, existing_path,
+                    file_name, size, first_task_id, last_task_id
+                )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(strict_hash, source_fingerprint) DO UPDATE SET
+                source_path = excluded.source_path,
+                existing_path = excluded.existing_path,
+                file_name = excluded.file_name,
+                size = excluded.size,
+                last_task_id = excluded.last_task_id,
+                last_seen_at = CURRENT_TIMESTAMP,
+                seen_count = seen_count + 1
+            """,
+            (
+                strict_hash,
+                source_fingerprint,
+                source_abs,
+                existing_abs,
+                file_name,
+                size,
+                task_id,
+                task_id,
+            ),
+        )
+        connection.commit()
+
+
+def update_task_run_counts(
+    task_id: str,
+    *,
+    scanned_count: int,
+    saved_count: int,
+    skipped_existing_count: int,
+    skipped_existing_bytes: int,
+    similar_group_count: int,
+) -> None:
+    if not get_sqlite_db_path().strip() or not task_id:
+        return
+
+    with connect_sqlite_hash_db() as connection:
+        connection.execute(
+            """
+            UPDATE task_runs
+            SET scanned_count = ?,
+                saved_count = ?,
+                skipped_existing_count = ?,
+                skipped_existing_bytes = ?,
+                similar_group_count = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE task_id = ?
+            """,
+            (
+                scanned_count,
+                saved_count,
+                skipped_existing_count,
+                skipped_existing_bytes,
+                similar_group_count,
+                task_id,
+            ),
         )
         connection.commit()
 

@@ -64,9 +64,16 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             str(log_path),
             "--duplicates-db-path",
             outputs["database_path"],
+            "--task-id",
+            task_id,
         ]
+        if payload.skip_existing_exact:
+            command.append("--skip-existing-exact")
 
-        task_env = {"IMAGE_ORGANIZER_HASH_DB_SQLITE": outputs["database_path"]}
+        task_env = {
+            "IMAGE_ORGANIZER_HASH_DB_SQLITE": outputs["database_path"],
+            "IMAGE_ORGANIZER_TASK_ID": task_id,
+        }
 
         task = {
             "task_id": task_id,
@@ -81,6 +88,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         }
         if not ctx.TASK_REGISTRY.add_if_idle(task):
             raise HTTPException(status_code=409, detail="Another organizer task is already running")
+        ctx.persist_task_run_started(task)
 
         thread = threading.Thread(
             target=ctx.run_organizer_task,
@@ -127,7 +135,10 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             lang,
         ]
 
-        task_env = {"IMAGE_ORGANIZER_HASH_DB_SQLITE": outputs["database_path"]}
+        task_env = {
+            "IMAGE_ORGANIZER_HASH_DB_SQLITE": outputs["database_path"],
+            "IMAGE_ORGANIZER_TASK_ID": task_id,
+        }
 
         task = {
             "task_id": task_id,
@@ -142,6 +153,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         }
         if not ctx.TASK_REGISTRY.add_if_idle(task):
             raise HTTPException(status_code=409, detail="Another organizer task is already running")
+        ctx.persist_task_run_started(task)
 
         thread = threading.Thread(
             target=ctx.run_organizer_task,

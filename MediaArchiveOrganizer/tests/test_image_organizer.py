@@ -13,11 +13,11 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from MediaArchiveOrganizer.core.hash_db import load_hash_db
+from MediaArchiveOrganizer.core.hash_db import connect_sqlite_hash_db, load_hash_db
 from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
 from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
 from MediaArchiveOrganizer.locales import get_texts
-from MediaArchiveOrganizer.main import validate_paths
+from MediaArchiveOrganizer.main import format_organize_summary, validate_paths
 import MediaArchiveOrganizer.services.organizer as organizer_mod
 from MediaArchiveOrganizer.services.organizer import (
     apply_windows_file_times,
@@ -357,7 +357,7 @@ def test_organize_images_writes_file_hash_cache_to_sqlite(
     )
 
     file_cache_path = work_dir / "hash_db.json.file_cache.json"
-    with sqlite3.connect(sqlite_path) as connection:
+    with connect_sqlite_hash_db() as connection:
         cache_rows = connection.execute(
             """
             SELECT path, source_path, strict_hash, phash
@@ -378,6 +378,203 @@ def test_organize_images_writes_file_hash_cache_to_sqlite(
         and row[3]
         for row in cache_rows
     )
+
+
+def test_organize_images_skips_existing_exact_files_in_sqlite(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    src_first = work_dir / "src_first"
+    src_second = work_dir / "src_second"
+    dst_dir = work_dir / "dst"
+    first_log_path = work_dir / "first.log"
+    second_log_path = work_dir / "second.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first_file = create_media_file(src_first / "camera1" / "same.jpg", content="same-content")
+    create_media_file(src_second / "camera2" / "same.jpg", content="same-content")
+    target_dir = expected_target_dir(first_file, dst_dir)
+    task_id = "task_skip"
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    organize_images(
+        str(src_first),
+        str(dst_dir),
+        str(first_log_path),
+        mode="copy",
+        duplicate_detection="strict",
+        duplicates_db_path=str(sqlite_path),
+    )
+    with connect_sqlite_hash_db() as connection:
+        connection.execute(
+            """
+            INSERT INTO task_runs (task_id, task_type, status, destination_root)
+            VALUES (?, 'organizer', 'running', ?)
+            """,
+            (task_id, str(dst_dir.resolve())),
+        )
+        connection.commit()
+
+    organize_images(
+        str(src_second),
+        str(dst_dir),
+        str(second_log_path),
+        mode="copy",
+        lang=get_texts("zh"),
+        duplicate_detection="strict",
+        duplicates_db_path=str(sqlite_path),
+        skip_existing_exact=True,
+        task_id=task_id,
+    )
+    output = capsys.readouterr().out
+
+    with sqlite3.connect(sqlite_path) as connection:
+        skipped_row = connection.execute(
+            """
+            SELECT source_path, existing_path, strict_hash, file_name, size
+            FROM task_skipped_existing
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        index_row = connection.execute(
+            "SELECT seen_count, first_task_id, last_task_id FROM skipped_existing_index"
+        ).fetchone()
+        task_row = connection.execute(
+            """
+            SELECT scanned_count, saved_count, skipped_existing_count, skipped_existing_bytes, similar_group_count
+            FROM task_runs
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        hash_record_count = connection.execute("SELECT COUNT(*) FROM hash_db_records").fetchone()[0]
+
+    assert (target_dir / "same.jpg").exists()
+    assert not (target_dir / "same_dup1.jpg").exists()
+    assert "已存在于图库，跳过复制" in output
+    assert "节省" in output
+    assert "SKIP_EXISTING" in second_log_path.read_text(encoding="utf-8")
+    assert skipped_row[1] == str((target_dir / "same.jpg").resolve())
+    assert skipped_row[2]
+    assert skipped_row[3] == "same.jpg"
+    assert skipped_row[4] == len("same-content")
+    assert index_row == (1, task_id, task_id)
+    assert task_row == (1, 0, 1, len("same-content"), 0)
+    assert hash_record_count == 1
+
+
+def test_skip_existing_exact_uses_sha256_even_when_duplicate_detection_is_phash(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "phash.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first_file = create_media_file(src_dir / "camera1" / "first_name.jpg", content="same-content")
+    create_media_file(src_dir / "camera2" / "second_name.jpg", content="same-content")
+    target_dir = expected_target_dir(first_file, dst_dir)
+    task_id = "task_phash_skip"
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+    with connect_sqlite_hash_db() as connection:
+        connection.execute(
+            """
+            INSERT INTO task_runs (task_id, task_type, status, destination_root)
+            VALUES (?, 'organizer', 'running', ?)
+            """,
+            (task_id, str(dst_dir.resolve())),
+        )
+        connection.commit()
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="phash",
+        duplicates_db_path=str(sqlite_path),
+        skip_existing_exact=True,
+        task_id=task_id,
+    )
+
+    with sqlite3.connect(sqlite_path) as connection:
+        skipped_count = connection.execute("SELECT COUNT(*) FROM task_skipped_existing").fetchone()[0]
+        strict_count = connection.execute(
+            "SELECT COUNT(*) FROM hash_db_records WHERE method = 'strict'"
+        ).fetchone()[0]
+        task_row = connection.execute(
+            "SELECT scanned_count, saved_count, skipped_existing_count FROM task_runs WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+
+    assert (target_dir / "first_name.jpg").exists()
+    assert not (target_dir / "second_name.jpg").exists()
+    assert skipped_count == 1
+    assert strict_count == 1
+    assert task_row == (2, 1, 1)
+
+
+def test_organize_summary_hides_skip_fields_when_skip_existing_is_off() -> None:
+    stats = {
+        "scanned_count": 8,
+        "saved_count": 8,
+        "skipped_existing_count": 0,
+        "skipped_existing_bytes": 0,
+        "similar_group_count": 4,
+    }
+
+    summary = format_organize_summary(get_texts("zh"), stats, include_skip=False)
+
+    assert summary == "扫描照片：8 张\n保存到图库：8 张\n发现相似照片：4 组"
+    assert "已存在于图库" not in summary
+    assert "节省空间" not in summary
+
+
+def test_saved_count_tracks_files_after_transfer_even_if_cache_copy_fails(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "copy.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_media_file(src_dir / "photo.jpg", content="photo")
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    def fail_cache_copy(cache, source_path: str, target_path: str) -> None:
+        raise OSError("cache update failed")
+
+    monkeypatch.setattr(organizer_mod, "copy_hash_cache_entry", fail_cache_copy)
+
+    stats = organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="off",
+        duplicates_db_path=str(sqlite_path),
+    )
+
+    assert stats["scanned_count"] == 1
+    assert stats["saved_count"] == 1
+    assert len(list(dst_dir.rglob("*.jpg"))) == 1
+
+
+def test_organize_summary_shows_skip_fields_when_skip_existing_is_on() -> None:
+    stats = {
+        "scanned_count": 8,
+        "saved_count": 4,
+        "skipped_existing_count": 4,
+        "skipped_existing_bytes": 2048,
+        "similar_group_count": 1,
+    }
+
+    summary = format_organize_summary(get_texts("zh"), stats, include_skip=True)
+
+    assert "新增保存：4 张" in summary
+    assert "已存在于图库：4 张" in summary
+    assert "节省空间：2 KB" in summary
 
 
 def test_duplicate_names_follow_kept_file_name_sequence(work_dir: Path) -> None:

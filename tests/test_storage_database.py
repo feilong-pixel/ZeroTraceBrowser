@@ -12,6 +12,7 @@ from core.storage.exif_repository import ExifRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.recycle_repository import RecycleRepository
+from core.storage.task_repository import TaskRunRepository
 
 
 def test_root_database_initializes_schema(tmp_path: Path) -> None:
@@ -42,6 +43,9 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "hash_db_metadata",
         "hash_db_records",
         "file_hash_cache",
+        "task_runs",
+        "task_skipped_existing",
+        "skipped_existing_index",
         "image_exif_cache",
     }.issubset(tables)
 
@@ -200,3 +204,71 @@ def test_recycle_repository_updates_lifecycle_action(tmp_path: Path) -> None:
         }
     ]
     assert repository.list_records(include_terminal=False) == []
+
+
+def test_task_run_repository_records_task_and_skipped_existing(tmp_path: Path) -> None:
+    repository = TaskRunRepository(tmp_path / "workspace.sqlite3")
+    task = {
+        "task_id": "task_1",
+        "task_type": "organizer",
+        "status": "running",
+        "started_at": "2026-05-18T10:00:00",
+        "finished_at": None,
+        "params": {
+            "src": str(tmp_path / "phone"),
+            "dst": str(tmp_path / "gallery"),
+            "mode": "copy",
+            "duplicate_detection": "both",
+            "phash_threshold": 5,
+            "skip_existing_exact": False,
+        },
+        "outputs": {
+            "log_path": str(tmp_path / "tasks" / "task_1" / "organizer.log"),
+            "duplicate_report_path": str(tmp_path / "tasks" / "task_1" / "duplicate_report.csv"),
+        },
+        "error": None,
+    }
+
+    repository.save_task_started(task)
+    repository.record_skipped_existing(
+        task_id="task_1",
+        source_path=str(tmp_path / "phone" / "a.jpg"),
+        existing_path=str(tmp_path / "gallery" / "a.jpg"),
+        strict_hash="hash-a",
+        size=123,
+        file_name="a.jpg",
+    )
+    repository.record_skipped_existing(
+        task_id="task_1",
+        source_path=str(tmp_path / "phone" / "a.jpg"),
+        existing_path=str(tmp_path / "gallery" / "a.jpg"),
+        strict_hash="hash-a",
+        size=123,
+        file_name="a.jpg",
+    )
+    task["status"] = "completed"
+    task["finished_at"] = "2026-05-18T10:05:00"
+    repository.update_task_finished(
+        task,
+        scanned_count=2,
+        saved_count=1,
+        skipped_existing_count=1,
+        skipped_existing_bytes=123,
+        similar_group_count=0,
+    )
+
+    saved = repository.load_task("task_1")
+    assert saved is not None
+    assert saved["task_type"] == "organizer"
+    assert saved["status"] == "completed"
+    assert saved["skip_existing_exact"] == 0
+    assert saved["scanned_count"] == 2
+    assert saved["skipped_existing_bytes"] == 123
+    assert len(repository.list_skipped_existing("task_1")) == 2
+
+    with sqlite3.connect(tmp_path / "workspace.sqlite3") as connection:
+        index_row = connection.execute(
+            "SELECT seen_count, first_task_id, last_task_id FROM skipped_existing_index WHERE strict_hash = ?",
+            ("hash-a",),
+        ).fetchone()
+    assert index_row == (2, "task_1", "task_1")

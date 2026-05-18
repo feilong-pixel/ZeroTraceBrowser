@@ -49,7 +49,9 @@ def cleanup_root_related_data(root: str | Path) -> dict[str, Any]:
         "recycle_files": 0,
         "root_summaries": 0,
         "root_workspace_dirs": 0,
+        "root_workspace_delete_errors": 0,
     }
+    errors: list[dict[str, str]] = []
 
     cache_key = image_scan_cache_key(Path(normalized_root), SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     root_index_dir = root_image_index_dir(normalized_root)
@@ -130,9 +132,13 @@ def cleanup_root_related_data(root: str | Path) -> dict[str, Any]:
 
     workspace = root_data_dir(normalized_root)
     if workspace.exists():
-        shutil.rmtree(workspace)
-        removed["root_workspace_dirs"] = 1
+        try:
+            move_to_system_recycle_bin(workspace)
+        except Exception as exc:
+            removed["root_workspace_delete_errors"] += 1
+            errors.append({"path": str(workspace), "operation": "move_to_system_recycle_bin", "error": str(exc)})
+        removed["root_workspace_dirs"] = 1 if not workspace.exists() else 0
 
     clear_image_list_cache(Path(normalized_root))
     clear_duplicates_path_cache()
-    return {"root": normalized_root, "removed": removed}
+    return {"root": normalized_root, "removed": removed, "errors": errors}

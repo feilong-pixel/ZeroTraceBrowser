@@ -21,7 +21,9 @@ try:
         get_valid_original_paths,
         load_file_hash_cache_entry,
         load_hash_db,
+        record_skipped_existing,
         save_hash_db,
+        update_task_run_counts,
         upsert_file_hash_cache,
     )
     from ..core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
@@ -37,7 +39,9 @@ except ImportError:
         get_valid_original_paths,
         load_file_hash_cache_entry,
         load_hash_db,
+        record_skipped_existing,
         save_hash_db,
+        update_task_run_counts,
         upsert_file_hash_cache,
     )
     from core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
@@ -212,6 +216,17 @@ def copy_hash_cache_entry(cache: HashCache, source_path: str, target_path: str) 
 def timestamp():
     # Keep log timestamps human-readable for quick troubleshooting.
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_bytes(size: int) -> str:
+    units = ("B", "KB", "MB", "GB", "TB")
+    value = float(size)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.1f} {unit}".replace(".0 ", " ")
+        value /= 1024
 
 
 def get_unique_path(directory: str, filename: str) -> str:
@@ -884,11 +899,17 @@ def organize_images(
     progress_callback: ProgressCallback | None = None,
     duplicates_json_path: str | None = None,
     duplicates_db_path: str | None = None,
+    skip_existing_exact: bool = False,
+    task_id: str | None = None,
 ):
     os.makedirs(dst_dir, exist_ok=True)
     log_lines = []
     duplicate_rows = []
     processed_count = 0
+    saved_count = 0
+    skipped_existing_count = 0
+    skipped_existing_bytes = 0
+    task_id = task_id or os.environ.get("IMAGE_ORGANIZER_TASK_ID", "").strip()
 
     # Load the persisted hash database and file-content hash cache once per run.
     hash_db = load_hash_db()
@@ -906,6 +927,46 @@ def organize_images(
                 processed_count += 1
                 if progress_callback and processed_count % PROGRESS_INTERVAL == 0:
                     progress_callback(processed_count)
+
+                exact_hash_for_saved_file = None
+                if skip_existing_exact:
+                    exact_hash_for_saved_file = get_or_compute_hash(hash_cache, "strict", path)
+                    existing_exact = None
+                    if exact_hash_for_saved_file is not None:
+                        valid_exact_paths = get_valid_original_paths(
+                            hash_db,
+                            "strict",
+                            exact_hash_for_saved_file,
+                            dst_dir,
+                        )
+                        if valid_exact_paths:
+                            existing_exact = (exact_hash_for_saved_file, valid_exact_paths[0])
+                    if existing_exact is not None:
+                        strict_hash, existing_path = existing_exact
+                        size = get_file_signature(path)["size"]
+                        skipped_existing_count += 1
+                        skipped_existing_bytes += size
+                        record_skipped_existing(
+                            task_id or "",
+                            path,
+                            existing_path,
+                            strict_hash,
+                            size,
+                        )
+                        add_hash_record(hash_db, "strict", strict_hash, existing_path)
+                        if lang:
+                            print(
+                                lang["skip_existing_message"].format(
+                                    path=path,
+                                    existing_path=existing_path,
+                                    size=format_bytes(size),
+                                ),
+                                flush=True,
+                            )
+                        log_lines.append(
+                            f"{timestamp()} | SKIP_EXISTING | strict={strict_hash} | {path} | existing={existing_path}"
+                        )
+                        continue
 
                 duplicate_hashes = resolve_duplicate_hash(path, duplicate_detection, hash_cache)
                 duplicate_info = None
@@ -932,6 +993,7 @@ def organize_images(
                     original_path = valid_paths[0]
                     target_path = get_duplicate_path(original_path)
                     transfer_file(path, target_path, mode)
+                    saved_count += 1
                     copy_hash_cache_entry(hash_cache, path, target_path)
                     duplicate_rows.append(
                         {
@@ -956,6 +1018,7 @@ def organize_images(
 
                     target_path = get_unique_path(target_dir, name)
                     transfer_file(path, target_path, mode)
+                    saved_count += 1
                     copy_hash_cache_entry(hash_cache, path, target_path)
 
                     log_lines.append(
@@ -964,6 +1027,8 @@ def organize_images(
 
                 for method, hash_value in duplicate_hashes:
                     add_hash_record(hash_db, method, hash_value, target_path)
+                if skip_existing_exact and exact_hash_for_saved_file is not None:
+                    add_hash_record(hash_db, "strict", exact_hash_for_saved_file, target_path)
 
             except Exception as e:
                 log_lines.append(
@@ -974,14 +1039,30 @@ def organize_images(
     save_hash_db(hash_db)
     save_hash_cache(hash_cache)
     append_duplicate_report_rows(build_duplicate_report_path(log_path), duplicate_rows)
-    rebuild_duplicate_results_json(
+    duplicate_stats = rebuild_duplicate_results_json(
         dst_dir,
         duplicates_json_path or ("" if duplicates_db_path else build_duplicate_json_path(log_path)),
         "both",
         phash_threshold,
         sqlite_db_path=duplicates_db_path,
     )
+    update_task_run_counts(
+        task_id or "",
+        scanned_count=processed_count,
+        saved_count=saved_count,
+        skipped_existing_count=skipped_existing_count,
+        skipped_existing_bytes=skipped_existing_bytes,
+        similar_group_count=int(duplicate_stats.get("duplicate_group_count", 0)),
+    )
 
     # Write one log entry per processed file so each run can be audited later.
     with open(log_path, "w", encoding="utf-8") as f:
         f.write("\n".join(log_lines))
+
+    return {
+        "scanned_count": processed_count,
+        "saved_count": saved_count,
+        "skipped_existing_count": skipped_existing_count,
+        "skipped_existing_bytes": skipped_existing_bytes,
+        "similar_group_count": int(duplicate_stats.get("duplicate_group_count", 0)),
+    }

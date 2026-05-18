@@ -7,6 +7,7 @@ from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.database import init_root_database
 from core.storage.hash_db_repository import HashDbRepository
+from core.storage.task_repository import TaskRunRepository
 
 
 def build_task_log_path(task_id: str, target_root: str | Path | None = None) -> Path:
@@ -49,6 +50,8 @@ def serialize_task(task: dict[str, Any]) -> dict[str, Any]:
 def run_organizer_task(task_id: str, command: list[str], workdir: Path, env: dict[str, str] | None = None) -> None:
     TASK_REGISTRY.run_subprocess_task(task_id, command, workdir, env)
     task = TASK_REGISTRY.get(task_id)
+    if task:
+        persist_task_run_completion(task)
     if task and task.get("status") == "completed":
         summarize_task_root(task)
 
@@ -96,6 +99,30 @@ def summarize_task_root(task: dict[str, Any]) -> None:
     )
     clear_image_list_cache(root)
     save_root_summary(str(root), image_count, duplicate_group_count, generated_at)
+    persist_task_run_completion(task, similar_group_count=duplicate_group_count)
+
+
+def persist_task_run_started(task: dict[str, Any]) -> None:
+    outputs = task.get("outputs", {})
+    if not isinstance(outputs, dict):
+        return
+    database_path = str(outputs.get("database_path", "")).strip()
+    if not database_path:
+        return
+    TaskRunRepository(database_path).save_task_started(task)
+
+
+def persist_task_run_completion(task: dict[str, Any], similar_group_count: int | None = None) -> None:
+    outputs = task.get("outputs", {})
+    if not isinstance(outputs, dict):
+        return
+    database_path = str(outputs.get("database_path", "")).strip()
+    if not database_path:
+        return
+    TaskRunRepository(database_path).update_task_finished(
+        task,
+        similar_group_count=similar_group_count,
+    )
 
 
 def persist_task_outputs_to_database(task: dict[str, Any], root: Path) -> None:

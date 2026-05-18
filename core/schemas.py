@@ -44,6 +44,7 @@ class OrganizerTaskRequest(BaseModel):
     mode: str = Field(default="copy")
     duplicate_detection: str = Field(default="phash")
     phash_threshold: int = Field(default=4, ge=0)
+    skip_existing_exact: bool = Field(default=True)
     lang: str = Field(default="en")
 
 

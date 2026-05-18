@@ -7,9 +7,11 @@ from datetime import datetime
 
 try:
     from .locales import get_texts
+    from .services.organizer import format_bytes
     from .services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
 except ImportError:
     from locales import get_texts
+    from services.organizer import format_bytes
     from services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
 
 
@@ -34,6 +36,17 @@ def build_log_path() -> str:
     # Use a timestamped file name so each run keeps its own log record.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return os.path.join(log_dir, f"organize_log_{timestamp}.txt")
+
+
+def format_organize_summary(texts: dict[str, str], stats: dict[str, int], *, include_skip: bool) -> str:
+    key = "organize_summary_with_skip" if include_skip else "organize_summary"
+    return texts[key].format(
+        scanned=stats["scanned_count"],
+        saved=stats["saved_count"],
+        skipped=stats["skipped_existing_count"],
+        similar=stats["similar_group_count"],
+        saved_space=format_bytes(stats["skipped_existing_bytes"]),
+    )
 
 
 def validate_paths(src_dir: str, dst_dir: str, texts: dict[str, str]) -> tuple[str, str]:
@@ -108,6 +121,8 @@ def main():
     )
     parser.add_argument("--duplicates-json-path", default="", help=argparse.SUPPRESS)
     parser.add_argument("--duplicates-db-path", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--skip-existing-exact", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--task-id", default="", help=argparse.SUPPRESS)
     parser.add_argument("--lang", choices=("zh", "en", "ja"), default="en", help=texts["lang_help"])
     parser.add_argument("--log-path", default="", help=argparse.SUPPRESS)
 
@@ -178,7 +193,7 @@ def main():
     print(texts["mode_selected"].format(mode=args.mode))
     print(texts["duplicate_detection_selected"].format(mode=args.duplicate_detection, threshold=args.phash_threshold))
 
-    organize_images(
+    stats = organize_images(
         src_dir,
         dst_dir,
         log_path,
@@ -191,8 +206,11 @@ def main():
         ),
         duplicates_json_path=os.path.abspath(args.duplicates_json_path) if args.duplicates_json_path else None,
         duplicates_db_path=os.path.abspath(args.duplicates_db_path) if args.duplicates_db_path else None,
+        skip_existing_exact=args.skip_existing_exact,
+        task_id=args.task_id,
     )
 
+    print(format_organize_summary(texts, stats, include_skip=args.skip_existing_exact))
     print(texts["done_message"].format(log_path=log_path))
 
 

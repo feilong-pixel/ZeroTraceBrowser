@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -175,6 +175,68 @@ def init_root_database(database_path: str | Path) -> Path:
 
             CREATE INDEX IF NOT EXISTS idx_file_hash_cache_file_signature
                 ON file_hash_cache(file_name, size, mtime_ns);
+
+            CREATE TABLE IF NOT EXISTS task_runs (
+                task_id TEXT PRIMARY KEY,
+                task_type TEXT NOT NULL DEFAULT 'organizer',
+                status TEXT NOT NULL DEFAULT 'running',
+                source_root TEXT NOT NULL DEFAULT '',
+                destination_root TEXT NOT NULL DEFAULT '',
+                mode TEXT NOT NULL DEFAULT 'copy',
+                duplicate_detection TEXT NOT NULL DEFAULT 'phash',
+                phash_threshold INTEGER NOT NULL DEFAULT 4,
+                skip_existing_exact INTEGER NOT NULL DEFAULT 1,
+                scanned_count INTEGER NOT NULL DEFAULT 0,
+                saved_count INTEGER NOT NULL DEFAULT 0,
+                skipped_existing_count INTEGER NOT NULL DEFAULT 0,
+                skipped_existing_bytes INTEGER NOT NULL DEFAULT 0,
+                similar_group_count INTEGER NOT NULL DEFAULT 0,
+                log_path TEXT NOT NULL DEFAULT '',
+                duplicate_report_path TEXT NOT NULL DEFAULT '',
+                error TEXT,
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS task_skipped_existing (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                source_path TEXT NOT NULL,
+                existing_path TEXT NOT NULL,
+                strict_hash TEXT NOT NULL,
+                file_name TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL DEFAULT 0,
+                recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(task_id) REFERENCES task_runs(task_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_task_skipped_existing_task_id
+                ON task_skipped_existing(task_id);
+
+            CREATE INDEX IF NOT EXISTS idx_task_skipped_existing_strict_hash
+                ON task_skipped_existing(strict_hash);
+
+            CREATE TABLE IF NOT EXISTS skipped_existing_index (
+                strict_hash TEXT NOT NULL,
+                source_fingerprint TEXT NOT NULL,
+                source_path TEXT NOT NULL DEFAULT '',
+                existing_path TEXT NOT NULL,
+                file_name TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL DEFAULT 0,
+                first_task_id TEXT NOT NULL DEFAULT '',
+                last_task_id TEXT NOT NULL DEFAULT '',
+                first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                seen_count INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (strict_hash, source_fingerprint)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_skipped_existing_index_existing_path
+                ON skipped_existing_index(existing_path);
+
+            CREATE INDEX IF NOT EXISTS idx_skipped_existing_index_last_seen_at
+                ON skipped_existing_index(last_seen_at);
 
             CREATE TABLE IF NOT EXISTS image_exif_cache (
                 relative_path TEXT PRIMARY KEY,
