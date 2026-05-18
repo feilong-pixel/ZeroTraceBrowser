@@ -14,7 +14,7 @@ def normalize_task_mode(mode: str) -> str:
 
 
 def normalize_duplicate_detection(duplicate_detection: str) -> str:
-    return duplicate_detection if duplicate_detection in {"off", "phash", "strict"} else "phash"
+    return duplicate_detection if duplicate_detection in {"off", "phash", "strict", "both"} else "phash"
 
 
 def normalize_phash_threshold(value: Any) -> int:
@@ -63,6 +63,7 @@ class SettingsStore:
                 "mode": "copy",
                 "duplicate_detection": "phash",
                 "phash_threshold": 4,
+                "rebuild_phash_threshold": 4,
             },
         }
 
@@ -121,6 +122,9 @@ class SettingsStore:
                 str(task_defaults.get("duplicate_detection", "phash")).strip(),
             ),
             "phash_threshold": normalize_phash_threshold(task_defaults.get("phash_threshold", 4)),
+            "rebuild_phash_threshold": normalize_phash_threshold(
+                task_defaults.get("rebuild_phash_threshold", task_defaults.get("phash_threshold", 4)),
+            ),
         }
         return settings
 
@@ -164,6 +168,9 @@ class SettingsStore:
             "mode": normalize_task_mode(mode),
             "duplicate_detection": normalize_duplicate_detection(duplicate_detection),
             "phash_threshold": normalize_phash_threshold(phash_threshold),
+            "rebuild_phash_threshold": normalize_phash_threshold(
+                existing_defaults.get("rebuild_phash_threshold", existing_defaults.get("phash_threshold", 4)),
+            ),
         }
         self.save(settings)
 
@@ -190,12 +197,13 @@ class SettingsStore:
         settings["root_summaries"] = root_summaries
         self.save(settings)
 
-    def remember_rebuild_root(self, rebuild_root: str) -> None:
+    def remember_rebuild_root(self, rebuild_root: str, phash_threshold: Any = 4) -> None:
         settings = self.load()
         task_defaults = settings.get("task_defaults", {})
         if not isinstance(task_defaults, dict):
             task_defaults = {}
         task_defaults["rebuild_root"] = str(Path(rebuild_root).expanduser().resolve())
+        task_defaults["rebuild_phash_threshold"] = normalize_phash_threshold(phash_threshold)
         settings["task_defaults"] = {
             "src": str(task_defaults.get("src", "")).strip(),
             "dst": str(task_defaults.get("dst", "")).strip(),
@@ -205,5 +213,6 @@ class SettingsStore:
                 str(task_defaults.get("duplicate_detection", "phash")).strip(),
             ),
             "phash_threshold": normalize_phash_threshold(task_defaults.get("phash_threshold", 4)),
+            "rebuild_phash_threshold": normalize_phash_threshold(task_defaults.get("rebuild_phash_threshold", 4)),
         }
         self.save(settings)

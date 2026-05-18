@@ -5,7 +5,7 @@ TEXTS = {
     "src_help": "Source directory",
     "dst_help": "Destination directory",
     "mode_help": "Organization mode: move or copy, default is move",
-    "duplicate_detection_help": "Duplicate detection: off, phash for similar images, or strict for exact file matches",
+    "duplicate_detection_help": "Duplicate detection: off, strict for exact SHA-256 matches, phash for similar images, or both to collect SHA-256 and pHash",
     "phash_threshold_help": "Maximum Hamming distance for phash matching, default is 4",
     "rebuild_hash_db_root_help": "Rebuild hash_db.json from the specified organized root directory",
     "rebuild_hash_db_mode_help": "Hash DB rebuild mode: replace to overwrite or append to keep existing entries",

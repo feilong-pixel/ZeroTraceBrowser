@@ -14,12 +14,15 @@ try:
     from ..core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
     from ..core.hash_db import (
         add_hash_record,
+        clear_sqlite_hash_records,
         create_empty_hash_db,
         get_db_path,
         get_sqlite_db_path,
         get_valid_original_paths,
+        load_file_hash_cache_entry,
         load_hash_db,
         save_hash_db,
+        upsert_file_hash_cache,
     )
     from ..core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
 except ImportError:
@@ -27,12 +30,15 @@ except ImportError:
     from core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
     from core.hash_db import (
         add_hash_record,
+        clear_sqlite_hash_records,
         create_empty_hash_db,
         get_db_path,
         get_sqlite_db_path,
         get_valid_original_paths,
+        load_file_hash_cache_entry,
         load_hash_db,
         save_hash_db,
+        upsert_file_hash_cache,
     )
     from core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
 
@@ -54,6 +60,9 @@ def get_hash_cache_path() -> str:
 
 
 def load_hash_cache() -> HashCache:
+    if get_sqlite_db_path().strip():
+        return {}
+
     cache_path = get_hash_cache_path()
     try:
         with open(cache_path, "r", encoding="utf-8") as file_obj:
@@ -72,6 +81,9 @@ def load_hash_cache() -> HashCache:
 
 
 def save_hash_cache(cache: HashCache) -> None:
+    if get_sqlite_db_path().strip():
+        return
+
     cache_path = get_hash_cache_path()
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
     payload = {
@@ -112,6 +124,17 @@ def get_or_compute_hash(
     # rebuild from decoding and hashing unchanged files repeatedly.
     path_key = normalize_cache_path(path)
     signature = get_file_signature(path)
+
+    sqlite_entry = load_file_hash_cache_entry(
+        path_key,
+        signature["size"],
+        signature["mtime_ns"],
+    )
+    if sqlite_entry is not None:
+        cached_sqlite_value = sqlite_entry.get(method)
+        if isinstance(cached_sqlite_value, str) and cached_sqlite_value:
+            return cached_sqlite_value
+
     entry = cache.get(path_key)
 
     if isinstance(entry, dict) and is_cache_entry_current(entry, signature):
@@ -131,6 +154,13 @@ def get_or_compute_hash(
 
     if hash_value is not None:
         entry[method] = hash_value
+        upsert_file_hash_cache(
+            path_key,
+            size=signature["size"],
+            mtime_ns=signature["mtime_ns"],
+            strict_hash=hash_value if method == "strict" else None,
+            phash=hash_value if method == "phash" else None,
+        )
 
     return hash_value
 
@@ -138,14 +168,37 @@ def get_or_compute_hash(
 def copy_hash_cache_entry(cache: HashCache, source_path: str, target_path: str) -> None:
     # The transferred file has the same content as source_path. Reuse already
     # computed hash values for target_path when the target metadata is available.
-    source_entry = cache.get(normalize_cache_path(source_path))
-    if not isinstance(source_entry, dict):
-        return
-
     try:
         target_signature = get_file_signature(target_path)
+        source_signature = get_file_signature(source_path)
     except OSError:
         return
+
+    source_key = normalize_cache_path(source_path)
+    target_key = normalize_cache_path(target_path)
+    source_entry = cache.get(source_key)
+    sqlite_hashes = load_file_hash_cache_entry(
+        source_key,
+        source_signature["size"],
+        source_signature["mtime_ns"],
+    )
+    strict_hash = ""
+    phash = ""
+    if isinstance(sqlite_hashes, dict):
+        strict_hash = sqlite_hashes.get("strict", "")
+        phash = sqlite_hashes.get("phash", "")
+    elif isinstance(source_entry, dict):
+        strict_hash = str(source_entry.get("strict") or "")
+        phash = str(source_entry.get("phash") or "")
+
+    upsert_file_hash_cache(
+        target_key,
+        size=target_signature["size"],
+        mtime_ns=target_signature["mtime_ns"],
+        strict_hash=strict_hash or None,
+        phash=phash or None,
+        source_path=source_key,
+    )
 
     target_entry: dict[str, object] = {**target_signature}
     for method in ("strict", "phash"):
@@ -153,7 +206,8 @@ def copy_hash_cache_entry(cache: HashCache, source_path: str, target_path: str) 
         if isinstance(value, str) and value:
             target_entry[method] = value
 
-    cache[normalize_cache_path(target_path)] = target_entry
+    if target_entry.keys() - target_signature.keys():
+        cache[target_key] = target_entry
 
 def timestamp():
     # Keep log timestamps human-readable for quick troubleshooting.
@@ -751,22 +805,24 @@ def resolve_duplicate_hash(
     path: str,
     duplicate_detection: str,
     hash_cache: HashCache,
-) -> tuple[str, str] | None:
+) -> list[tuple[str, str]]:
     # Select the requested duplicate detection method for the current file.
     if duplicate_detection == "off":
-        return None
+        return []
 
-    if duplicate_detection == "strict":
+    hashes = []
+
+    if duplicate_detection in ("strict", "both"):
         strict_value = get_or_compute_hash(hash_cache, "strict", path)
-        if strict_value is None:
-            return None
-        return "strict", strict_value
+        if strict_value is not None:
+            hashes.append(("strict", strict_value))
 
-    phash_value = get_or_compute_hash(hash_cache, "phash", path)
-    if phash_value is None:
-        return None
+    if duplicate_detection in ("phash", "both"):
+        phash_value = get_or_compute_hash(hash_cache, "phash", path)
+        if phash_value is not None:
+            hashes.append(("phash", phash_value))
 
-    return "phash", phash_value
+    return hashes
 
 
 def iter_supported_media_files(root_dir: str):
@@ -783,6 +839,8 @@ def rebuild_hash_db(
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, int | str]:
     root_abs = os.path.abspath(root_dir)
+    if rebuild_mode == "replace":
+        clear_sqlite_hash_records()
     db = load_hash_db() if rebuild_mode == "append" else create_empty_hash_db()
     hash_cache = load_hash_cache()
     stats = {
@@ -849,11 +907,12 @@ def organize_images(
                 if progress_callback and processed_count % PROGRESS_INTERVAL == 0:
                     progress_callback(processed_count)
 
-                duplicate_info = resolve_duplicate_hash(path, duplicate_detection, hash_cache)
+                duplicate_hashes = resolve_duplicate_hash(path, duplicate_detection, hash_cache)
+                duplicate_info = None
                 valid_paths = []
 
-                if duplicate_info is not None:
-                    method, hash_value = duplicate_info
+                for candidate_info in duplicate_hashes:
+                    method, hash_value = candidate_info
                     # Only treat matches inside the current destination root as duplicates.
                     valid_paths = get_valid_original_paths(
                         hash_db,
@@ -862,6 +921,12 @@ def organize_images(
                         dst_dir,
                         threshold=phash_threshold,
                     )
+                    if valid_paths:
+                        duplicate_info = candidate_info
+                        break
+
+                if duplicate_info is not None:
+                    method, hash_value = duplicate_info
 
                 if valid_paths:
                     original_path = valid_paths[0]
@@ -897,8 +962,7 @@ def organize_images(
                         f"{timestamp()} | OK | {mode.upper()} | {path} -> {target_path}"
                     )
 
-                if duplicate_info is not None:
-                    method, hash_value = duplicate_info
+                for method, hash_value in duplicate_hashes:
                     add_hash_record(hash_db, method, hash_value, target_path)
 
             except Exception as e:

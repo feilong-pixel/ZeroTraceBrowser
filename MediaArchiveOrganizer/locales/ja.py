@@ -5,7 +5,7 @@ TEXTS = {
     "src_help": "元フォルダ",
     "dst_help": "保存先フォルダ",
     "mode_help": "整理モード: move は移動、copy はコピー。デフォルトは move",
-    "duplicate_detection_help": "重複検出: off は無効、phash は類似画像、strict は完全一致ファイル",
+    "duplicate_detection_help": "重複検出: off は無効、strict は SHA-256 の完全一致、phash は類似画像、both は SHA-256 と pHash の両方を取得",
     "phash_threshold_help": "pHash マッチに使う最大ハミング距離。デフォルトは 4",
     "rebuild_hash_db_root_help": "指定した整理済みルートから hash_db.json を再構築します",
     "rebuild_hash_db_mode_help": "hash_db の再構築モード: replace は上書き、append は既存の記録を保持して追加",

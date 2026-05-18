@@ -24,6 +24,7 @@ function getTasksElements() {
 
     rebuildRootInput: $("#rebuildRootInput"),
     hashMethodSelect: $("#hashMethodSelect"),
+    rebuildThresholdInput: $("#rebuild_thresholdInput"),
     runRebuildButton: $("#runRebuildButton"),
 
     taskLog: $("#taskLog"),
@@ -283,6 +284,7 @@ async function runRebuildTask(els, state) {
         root: els.rebuildRootInput.value.trim(),
         rebuild_mode: "replace",
         hash_method: els.hashMethodSelect.value,
+        phash_threshold: Number(els.rebuildThresholdInput.value || 0),
         lang: state.currentLang,
       }),
     });
@@ -310,7 +312,12 @@ function syncMaintenanceState(els, state) {
 
 function toggleThreshold(els) {
   if (!els.thresholdInput || !els.duplicateSelect) return;
-  els.thresholdInput.disabled = els.duplicateSelect.value !== "phash";
+  els.thresholdInput.disabled = !["phash", "both"].includes(els.duplicateSelect.value);
+}
+
+function toggleRebuildThreshold(els) {
+  if (!els.rebuildThresholdInput || !els.hashMethodSelect) return;
+  els.rebuildThresholdInput.disabled = els.hashMethodSelect.value === "strict";
 }
 
 function setSelectValue(select, value, fallback) {
@@ -378,6 +385,9 @@ async function initializeTasksPage(els, state) {
     setSelectValue(els.modeSelect, taskDefaults.mode, "copy");
     setSelectValue(els.duplicateSelect, taskDefaults.duplicate_detection, "phash");
     els.thresholdInput.value = String(normalizeThreshold(taskDefaults.phash_threshold));
+    els.rebuildThresholdInput.value = String(
+      normalizeThreshold(taskDefaults.rebuild_phash_threshold ?? taskDefaults.phash_threshold),
+    );
 
     state.currentLang = config.language === "zh-CN" ? "zh" : (config.language || "en");
     setLang(state.currentLang);
@@ -387,6 +397,7 @@ async function initializeTasksPage(els, state) {
     applyTranslations(els, state);
     syncMaintenanceState(els, state);
     toggleThreshold(els);
+    toggleRebuildThreshold(els);
     await restoreRunningTask(els, state);
   } catch (error) {
     setTaskLog(els, error.message);
@@ -419,6 +430,10 @@ async function restoreRunningTask(els, state) {
 function bindTasksEvents(els, state) {
   on(els.duplicateSelect, "change", () => {
     toggleThreshold(els);
+  });
+
+  on(els.hashMethodSelect, "change", () => {
+    toggleRebuildThreshold(els);
   });
 
   on(els.runTaskButton, "click", () => {

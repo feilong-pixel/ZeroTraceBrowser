@@ -148,11 +148,13 @@ cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
 - `off`: 重複検出を無効化
 - `phash`: pHash による類似画像検出
 - `strict`: SHA-256 による完全一致ファイル検出
+- `both`: SHA-256 と pHash の両方を取得し、strict を先に確認してから類似判定を行います
 
 補足:
 
 - `phash` は見た目が近い画像の検出に向いています
 - `strict` は内容が完全一致するファイルだけを重複とみなしたい場合に適しています
+- `both` は精密な重複検出と類似画像ワークフローの両方に使えるよう、2 種類の hash を保持します
 - `hash_db` は現在の保存先フォルダ配下でのみ参照され、過去の別フォルダへファイルを誘導しません
 - 重複と判定されたファイルも、通常の日付アーカイブフォルダへコピーまたは移動されます
 - 重複ファイル名は、最初に保持されたファイル名を基準に `photo_dup1.jpg`、`photo_dup2.jpg` のように付与されます
@@ -164,6 +166,7 @@ cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
 ```powershell
 .\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection off
 .\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection strict
+.\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection both
 ```
 
 ### `--phash-threshold`
@@ -174,7 +177,7 @@ pHash 類似判定に使う最大ハミング距離を指定します。デフ�
 
 - 値が小さいほど判定は厳しくなります
 - 値が大きいほど似た画像を重複として扱いやすくなります
-- このオプションは `--duplicate-detection phash` のときのみ有効です
+- このオプションは `--duplicate-detection phash` または `--duplicate-detection both` のときに有効です
 
 例:
 

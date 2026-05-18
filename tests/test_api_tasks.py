@@ -44,6 +44,7 @@ def rebuild_payload(root: Path) -> dict[str, object]:
         "root": str(root),
         "rebuild_mode": "replace",
         "hash_method": "strict",
+        "phash_threshold": 4,
         "lang": "en",
     }
 
@@ -100,6 +101,36 @@ def test_run_organizer_task_starts_completes_and_can_be_queried(api_client, monk
     query_response = client.get(f"/api/tasks/{task['task_id']}")
     assert query_response.status_code == 200
     assert query_response.json()["status"] == "completed"
+
+
+def test_run_organizer_accepts_both_duplicate_detection(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    destination = workspace / "organized"
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+
+    def mark_completed(
+        task_id: str,
+        command: list[str],
+        workdir: Path,
+        env: dict[str, str] | None = None,
+    ) -> None:
+        task = ztb_app.TASK_REGISTRY.tasks[task_id]
+        task["output_lines"] = ["fake organizer finished"]
+        task["return_code"] = 0
+        task["status"] = "completed"
+        task["finished_at"] = datetime.now().isoformat()
+        assert command[command.index("--duplicate-detection") + 1] == "both"
+
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_completed)
+
+    payload = organizer_payload(image_root, destination)
+    payload["duplicate_detection"] = "both"
+    response = client.post("/api/tasks/run-organizer", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["params"]["duplicate_detection"] == "both"
+    config = client.get("/api/config").json()
+    assert config["task_defaults"]["duplicate_detection"] == "both"
 
 
 def test_run_organizer_failed_task_exposes_error_state(api_client, monkeypatch) -> None:
@@ -178,6 +209,7 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
 
         assert "--duplicates-json-path" not in command
         assert "--duplicates-db-path" in command
+        assert command[command.index("--phash-threshold") + 1] == "4"
 
     monkeypatch.setattr(ztb_app, "run_organizer_task", mark_rebuild_completed)
 
@@ -193,6 +225,35 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
     query_response = client.get(f"/api/tasks/{task['task_id']}")
     assert query_response.status_code == 200
     assert query_response.json()["output_lines"] == ["fake rebuild finished"]
+
+
+def test_rebuild_hash_db_uses_requested_phash_threshold(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+
+    def mark_rebuild_completed(
+        task_id: str,
+        command: list[str],
+        workdir: Path,
+        env: dict[str, str] | None = None,
+    ) -> None:
+        task = ztb_app.TASK_REGISTRY.tasks[task_id]
+        task["output_lines"] = ["fake rebuild finished"]
+        task["return_code"] = 0
+        task["status"] = "completed"
+        task["finished_at"] = datetime.now().isoformat()
+        assert command[command.index("--rebuild-hash-method") + 1] == "phash"
+        assert command[command.index("--phash-threshold") + 1] == "9"
+
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_rebuild_completed)
+
+    payload = rebuild_payload(image_root)
+    payload["hash_method"] = "phash"
+    payload["phash_threshold"] = 9
+    response = client.post("/api/tasks/rebuild-hash-db", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["params"]["phash_threshold"] == 9
 
 
 def test_rebuild_hash_db_failed_task_exposes_error_state(api_client, monkeypatch) -> None:
@@ -561,6 +622,30 @@ def test_rebuild_hash_db_persists_rebuild_root_separately_from_destination_defau
     config = client.get("/api/config").json()
     assert config["task_defaults"]["dst"] == str(destination)
     assert config["task_defaults"]["rebuild_root"] == str(rebuild_root)
+
+
+def test_rebuild_hash_db_persists_rebuild_phash_threshold_separately(api_client, monkeypatch) -> None:
+    client, workspace, image_root, _ = api_client
+    destination = workspace / "organized"
+    rebuild_root = workspace / "rebuild_root"
+    rebuild_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(ztb_app, "run_organizer_task", mark_task_completed)
+
+    organizer_data = organizer_payload(image_root, destination)
+    organizer_data["phash_threshold"] = 5
+    organizer_response = client.post("/api/tasks/run-organizer", json=organizer_data)
+    assert organizer_response.status_code == 200
+
+    rebuild_data = rebuild_payload(rebuild_root)
+    rebuild_data["hash_method"] = "phash"
+    rebuild_data["phash_threshold"] = 9
+    rebuild_response = client.post("/api/tasks/rebuild-hash-db", json=rebuild_data)
+    assert rebuild_response.status_code == 200
+
+    config = client.get("/api/config").json()
+    assert config["task_defaults"]["phash_threshold"] == 5
+    assert config["task_defaults"]["rebuild_phash_threshold"] == 9
 
 
 def test_completed_task_saves_root_summary_for_index_reuse(api_client, monkeypatch) -> None:

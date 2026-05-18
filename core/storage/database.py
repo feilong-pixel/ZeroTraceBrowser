@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -158,6 +158,23 @@ def init_root_database(database_path: str | Path) -> Path:
                 position INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(method, hash, path)
             );
+
+            CREATE TABLE IF NOT EXISTS file_hash_cache (
+                path TEXT PRIMARY KEY,
+                source_path TEXT NOT NULL DEFAULT '',
+                file_name TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL,
+                mtime_ns INTEGER NOT NULL,
+                strict_hash TEXT,
+                phash TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_file_hash_cache_source_path
+                ON file_hash_cache(source_path);
+
+            CREATE INDEX IF NOT EXISTS idx_file_hash_cache_file_signature
+                ON file_hash_cache(file_name, size, mtime_ns);
 
             CREATE TABLE IF NOT EXISTS image_exif_cache (
                 relative_path TEXT PRIMARY KEY,

@@ -40,9 +40,129 @@ def connect_sqlite_hash_db() -> sqlite3.Connection:
             position INTEGER NOT NULL DEFAULT 0,
             UNIQUE(method, hash, path)
         );
+
+        CREATE TABLE IF NOT EXISTS file_hash_cache (
+            path TEXT PRIMARY KEY,
+            source_path TEXT NOT NULL DEFAULT '',
+            file_name TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL,
+            mtime_ns INTEGER NOT NULL,
+            strict_hash TEXT,
+            phash TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_file_hash_cache_source_path
+            ON file_hash_cache(source_path);
+
+        CREATE INDEX IF NOT EXISTS idx_file_hash_cache_file_signature
+            ON file_hash_cache(file_name, size, mtime_ns);
         """
     )
     return connection
+
+
+def load_file_hash_cache_entry(path: str, size: int, mtime_ns: int) -> dict[str, str] | None:
+    if not get_sqlite_db_path().strip():
+        return None
+
+    with connect_sqlite_hash_db() as connection:
+        row = connection.execute(
+            """
+            SELECT strict_hash, phash
+            FROM file_hash_cache
+            WHERE path = ? AND size = ? AND mtime_ns = ?
+            """,
+            (os.path.abspath(path), size, mtime_ns),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "strict": row["strict_hash"] or "",
+        "phash": row["phash"] or "",
+    }
+
+
+def upsert_file_hash_cache(
+    path: str,
+    *,
+    size: int,
+    mtime_ns: int,
+    strict_hash: str | None = None,
+    phash: str | None = None,
+    source_path: str = "",
+) -> None:
+    if not get_sqlite_db_path().strip():
+        return
+
+    path_abs = os.path.abspath(path)
+    source_abs = os.path.abspath(source_path) if source_path else ""
+    file_name = os.path.basename(path_abs)
+    with connect_sqlite_hash_db() as connection:
+        connection.execute(
+            """
+            INSERT INTO file_hash_cache
+                (path, source_path, file_name, size, mtime_ns, strict_hash, phash, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(path) DO UPDATE SET
+                source_path = excluded.source_path,
+                file_name = excluded.file_name,
+                size = excluded.size,
+                mtime_ns = excluded.mtime_ns,
+                strict_hash = COALESCE(
+                    excluded.strict_hash,
+                    CASE
+                        WHEN file_hash_cache.size = excluded.size
+                         AND file_hash_cache.mtime_ns = excluded.mtime_ns
+                        THEN file_hash_cache.strict_hash
+                    END
+                ),
+                phash = COALESCE(
+                    excluded.phash,
+                    CASE
+                        WHEN file_hash_cache.size = excluded.size
+                         AND file_hash_cache.mtime_ns = excluded.mtime_ns
+                        THEN file_hash_cache.phash
+                    END
+                ),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (path_abs, source_abs, file_name, size, mtime_ns, strict_hash, phash),
+        )
+        connection.commit()
+
+
+def insert_hash_record(method: str, hash_value: str, path: str) -> None:
+    if not get_sqlite_db_path().strip():
+        return
+
+    with connect_sqlite_hash_db() as connection:
+        row = connection.execute(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM hash_db_records WHERE method = ? AND hash = ?",
+            (method, hash_value),
+        ).fetchone()
+        position = int(row[0] or 0)
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO hash_db_records
+                (method, hash, path, position)
+            VALUES (?, ?, ?, ?)
+            """,
+            (method, hash_value, path, position),
+        )
+        connection.commit()
+
+
+def clear_sqlite_hash_records() -> None:
+    if not get_sqlite_db_path().strip():
+        return
+
+    with connect_sqlite_hash_db() as connection:
+        connection.execute("DELETE FROM hash_db_metadata WHERE id = 1")
+        connection.execute("DELETE FROM hash_db_records")
+        connection.commit()
 
 
 def _normalize_db(db: dict) -> dict[str, dict[str, list[str]]]:
@@ -150,6 +270,8 @@ def add_hash_record(db: dict[str, dict[str, list[str]]], method: str, hash_value
 
     if path not in db[method][hash_value]:
         db[method][hash_value].append(path)
+
+    insert_hash_record(method, hash_value, path)
 
 
 def create_empty_hash_db() -> dict[str, dict[str, list[str]]]:

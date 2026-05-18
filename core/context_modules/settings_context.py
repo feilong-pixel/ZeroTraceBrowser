@@ -108,8 +108,8 @@ def remember_task_defaults(payload: OrganizerTaskRequest) -> None:
     )
 
 
-def remember_rebuild_root(root: str) -> None:
-    get_settings_store().remember_rebuild_root(root)
+def remember_rebuild_root(root: str, phash_threshold: int = 4) -> None:
+    get_settings_store().remember_rebuild_root(root, phash_threshold)
 
 
 def save_root_summary(

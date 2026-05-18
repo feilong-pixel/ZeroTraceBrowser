@@ -43,6 +43,7 @@
               <div>
                 <label for="duplicateSelect" data-i18n="tasks.duplicateDetection">Duplicate Detection</label>
                 <select id="duplicateSelect">
+                  <option value="both">both</option>
                   <option value="strict">strict</option>
                   <option value="phash">phash</option>
                 </select>
@@ -59,6 +60,15 @@
                   <option value="ja">ja</option>
                 </select>
               </div>
+            </div>
+            <div class="task-checkbox-option">
+              <label class="task-checkbox-label" for="skipExistingExactCheckbox">
+                <input id="skipExistingExactCheckbox" type="checkbox" checked />
+                <span data-i18n="tasks.skipExistingExactLabel">Skip saving files that already exist in the gallery</span>
+              </label>
+              <p class="task-option-help" data-i18n="tasks.skipExistingExactHelp">
+                When a photo with the exact same SHA-256 is detected, only an organizer record is created and the file is not copied again. Recommended for long-term users to save disk space.
+              </p>
             </div>
           </div>
           <div class="action-stack">
@@ -100,6 +110,10 @@
                   <option value="strict">strict</option>
                   <option value="phash">phash</option>
                 </select>
+              </div>
+              <div>
+                <label for="rebuild_thresholdInput" data-i18n="tasks.phashThreshold">pHash Threshold</label>
+                <input id="rebuild_thresholdInput" type="number" min="0" value="4" />
               </div>
             </div>
             <div class="action-stack">

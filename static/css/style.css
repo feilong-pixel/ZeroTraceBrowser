@@ -1335,6 +1335,54 @@ button:disabled:hover {
   min-width: 0;
 }
 
+.task-checkbox-option {
+  display: grid;
+  gap: 8px;
+  padding: var(--space-4);
+  border: 1px solid rgba(214, 207, 196, 0.72);
+  border-radius: var(--radius-md);
+  background: rgba(251, 248, 243, 0.55);
+}
+
+.task-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  margin: 0;
+  color: var(--text-strong);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.task-checkbox-label span {
+  display: inline;
+  margin-bottom: 0;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.task-checkbox-label input {
+  flex: 0 0 auto;
+  width: 18px;
+  min-height: 0;
+  height: 18px;
+  padding: 0;
+  margin-top: 0;
+  border-radius: 4px;
+  accent-color: var(--accent);
+  transform: translateY(3px);
+}
+
+.task-option-help {
+  margin: 0;
+  padding-left: 28px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 .task-config-panel .action-stack {
   margin-top: 0;
   padding-top: var(--space-8);

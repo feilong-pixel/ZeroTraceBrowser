@@ -333,6 +333,53 @@ def test_organize_images_can_write_duplicates_directly_to_sqlite(
     assert (target_dir / "same_name_dup1.jpg").exists()
 
 
+def test_organize_images_writes_file_hash_cache_to_sqlite(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "both.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first_file = create_image_file(src_dir / "camera1" / "same.png", color=(255, 0, 0))
+    create_image_file(src_dir / "camera2" / "same.png", color=(255, 0, 0))
+    target_dir = expected_target_dir(first_file, dst_dir)
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="both",
+        phash_threshold=0,
+        duplicates_db_path=str(sqlite_path),
+    )
+
+    file_cache_path = work_dir / "hash_db.json.file_cache.json"
+    with sqlite3.connect(sqlite_path) as connection:
+        cache_rows = connection.execute(
+            """
+            SELECT path, source_path, strict_hash, phash
+            FROM file_hash_cache
+            ORDER BY path
+            """
+        ).fetchall()
+        hash_record_count = connection.execute("SELECT COUNT(*) FROM hash_db_records").fetchone()[0]
+
+    assert not file_cache_path.exists()
+    assert len(cache_rows) == 4
+    assert hash_record_count == 4
+    assert any(row[0] == str((target_dir / "same.png").resolve()) for row in cache_rows)
+    assert any(
+        row[0] == str((target_dir / "same_dup1.png").resolve())
+        and row[1].endswith(str(Path("camera2") / "same.png"))
+        and row[2]
+        and row[3]
+        for row in cache_rows
+    )
+
+
 def test_duplicate_names_follow_kept_file_name_sequence(work_dir: Path) -> None:
     src_dir = work_dir / "src"
     dst_dir = work_dir / "dst"
@@ -417,6 +464,35 @@ def test_phash_duplicate_detection_uses_distance_threshold(work_dir: Path) -> No
     assert "DUP | phash=" in log_text
 
 
+def test_both_duplicate_detection_indexes_strict_and_phash(work_dir: Path) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "both.log"
+    first_file = create_image_file(src_dir / "camera1" / "same.png", color=(255, 0, 0))
+    create_image_file(src_dir / "camera2" / "same.png", color=(255, 0, 0))
+    target_dir = expected_target_dir(first_file, dst_dir)
+
+    organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="both",
+        phash_threshold=0,
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    db = load_hash_db()
+    strict_paths = [path for paths in db["strict"].values() for path in paths]
+    phash_paths = [path for paths in db["phash"].values() for path in paths]
+
+    assert "DUP | strict=" in log_text
+    assert (target_dir / "same.png").exists()
+    assert (target_dir / "same_dup1.png").exists()
+    assert len(strict_paths) == 2
+    assert len(phash_paths) == 2
+
+
 def test_rebuild_hash_db_replace_rebuilds_only_target_root(work_dir: Path) -> None:
     root_a = work_dir / "organized_a"
     root_b = work_dir / "organized_b"
@@ -472,6 +548,32 @@ def test_rebuild_hash_db_reuses_cached_strict_hash_for_unchanged_files(
     rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
 
     assert calls["strict"] == 1
+
+
+def test_rebuild_hash_db_reuses_sqlite_file_hash_cache_for_unchanged_files(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_media_file(root / "2026" / "04" / "16" / "a.jpg", content="same")
+    calls = {"strict": 0}
+
+    def fake_compute_file_hash(path: str) -> str:
+        calls["strict"] += 1
+        return "strict-hash"
+
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+    monkeypatch.setattr(organizer_mod, "compute_file_hash", fake_compute_file_hash)
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        cache_count = connection.execute("SELECT COUNT(*) FROM file_hash_cache").fetchone()[0]
+
+    assert calls["strict"] == 1
+    assert cache_count == 1
 
 
 def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) -> None:

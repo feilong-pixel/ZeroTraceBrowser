@@ -41,6 +41,7 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "recycle_records",
         "hash_db_metadata",
         "hash_db_records",
+        "file_hash_cache",
         "image_exif_cache",
     }.issubset(tables)
 

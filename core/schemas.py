@@ -51,6 +51,7 @@ class RebuildHashDbTaskRequest(BaseModel):
     root: str = Field(..., min_length=1)
     rebuild_mode: str = Field(default="replace")
     hash_method: str = Field(default="both")
+    phash_threshold: int = Field(default=4, ge=0)
     lang: str = Field(default="en")
 
 

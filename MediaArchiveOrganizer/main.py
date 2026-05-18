@@ -79,7 +79,7 @@ def main():
     parser.add_argument("--mode", choices=("move", "copy"), default="move", help=texts["mode_help"])
     parser.add_argument(
         "--duplicate-detection",
-        choices=("off", "phash", "strict"),
+        choices=("off", "phash", "strict", "both"),
         default="phash",
         help=texts["duplicate_detection_help"],
     )

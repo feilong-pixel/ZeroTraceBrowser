@@ -147,11 +147,13 @@ Duplicate detection mode:
 - `off`: disable duplicate detection
 - `phash`: detect visually similar images with perceptual hash
 - `strict`: detect exact file matches with SHA-256
+- `both`: collect both SHA-256 and pHash, checking strict matches before similar matches
 
 Notes:
 
 - `phash` is suitable for visually similar images
 - `strict` is for exact-match users who only want byte-identical files treated as duplicates
+- `both` keeps both hash types available for later exact and similarity workflows
 - `hash_db` is only used as a hint inside the current destination root and will not redirect files into old destination folders
 - Detected duplicates are still copied or moved into the normal dated archive folder
 - Duplicate files are renamed based on the first retained file name, such as `photo_dup1.jpg` and `photo_dup2.jpg`
@@ -163,6 +165,7 @@ Example:
 ```powershell
 .\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection off
 .\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection strict
+.\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection both
 ```
 
 ### `--phash-threshold`
@@ -173,7 +176,7 @@ Notes:
 
 - Lower values are stricter
 - Higher values make similar images more likely to be treated as duplicates
-- This option only applies when `--duplicate-detection phash` is used
+- This option applies when `--duplicate-detection phash` or `--duplicate-detection both` is used
 
 Example:
 

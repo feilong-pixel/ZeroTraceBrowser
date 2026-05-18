@@ -24,7 +24,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
     def run_organizer(payload: OrganizerTaskRequest) -> dict[str, Any]:
         if payload.mode not in {"copy", "move"}:
             raise HTTPException(status_code=400, detail="Unsupported organizer mode")
-        if payload.duplicate_detection not in {"off", "phash", "strict"}:
+        if payload.duplicate_detection not in {"off", "phash", "strict", "both"}:
             raise HTTPException(status_code=400, detail="Unsupported duplicate detection mode")
         if not ctx.ORGANIZER_MAIN.exists():
             raise HTTPException(status_code=404, detail="MediaArchiveOrganizer not found")
@@ -106,7 +106,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         log_path = ctx.build_task_log_path(task_id, root)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         outputs = ctx.build_task_outputs(log_path, root, publish_duplicates=True)
-        ctx.remember_rebuild_root(root)
+        ctx.remember_rebuild_root(root, payload.phash_threshold)
         ctx.clear_duplicates_path_cache()
 
         command = [
@@ -120,7 +120,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
             "--rebuild-hash-method",
             payload.hash_method,
             "--phash-threshold",
-            "4",
+            str(payload.phash_threshold),
             "--duplicates-db-path",
             outputs["database_path"],
             "--lang",

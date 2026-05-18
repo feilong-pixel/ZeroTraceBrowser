@@ -436,6 +436,8 @@ export default {
     runRebuildTask: "再構築",
     runTask: "開始",
     showHashMaintenance: "重複結果メンテナンスを表示",
+    skipExistingExactHelp: "※SHA-256 が完全に一致する写真を検出した場合は、整理記録のみを作成し、ファイルは再コピーしません。ディスク容量を節約できるため、長期利用の方には有効化をおすすめします。新規利用または短期利用の場合は、必要に応じて有効化してください。",
+    skipExistingExactLabel: "すでにギャラリーにある写真は重複保存しない（長期利用者におすすめ）",
     sourceDir: "入力ディレクトリ",
     taskConfig: "タスク設定",
     taskId: "タスク ID",

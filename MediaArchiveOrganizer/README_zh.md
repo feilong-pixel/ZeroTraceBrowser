@@ -146,11 +146,13 @@ cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
 - `off`：关闭重复检测
 - `phash`：使用 pHash 检测相似图片
 - `strict`：使用 SHA-256 检测完全一致文件
+- `both`：同时取得 SHA-256 和 pHash，先检查 strict，再检查相似图片
 
 说明：
 
 - `phash` 更适合检测视觉上相近的图片
 - `strict` 更适合严格用户，只有文件内容完全一致才会判定为重复
+- `both` 会保留两种 hash，便于之后同时支持精确重复和相似图片流程
 - `hash_db` 仅作为当前目标目录下的参考，不会把文件导向其他历史目标目录
 - 检测到重复后，文件仍会移动或拷贝到正常的日期归档目录中
 - 重复文件会基于首个保留文件名重命名，例如 `photo_dup1.jpg`、`photo_dup2.jpg`
@@ -162,6 +164,7 @@ cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
 ```powershell
 .\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection off
 .\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection strict
+.\venv\Scripts\python.exe .\main.py --src D:\InputPhotos --dst D:\SortedPhotos --duplicate-detection both
 ```
 
 ### `--phash-threshold`
@@ -172,7 +175,7 @@ cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
 
 - 数值越小，判定越严格
 - 数值越大，越容易把相似图片视为重复
-- 仅在 `--duplicate-detection phash` 时生效
+- 在 `--duplicate-detection phash` 或 `--duplicate-detection both` 时生效
 
 示例：
 

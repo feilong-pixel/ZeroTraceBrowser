@@ -5,7 +5,7 @@ TEXTS = {
     "src_help": "源目录",
     "dst_help": "目标目录",
     "mode_help": "整理模式：move 为移动，copy 为拷贝，默认 move",
-    "duplicate_detection_help": "重复检测：off 关闭，phash 用于相似图片，strict 用于严格文件匹配",
+    "duplicate_detection_help": "重复检测：off 关闭，strict 用于严格文件匹配，phash 用于相似图片，both 同时取得 SHA-256 和 pHash",
     "phash_threshold_help": "pHash 匹配的最大汉明距离，默认 4",
     "rebuild_hash_db_root_help": "从指定归档目录重建 hash_db.json",
     "rebuild_hash_db_mode_help": "hash_db 重建模式：replace 覆盖重建，append 保留旧记录并追加",

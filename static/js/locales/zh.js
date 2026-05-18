@@ -434,6 +434,8 @@ export default {
     runRebuildTask: "重建结果",
     runTask: "开始整理",
     showHashMaintenance: "显示重复结果维护",
+    skipExistingExactHelp: "※检测到 SHA-256 完全相同的照片时，仅建立整理记录，不再重复复制文件。建议长期用户开启，以节省磁盘空间。新用户或短期使用者可根据需要选择开启与否。",
+    skipExistingExactLabel: "已存在于图库时不重复保存（推荐长期用户开启）",
     sourceDir: "源目录",
     taskConfig: "任务配置",
     taskId: "任务 ID",
