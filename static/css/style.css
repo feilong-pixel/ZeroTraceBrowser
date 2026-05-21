@@ -1579,22 +1579,45 @@ button:disabled:hover {
   font-size: 11px;
 }
 
+.iphone-device-connect-row,
 .iphone-device-grid,
 .iphone-review-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.iphone-device-connect-row {
+  grid-template-columns: minmax(128px, 240px) minmax(0, 1fr);
+  align-items: end;
+}
+
+.iphone-device-grid {
+  grid-template-columns: minmax(180px, 240px) minmax(120px, 180px) minmax(260px, auto);
+  align-items: end;
 }
 
 .iphone-review-grid {
   grid-template-columns: minmax(0, 1.8fr) minmax(140px, 0.8fr) minmax(96px, 0.5fr);
 }
 
+.iphone-device-connect-row>div,
 .iphone-device-grid>div,
 .iphone-review-grid>div {
   display: grid;
   gap: 7px;
   min-width: 0;
+}
+
+.iphone-index-control-panel {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.iphone-checkbox-spacer {
+  visibility: hidden;
 }
 
 .iphone-actions {
@@ -1605,8 +1628,18 @@ button:disabled:hover {
 }
 
 .iphone-device-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  width: min(50%, 760px);
+}
+
+.iphone-device-actions .primary-button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.iphone-device-actions button:not(.primary-button) {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .iphone-results {
@@ -2667,6 +2700,7 @@ button:disabled:hover {
 
   .task-path-grid,
   .task-options-grid,
+  .iphone-device-connect-row,
   .iphone-device-grid,
   .iphone-review-grid {
     grid-template-columns: 1fr;
@@ -2780,7 +2814,14 @@ button:disabled:hover {
   }
 
   .iphone-device-actions {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .iphone-device-actions .primary-button,
+  .iphone-device-actions button:not(.primary-button) {
+    width: 100%;
+    min-width: 0;
   }
 
   .iphone-date-filter,

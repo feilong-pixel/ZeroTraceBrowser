@@ -65,6 +65,13 @@ class SimilaritySearchRequest(BaseModel):
 
 class IphoneIndexRequest(BaseModel):
     device_id: str = Field(..., min_length=1)
+    limit: int = Field(default=1, ge=1, le=10000)
+    copy_all: bool = Field(default=False)
+
+
+class IphoneDeleteRequest(BaseModel):
+    device_id: str = Field(..., min_length=1)
+    target: str = Field(..., min_length=1)
 
 
 class RestoreDeletedRequest(BaseModel):

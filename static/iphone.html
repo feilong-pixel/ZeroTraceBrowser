@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZeroTraceBrowser iPhone</title>
     <style>html.i18n-pending body{visibility:hidden}</style>
-    <link rel="stylesheet" href="css/style.css?v=20260513-iphone" />
+    <link rel="stylesheet" href="css/style.css?v=20260521-iphone-layout" />
   </head>
   <body>
     <main class="tasks-page iphone-page">
@@ -18,27 +18,42 @@
         </section>
 
         <section class="panel task-config-panel task-focus-panel">
-          <header class="task-panel-head">
-            <h2 data-i18n="iphone.deviceSection">Device</h2>
-          </header>
-          <div class="iphone-device-grid">
+          <div class="iphone-device-connect-row">
             <div>
-              <label for="iphoneDeviceSelect" data-i18n="iphone.deviceSelect">Connected iPhone</label>
+              <h2 data-i18n="iphone.deviceSection">Device</h2>
+              <button id="detectIphoneButton" type="button" data-i18n="iphone.detectDevice">Detect Device</button>
+            </div>
+            <div>
               <select id="iphoneDeviceSelect">
                 <option value="" data-i18n="iphone.noDevice">No device loaded</option>
               </select>
             </div>
-            <div>
-              <label for="iphoneScanScope" data-i18n="iphone.scanScope">Scan Scope</label>
-              <select id="iphoneScanScope">
-                <option value="dcim" data-i18n="iphone.scopeDcim">DCIM</option>
-                <option value="recent" data-i18n="iphone.scopeRecent">Recent samples</option>
-              </select>
-            </div>
           </div>
-          <div class="iphone-actions iphone-device-actions">
-            <button id="detectIphoneButton" type="button" class="primary-button" data-i18n="iphone.detectDevice">Detect Device</button>
-            <button id="indexIphoneButton" type="button" data-i18n="iphone.buildIndex">Build Device Index</button>
+          <div class="iphone-index-control-panel">
+            <div class="iphone-device-grid">
+              <div>
+                <label for="iphoneScanScope" data-i18n="iphone.scanScope">Scan Scope</label>
+                <select id="iphoneScanScope">
+                  <option value="dcim" data-i18n="iphone.scopeDcim">DCIM</option>
+                  <option value="recent" data-i18n="iphone.scopeRecent">Recent samples</option>
+                </select>
+              </div>
+              <div>
+                <label for="iphoneIndexLimitInput" data-i18n="iphone.indexLimit">Photos to index</label>
+                <input id="iphoneIndexLimitInput" type="number" min="1" max="10000" value="1" />
+              </div>
+              <div>
+                <label class="iphone-checkbox-spacer" aria-hidden="true">&nbsp;</label>
+                <label class="task-checkbox-label" for="iphoneCopyAllInput">
+                  <input id="iphoneCopyAllInput" type="checkbox" />
+                  <span data-i18n="iphone.copyAllPhotos">Copy all photos from device</span>
+                </label>
+              </div>
+            </div>
+            <div class="iphone-actions iphone-device-actions">
+              <button id="indexIphoneButton" type="button" class="primary-button" data-i18n="iphone.buildIndex">Build Device Index</button>
+              <button id="cancelIphoneIndexButton" type="button" data-i18n="iphone.cancelIndex">Cancel Indexing</button>
+            </div>
           </div>
         </section>
 

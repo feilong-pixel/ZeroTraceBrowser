@@ -7,8 +7,11 @@ function getIphoneElements() {
   return {
     iphonePage: $(".iphone-page"),
     iphoneDeviceSelect: $("#iphoneDeviceSelect"),
+    iphoneIndexLimitInput: $("#iphoneIndexLimitInput"),
+    iphoneCopyAllInput: $("#iphoneCopyAllInput"),
     detectIphoneButton: $("#detectIphoneButton"),
     indexIphoneButton: $("#indexIphoneButton"),
+    cancelIphoneIndexButton: $("#cancelIphoneIndexButton"),
     iphoneQueryFilenameInput: $("#iphoneQueryFilenameInput"),
     searchIphoneSimilarButton: $("#searchIphoneSimilarButton"),
     selectAllIphoneResultsButton: $("#selectAllIphoneResultsButton"),
@@ -76,6 +79,17 @@ function getSelectedDeviceId(els) {
   return els.iphoneDeviceSelect?.value.trim() || "";
 }
 
+function getIndexLimit(els) {
+  const value = Number.parseInt(els.iphoneIndexLimitInput?.value || "1", 10);
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(value, 10000);
+}
+
+function updateIndexLimitState(els) {
+  if (!els.iphoneIndexLimitInput) return;
+  els.iphoneIndexLimitInput.disabled = Boolean(els.iphoneCopyAllInput?.checked);
+}
+
 async function detectDevices(els) {
   setStatus(els, t("iphone.detecting"));
   appendLog(els, t("iphone.detecting"));
@@ -104,15 +118,27 @@ async function buildDeviceIndex(els) {
   setStatus(els, t("iphone.indexing"));
   appendLog(els, t("iphone.indexing"));
   try {
+    const copyAll = Boolean(els.iphoneCopyAllInput?.checked);
+    const limit = getIndexLimit(els);
     const response = await fetch("/api/iphone/index", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_id: deviceId }),
+      body: JSON.stringify({ device_id: deviceId, limit, copy_all: copyAll }),
     });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
-    setStatus(els, t("iphone.indexed", data.indexed ?? 0));
-    appendLog(els, t("iphone.indexed", data.indexed ?? 0));
+    const resultKey = data.status === "imported"
+      ? "iphone.indexedImported"
+      : data.status === "skipped_duplicate"
+        ? "iphone.indexedSkipped"
+        : "iphone.indexed";
+    const resultCount = data.status === "imported"
+      ? data.imported ?? data.indexed ?? 0
+      : data.status === "skipped_duplicate"
+        ? data.skipped_duplicate ?? data.indexed ?? 0
+        : data.indexed ?? 0;
+    setStatus(els, t(resultKey, resultCount));
+    appendLog(els, t(resultKey, resultCount));
     setText(els.iphoneDeviceName, data.device_name || deviceId);
     setText(els.iphoneAlbumCount, String(data.album_count ?? 0));
     setText(els.iphoneMediaCount, String(data.indexed ?? 0));
@@ -124,12 +150,22 @@ async function buildDeviceIndex(els) {
 }
 
 function bindIphoneEvents(els) {
+  updateIndexLimitState(els);
+
+  on(els.iphoneCopyAllInput, "change", () => {
+    updateIndexLimitState(els);
+  });
+
   on(els.detectIphoneButton, "click", () => {
     detectDevices(els);
   });
 
   on(els.indexIphoneButton, "click", () => {
     buildDeviceIndex(els);
+  });
+
+  on(els.cancelIphoneIndexButton, "click", () => {
+    markPending(els, "iphone.cancelIndexPending");
   });
 
   on(els.searchIphoneSimilarButton, "click", () => {

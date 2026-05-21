@@ -177,6 +177,13 @@ class ImageIndexRepository:
                 ).fetchall()
             ]
 
+    def delete_index(self, cache_digest: str) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
+            connection.execute("DELETE FROM image_items WHERE cache_digest = ?", (cache_digest,))
+            connection.execute("DELETE FROM image_indexes WHERE cache_digest = ?", (cache_digest,))
+            connection.commit()
+
     def replace_timeline_entries(
         self,
         cache_digest: str,

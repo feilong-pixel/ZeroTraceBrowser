@@ -97,6 +97,41 @@ class HashDbRepository:
             connection.execute("DELETE FROM hash_db_records")
             connection.commit()
 
+    def add_hash_record(self, method: str, hash_value: str, path: str | Path) -> None:
+        method_value = str(method).strip()
+        hash_value = str(hash_value).strip()
+        path_value = str(path).strip()
+        if not method_value or not hash_value or not path_value:
+            return
+
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO hash_db_metadata (id, source_path, raw_json, updated_at)
+                VALUES (1, ?, '{}', CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+                """,
+                (str(self.database_path),),
+            )
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(position), -1) + 1
+                FROM hash_db_records
+                WHERE method = ? AND hash = ?
+                """,
+                (method_value, hash_value),
+            ).fetchone()
+            position = int(row[0] or 0)
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO hash_db_records
+                    (method, hash, path, position)
+                VALUES (?, ?, ?, ?)
+                """,
+                (method_value, hash_value, path_value, position),
+            )
+            connection.commit()
+
     @staticmethod
     def _normalize_payload(payload: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
         if "phash" in payload or "strict" in payload:

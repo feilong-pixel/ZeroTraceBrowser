@@ -123,6 +123,76 @@ class IphoneRepository:
         with connect(self.database_path) as connection:
             return [dict(row) for row in connection.execute(query, params).fetchall()]
 
+    def mark_imported(
+        self,
+        *,
+        device_id: str,
+        album: str,
+        filename: str,
+        local_path: str | Path,
+        imported_at: str,
+    ) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE iphone_import_records
+                SET save_state = 'both',
+                    import_status = 'imported',
+                    local_path = ?,
+                    existing_local_path = '',
+                    imported_at = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE device_id = ? AND album = ? AND filename = ?
+                """,
+                (str(local_path), imported_at, device_id, album, filename),
+            )
+            connection.commit()
+
+    def mark_skipped_duplicate(
+        self,
+        *,
+        device_id: str,
+        album: str,
+        filename: str,
+        existing_local_path: str | Path,
+        imported_at: str,
+    ) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE iphone_import_records
+                SET save_state = 'iphone_only',
+                    import_status = 'skipped_duplicate',
+                    local_path = '',
+                    existing_local_path = ?,
+                    imported_at = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE device_id = ? AND album = ? AND filename = ?
+                """,
+                (str(existing_local_path), imported_at, device_id, album, filename),
+            )
+            connection.commit()
+
+    def mark_deleted_from_iphone(
+        self,
+        *,
+        device_id: str,
+        album: str,
+        filename: str,
+        deleted_at: str,
+    ) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE iphone_import_records
+                SET deleted_from_iphone_at = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE device_id = ? AND album = ? AND filename = ?
+                """,
+                (deleted_at, device_id, album, filename),
+            )
+            connection.commit()
+
     @staticmethod
     def _iphone_ref(device_id: str, item: dict[str, Any]) -> str:
         return f"mtp://{device_id}/DCIM/{item.get('album', '')}/{item.get('filename', '')}"

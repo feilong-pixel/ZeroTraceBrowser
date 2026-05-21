@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from core.schemas import IphoneIndexRequest
+from core.schemas import IphoneDeleteRequest, IphoneIndexRequest
 
 
 def create_iphone_router(ctx: Any) -> APIRouter:
@@ -17,9 +17,19 @@ def create_iphone_router(ctx: Any) -> APIRouter:
     def detect_iphone_devices() -> dict[str, Any]:
         return ctx.detect_iphone_devices()
 
+    # GET /api/iphone/probe-item-properties
+    @router.get("/api/iphone/probe-item-properties")
+    def probe_iphone_item_properties(device_id: str) -> dict[str, Any]:
+        return ctx.probe_iphone_item_properties(device_id)
+
     # POST /api/iphone/index
     @router.post("/api/iphone/index")
     def build_iphone_photo_index(payload: IphoneIndexRequest) -> dict[str, Any]:
-        return ctx.build_iphone_photo_index(payload.device_id)
+        return ctx.build_iphone_photo_index(payload.device_id, limit=payload.limit, copy_all=payload.copy_all)
+
+    # POST /api/iphone/delete
+    @router.post("/api/iphone/delete")
+    def delete_iphone_photo(payload: IphoneDeleteRequest) -> dict[str, Any]:
+        return ctx.delete_iphone_photo(payload.device_id, payload.target)
 
     return router
