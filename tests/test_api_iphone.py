@@ -14,7 +14,7 @@ from core.config.app_config import SKIP_SCAN_DIR_NAMES, SUPPORTED_EXTENSIONS
 from core.services.image_index_service import digest_for_cache_key, image_scan_cache_key
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
-from core.storage.iphone_repository import IphoneRepository
+from core.storage.mobile_repository import MobileRepository
 
 
 def patch_iphone_context(monkeypatch, name, value) -> None:
@@ -27,9 +27,10 @@ def test_iphone_devices_api_returns_detected_devices(api_client, monkeypatch):
 
     patch_iphone_context(
         monkeypatch,
-        "detect_iphone_devices",
-        lambda: {
+        "detect_mobile_devices",
+        lambda device_type="iphone": {
             "supported": True,
+            "device_type": device_type,
             "devices": [
                 {
                     "name": "Apple iPhone",
@@ -58,9 +59,10 @@ def test_iphone_probe_item_properties_api_returns_first_item_properties(api_clie
 
     patch_iphone_context(
         monkeypatch,
-        "probe_iphone_item_properties",
-        lambda device_id: {
+        "probe_mobile_item_properties",
+        lambda device_type, device_id: {
             "supported": True,
+            "device_type": device_type,
             "device_id": device_id,
             "album": "100APPLE",
             "filename": "IMG_0001.JPG",
@@ -83,9 +85,10 @@ def test_iphone_index_api_builds_selected_device_index(api_client, monkeypatch):
 
     patch_iphone_context(
         monkeypatch,
-        "build_iphone_photo_index",
-        lambda device_id, limit=1, copy_all=False: {
+        "build_mobile_photo_index",
+        lambda device_type, device_id, limit=1, copy_all=False: {
             "status": "indexed",
+            "device_type": device_type,
             "device_id": device_id,
             "device_name": "Apple iPhone",
             "album_count": 2,
@@ -113,10 +116,11 @@ def test_iphone_delete_api_deletes_selected_photo(api_client, monkeypatch):
 
     patch_iphone_context(
         monkeypatch,
-        "delete_iphone_photo",
-        lambda device_id, target: {
+        "delete_mobile_photo",
+        lambda device_type, device_id, target: {
             "status": "deleted",
             "deleted": True,
+            "device_type": device_type,
             "device_id": device_id,
             "album": "100APPLE",
             "filename": target.split("/")[-1],
@@ -163,12 +167,13 @@ def test_iphone_index_writes_import_records(api_client, monkeypatch):
     assert result["status"] == "imported"
     assert result["imported"] == 1
     database_path = root_database_path(image_root)
-    records = IphoneRepository(database_path).list_import_records("Apple iPhone")
+    records = MobileRepository(database_path).list_import_records("iphone", "Apple iPhone")
 
+    assert records[0]["device_type"] == "iphone"
     assert records[0]["device_id"] == "Apple iPhone"
     assert records[0]["album"] == "100APPLE"
     assert records[0]["filename"] == "IMG_0001.JPG"
-    assert records[0]["iphone_ref"] == "mtp://Apple iPhone/DCIM/100APPLE/IMG_0001.JPG"
+    assert records[0]["mobile_ref"] == "mobile://iphone/Apple iPhone/DCIM/100APPLE/IMG_0001.JPG"
     assert records[0]["strict_hash"] == "cae1b3faaa5e4ac7c3306bd164b36dcfdff98294b8024c9c949639b4c480bf6b"
     assert records[0]["phash"] == "phash-demo"
     assert records[0]["save_state"] == "both"
@@ -176,7 +181,7 @@ def test_iphone_index_writes_import_records(api_client, monkeypatch):
     assert records[0]["local_path"]
     assert records[0]["local_path"].endswith("IMG_0001.JPG")
     assert records[0]["existing_local_path"] == ""
-    assert records[0]["deleted_from_iphone_at"] == ""
+    assert records[0]["deleted_from_device_at"] == ""
     assert HashDbRepository(database_path).load_hash_db()["strict"][
         "cae1b3faaa5e4ac7c3306bd164b36dcfdff98294b8024c9c949639b4c480bf6b"
     ] == [records[0]["local_path"]]
@@ -218,7 +223,7 @@ def test_iphone_index_uses_requested_limit_and_imports_batch(api_client, monkeyp
     assert result["indexed"] == 3
     assert result["imported"] == 3
     assert result["limit"] == 3
-    records = IphoneRepository(root_database_path(image_root)).list_import_records("Apple iPhone")
+    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "Apple iPhone")
     assert [record["filename"] for record in records] == ["IMG_0001.JPG", "IMG_0002.JPG", "IMG_0003.JPG"]
 
 
@@ -317,8 +322,9 @@ def test_iphone_index_skips_existing_refs_and_imports_first_unprocessed_item(api
     previous.parent.mkdir(parents=True)
     previous.write_text("previous-content", encoding="utf-8")
     database_path = root_database_path(image_root)
-    repository = IphoneRepository(database_path)
+    repository = MobileRepository(database_path)
     repository.save_index(
+        device_type="iphone",
         device_id="Apple iPhone",
         device_name="Apple iPhone",
         indexed_at="2026-05-18T00:00:00+00:00",
@@ -335,6 +341,7 @@ def test_iphone_index_skips_existing_refs_and_imports_first_unprocessed_item(api
         ],
     )
     repository.mark_imported(
+        device_type="iphone",
         device_id="Apple iPhone",
         album="100APPLE",
         filename="IMG_0001.JPG",
@@ -372,7 +379,7 @@ def test_iphone_index_skips_existing_refs_and_imports_first_unprocessed_item(api
     assert result["skipped_existing_refs"] == 1
     assert captured_cutoffs == [""]
     assert captured_skip_refs == [["100APPLE/IMG_0001.JPG"]]
-    records = repository.list_import_records("Apple iPhone")
+    records = repository.list_import_records("iphone", "Apple iPhone")
     assert [record["filename"] for record in records] == ["IMG_0001.JPG", "IMG_0002.JPG"]
 
 
@@ -387,8 +394,9 @@ def test_iphone_index_does_not_downgrade_existing_import_when_same_item_is_retur
         {"phash": {}, "strict": {strict_hash: [str(previous)]}},
         source_path=database_path,
     )
-    repository = IphoneRepository(database_path)
+    repository = MobileRepository(database_path)
     repository.save_index(
+        device_type="iphone",
         device_id="Apple iPhone",
         device_name="Apple iPhone",
         indexed_at="2026-05-18T00:00:00+00:00",
@@ -405,6 +413,7 @@ def test_iphone_index_does_not_downgrade_existing_import_when_same_item_is_retur
         ],
     )
     repository.mark_imported(
+        device_type="iphone",
         device_id="Apple iPhone",
         album="100APPLE",
         filename="IMG_0001.JPG",
@@ -435,7 +444,7 @@ def test_iphone_index_does_not_downgrade_existing_import_when_same_item_is_retur
     result = iphone_context.build_iphone_photo_index("Apple iPhone")
 
     assert result["status"] == "already_imported"
-    records = repository.list_import_records("Apple iPhone")
+    records = repository.list_import_records("iphone", "Apple iPhone")
     assert records[0]["import_status"] == "imported"
     assert records[0]["save_state"] == "both"
     assert records[0]["local_path"] == str(previous)
@@ -445,8 +454,9 @@ def test_iphone_index_does_not_downgrade_existing_import_when_same_item_is_retur
 def test_delete_iphone_photo_marks_import_record_deleted(api_client, monkeypatch):
     _, _, image_root, _ = api_client
     database_path = root_database_path(image_root)
-    repository = IphoneRepository(database_path)
+    repository = MobileRepository(database_path)
     repository.save_index(
+        device_type="iphone",
         device_id="Apple iPhone",
         device_name="Apple iPhone",
         indexed_at="2026-05-21T00:00:00+00:00",
@@ -478,8 +488,8 @@ def test_delete_iphone_photo_marks_import_record_deleted(api_client, monkeypatch
     result = iphone_context.delete_iphone_photo("Apple iPhone", "100APPLE/IMG_0001.JPG")
 
     assert result["status"] == "deleted"
-    records = repository.list_import_records("Apple iPhone")
-    assert records[0]["deleted_from_iphone_at"]
+    records = repository.list_import_records("iphone", "Apple iPhone")
+    assert records[0]["deleted_from_device_at"]
 
 
 def test_iphone_index_skips_existing_strict_duplicate(api_client, monkeypatch):
@@ -519,8 +529,8 @@ def test_iphone_index_skips_existing_strict_duplicate(api_client, monkeypatch):
     assert result["status"] == "skipped_duplicate"
     assert result["skipped_duplicate"] == 1
     assert result["existing_local_path"] == str(existing.resolve())
-    records = IphoneRepository(database_path).list_import_records("Apple iPhone")
-    assert records[0]["save_state"] == "iphone_only"
+    records = MobileRepository(database_path).list_import_records("iphone", "Apple iPhone")
+    assert records[0]["save_state"] == "device_only"
     assert records[0]["import_status"] == "skipped_duplicate"
     assert records[0]["local_path"] == ""
     assert records[0]["existing_local_path"] == str(existing.resolve())

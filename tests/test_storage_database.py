@@ -11,7 +11,6 @@ from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.exif_repository import ExifRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
-from core.storage.iphone_repository import IphoneRepository
 from core.storage.mobile_repository import MobileRepository
 from core.storage.recycle_repository import RecycleRepository
 from core.storage.task_repository import TaskRunRepository
@@ -49,9 +48,6 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "task_skipped_existing",
         "skipped_existing_index",
         "image_exif_cache",
-        "iphone_devices",
-        "iphone_photo_index",
-        "iphone_import_records",
         "mobile_devices",
         "mobile_photo_index",
         "mobile_import_records",
@@ -188,49 +184,6 @@ def test_exif_repository_returns_only_current_file_signature(tmp_path: Path) -> 
 
     assert repository.load_exif("photo.jpg", file_size=123, mtime_ns=456) == payload
     assert repository.load_exif("photo.jpg", file_size=124, mtime_ns=456) is None
-
-
-def test_iphone_repository_records_device_index_and_import_state(tmp_path: Path) -> None:
-    repository = IphoneRepository(tmp_path / "workspace.sqlite3")
-
-    repository.save_index(
-        device_id="Apple iPhone",
-        device_name="Apple iPhone",
-        indexed_at="2026-05-18T10:00:00+00:00",
-        records=[
-            {
-                "device_name": "Apple iPhone",
-                "album": "100APPLE",
-                "filename": "IMG_0001.JPG",
-                "size": 123,
-                "modified_at": "2026-05-18 10:00:00",
-                "strict_hash": "strict-demo",
-                "phash": "phash-demo",
-                "temp_path": str(tmp_path / "staging" / "IMG_0001.JPG"),
-            }
-        ],
-    )
-
-    assert repository.list_import_records("Apple iPhone") == [
-        {
-            "device_id": "Apple iPhone",
-            "device_name": "Apple iPhone",
-            "album": "100APPLE",
-            "filename": "IMG_0001.JPG",
-            "iphone_ref": "mtp://Apple iPhone/DCIM/100APPLE/IMG_0001.JPG",
-            "size": 123,
-            "modified_at": "2026-05-18 10:00:00",
-            "strict_hash": "strict-demo",
-            "phash": "phash-demo",
-            "save_state": "iphone_only",
-            "import_status": "indexed",
-            "local_path": "",
-            "existing_local_path": "",
-            "deleted_from_iphone_at": "",
-            "indexed_at": "2026-05-18T10:00:00+00:00",
-            "imported_at": "",
-        }
-    ]
 
 
 def test_mobile_repository_records_device_index_and_import_state(tmp_path: Path) -> None:
