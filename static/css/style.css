@@ -2201,6 +2201,108 @@ button:disabled:hover {
   gap: var(--space-1);
 }
 
+.similarity-results-panel {
+  min-height: 320px;
+}
+
+.similarity-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(167px, 184px));
+  gap: 14px;
+  align-items: stretch;
+  justify-content: start;
+}
+
+.similarity-result-card {
+  height: calc(var(--gallery-card-height) + 34px);
+}
+
+.similarity-result-thumb {
+  width: 100%;
+  height: var(--gallery-thumb-height);
+  aspect-ratio: auto;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.similarity-result-body {
+  gap: 2px;
+}
+
+.similarity-result-path {
+  color: inherit;
+  text-decoration: none;
+}
+
+.similarity-result-path:hover {
+  text-decoration: underline;
+}
+
+.similarity-result-meta {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(107, 102, 94, 0.1);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similarity-actions {
+  justify-content: flex-start;
+}
+
+.similarity-results-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.similarity-result-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.similarity-result-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.similarity-result-actions button {
+  min-width: 0;
+  height: 38px;
+  padding-inline: 8px;
+}
+
+.similarity-search-grid {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.9fr) minmax(280px, 2fr) minmax(130px, 0.8fr) minmax(110px, 0.6fr) minmax(120px, 0.6fr);
+  gap: 14px;
+  align-items: end;
+}
+
+.similarity-search-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
 #summaryResultRoot {
   width: 100%;
   min-width: 0;
@@ -2827,6 +2929,23 @@ button:disabled:hover {
   .iphone-date-filter,
   .iphone-result-actions {
     grid-template-columns: 1fr;
+  }
+
+  .similarity-results-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .similarity-search-grid,
+  .similarity-search-actions,
+  .similarity-result-filters,
+  .similarity-result-actions {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .similarity-search-actions button,
+  .similarity-result-actions button {
+    width: 100%;
   }
 }
 

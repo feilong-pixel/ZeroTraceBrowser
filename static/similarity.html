@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser Similarity</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="css/style.css?v=20260522-similarity-cards" />
+  </head>
+  <body>
+    <main class="tasks-page similarity-page">
+      <section class="tasks-main">
+        <section class="tasks-page-header">
+          <div>
+            <h1 data-i18n="similarity.pageTitle">Similarity Search</h1>
+            <p class="intro" data-i18n="similarity.pageIntro">Find visually similar photos in the current local root with an explicit selected-image search.</p>
+          </div>
+        </section>
+
+        <section class="panel task-config-panel task-focus-panel">
+          <header class="task-panel-head">
+            <h2 data-i18n="similarity.searchSection">Search</h2>
+          </header>
+          <div class="similarity-search-grid">
+            <div>
+              <label for="similaritySourceSelect" data-i18n="similarity.source">Source</label>
+              <select id="similaritySourceSelect">
+                <option value="local" data-i18n="similarity.sourceLocal">Current local root</option>
+                <option value="iphone" data-i18n="similarity.sourceIphone" disabled>Indexed iPhone photos</option>
+                <option value="android" data-i18n="similarity.sourceAndroid" disabled>Indexed Android photos</option>
+              </select>
+            </div>
+            <div>
+              <label for="similarityQueryPathInput" data-i18n="similarity.queryPath">Query image relative path</label>
+              <input id="similarityQueryPathInput" type="text" data-i18n-placeholder="similarity.queryPathPlaceholder" placeholder="2026/05/IMG_0001.JPG" />
+            </div>
+            <div>
+              <label for="similarityMethodSelect" data-i18n="similarity.method">Method</label>
+              <select id="similarityMethodSelect">
+                <option value="phash" data-i18n="similarity.methodPhash">pHash</option>
+                <option value="embedding" data-i18n="similarity.methodEmbedding" disabled>Embedding</option>
+              </select>
+            </div>
+            <div>
+              <label for="similarityThresholdInput" data-i18n="similarity.threshold">Threshold</label>
+              <input id="similarityThresholdInput" type="number" min="0" max="64" value="8" />
+            </div>
+            <div>
+              <label for="similarityLimitInput" data-i18n="similarity.limit">Result limit</label>
+              <input id="similarityLimitInput" type="number" min="1" max="200" value="50" />
+            </div>
+          </div>
+          <div class="similarity-search-actions">
+            <button id="searchSimilarityButton" type="button" class="primary-button" data-i18n="similarity.searchSimilar">Find Similar</button>
+            <button id="clearSimilarityButton" type="button" data-i18n="similarity.clear">Clear</button>
+          </div>
+        </section>
+
+        <section class="panel similarity-results-panel">
+          <header class="duplicates-toolbar">
+            <div class="duplicates-toolbar-heading">
+              <div class="duplicates-title-row">
+                <h2 class="duplicates-toolbar-title" data-i18n="similarity.results">Results</h2>
+                <div id="similaritySummary" class="duplicates-toolbar-summary">-</div>
+              </div>
+            </div>
+          </header>
+          <div class="similarity-results-toolbar">
+            <div class="similarity-result-filters">
+              <div>
+                <label for="similarityStartDateInput" data-i18n="similarity.startDate">Start Date</label>
+                <input id="similarityStartDateInput" type="date" />
+              </div>
+              <div>
+                <label for="similarityEndDateInput" data-i18n="similarity.endDate">End Date</label>
+                <input id="similarityEndDateInput" type="date" />
+              </div>
+            </div>
+            <div class="similarity-result-actions">
+              <button id="selectAllSimilarityResultsButton" type="button" data-i18n="similarity.selectAll">Select All</button>
+              <button id="invertSimilaritySelectionButton" type="button" data-i18n="similarity.invertSelection">Invert</button>
+              <button id="clearSimilaritySelectionButton" type="button" data-i18n="similarity.clearSelection">Clear</button>
+              <button id="deleteSimilarityResultsButton" type="button" class="danger" data-i18n="similarity.deleteSelected">Delete</button>
+            </div>
+          </div>
+          <div id="similarityState" class="muted" data-i18n="similarity.noResults">No similarity results yet.</div>
+          <div id="similarityResults" class="similarity-results"></div>
+        </section>
+      </section>
+
+      <aside class="sidebar gallery-sidebar tasks-sidebar">
+        <header class="sidebar-header sidebar-header-minimal">
+          <div class="sidebar-header-actions">
+            <a href="/index.html" class="button-link" data-i18n="similarity.backToGallery">Back To Gallery</a>
+          </div>
+        </header>
+
+        <section class="panel tasks-summary-panel">
+          <h2 data-i18n="similarity.querySummary">Query Summary</h2>
+          <div class="summary-list">
+            <div class="summary-item summary-item-stacked">
+              <span class="summary-label" data-i18n="similarity.queryImage">Query Image</span>
+              <strong id="similarityQuerySummary">-</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="similarity.matchCount">Matches</span>
+              <strong id="similarityMatchCount">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="similarity.currentMethod">Method</span>
+              <strong id="similarityMethodSummary">pHash</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="similarity.currentThreshold">Threshold</span>
+              <strong id="similarityThresholdSummary">8</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel tasks-summary-panel">
+          <h2 data-i18n="similarity.scope">Scope</h2>
+          <div class="muted" data-i18n="similarity.scopeNote">This first version searches the current local root. Device indexes can plug into this page later.</div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+        <div id="dialogMessage" class="dialog-message"></div>
+        <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=20260522-similarity-cards"></script>
+  </body>
+</html>

@@ -10,6 +10,7 @@ import { initDuplicatesPage } from "./pages/duplicates-page.js?v=20260424-io10";
 import { initRecyclePage } from "./pages/recycle-page.js?v=20260424-io9";
 import { initTasksPage } from "./pages/tasks-page.js?v=20260513-db-cleanup";
 import { initIphonePage } from "./pages/iphone-page.js?v=20260513-iphone";
+import { initSimilarityPage } from "./pages/similarity-page.js?v=20260522-similarity";
 
 function initApp() {
   applyStoredDisplayStyle();
@@ -23,6 +24,7 @@ function initApp() {
   initRecyclePage();
   initTasksPage();
   initIphonePage();
+  initSimilarityPage();
 }
 
 // Wait for the DOM to be fully loaded before initializing the app

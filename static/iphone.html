@@ -40,7 +40,7 @@
               </div>
               <div>
                 <label for="iphoneIndexLimitInput" data-i18n="iphone.indexLimit">Photos to index</label>
-                <input id="iphoneIndexLimitInput" type="number" min="1" max="10000" value="1" />
+                <input id="iphoneIndexLimitInput" type="number" min="1" max="10000" value="100" />
               </div>
               <div>
                 <label class="iphone-checkbox-spacer" aria-hidden="true">&nbsp;</label>
@@ -55,52 +55,6 @@
               <button id="cancelIphoneIndexButton" type="button" data-i18n="iphone.cancelIndex">Cancel Indexing</button>
             </div>
           </div>
-        </section>
-
-        <section class="panel iphone-review-panel">
-          <header class="task-panel-head">
-            <h2 data-i18n="iphone.reviewSection">Similarity Review</h2>
-          </header>
-          <div class="iphone-review-grid">
-            <div>
-              <label for="iphoneQueryFilenameInput" data-i18n="iphone.queryFilename">iPhone Photo Filename</label>
-              <input id="iphoneQueryFilenameInput" type="text" data-i18n-placeholder="iphone.queryFilenamePlaceholder" placeholder="IMG_2706.JPG" />
-            </div>
-            <div>
-              <label for="iphoneSimilarityMethod" data-i18n="iphone.method">Method</label>
-              <select id="iphoneSimilarityMethod">
-                <option value="phash" data-i18n="iphone.methodPhash">pHash</option>
-                <option value="embedding" data-i18n="iphone.methodEmbedding" disabled>Embedding</option>
-              </select>
-            </div>
-            <div>
-              <label for="iphoneThresholdInput" data-i18n="iphone.threshold">Threshold</label>
-              <input id="iphoneThresholdInput" type="number" min="0" max="64" value="8" />
-            </div>
-          </div>
-          <div class="iphone-actions">
-            <button id="searchIphoneSimilarButton" type="button" class="primary-button" data-i18n="iphone.searchSimilar">Find Similar</button>
-          </div>
-          <div class="iphone-result-toolbar">
-            <div class="iphone-date-filter">
-              <div>
-                <label for="iphoneStartDateInput" data-i18n="iphone.startDate">Start Date</label>
-                <input id="iphoneStartDateInput" type="date" />
-              </div>
-              <div>
-                <label for="iphoneEndDateInput" data-i18n="iphone.endDate">End Date</label>
-                <input id="iphoneEndDateInput" type="date" />
-              </div>
-            </div>
-            <div class="iphone-result-actions">
-              <button id="selectAllIphoneResultsButton" type="button" data-i18n="iphone.selectAll">Select All</button>
-              <button id="invertIphoneSelectionButton" type="button" data-i18n="iphone.invertSelection">Invert</button>
-              <button id="clearIphoneSelectionButton" type="button" data-i18n="iphone.clearSelection">Clear</button>
-              <button id="moveIphoneResultsButton" type="button" data-i18n="iphone.moveToLocalGallery">Move To Local Gallery</button>
-              <button id="deleteIphoneResultsButton" type="button" class="danger" data-i18n="iphone.deleteSelected">Delete</button>
-            </div>
-          </div>
-          <div id="iphoneResults" class="iphone-results muted" data-i18n="iphone.noResults">No similarity results yet.</div>
         </section>
 
         <section class="panel task-output-panel">
@@ -150,6 +104,17 @@
       </aside>
     </main>
 
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+        <div id="dialogMessage" class="dialog-message"></div>
+        <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="./js/app.js?v=20260513-iphone"></script>
   </body>
-  </html>
+</html>

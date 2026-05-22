@@ -36,6 +36,7 @@ function getIndexElements() {
     dateEndInput: $("#dateEndInput"),
     clearDateFilterButton: $("#clearDateFilterButton"),
     duplicatesBox: $("#duplicatesBox"),
+    similarityToolLink: document.querySelector("[data-i18n='browser.buttons.similarityTool']"),
 
     selectionCount: $("#selectionCount"),
     selectionDetail: $("#selectionDetail"),
@@ -261,6 +262,14 @@ function updateSelection(els, state) {
 
   if (els.invertSelectionButton) {
     els.invertSelectionButton.disabled = !state.filtered.length;
+  }
+
+  if (els.similarityToolLink) {
+    const params = new URLSearchParams();
+    if (selectedImage?.relative_path && imageExists(selectedImage)) {
+      params.set("path", selectedImage.relative_path);
+    }
+    els.similarityToolLink.href = `/similarity.html${params.toString() ? `?${params.toString()}` : ""}`;
   }
 
   document.querySelectorAll(".card").forEach((card) => {
