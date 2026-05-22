@@ -741,6 +741,9 @@ def build_iphone_photo_index(
     imported_count = 0
     skipped_duplicate_count = 0
     already_imported_count = 0
+    imported_items: list[dict[str, str]] = []
+    skipped_duplicate_items: list[dict[str, str]] = []
+    already_imported_items: list[dict[str, str]] = []
     imported_any = False
     with tempfile.TemporaryDirectory(prefix="ztb_iphone_index_") as temp_name:
         staging_dir = Path(temp_name) / "staging"
@@ -785,6 +788,14 @@ def build_iphone_photo_index(
             if already_local_path:
                 imported_path = already_local_path
                 already_imported_count += 1
+                already_imported_items.append(
+                    {
+                        "album": album,
+                        "filename": filename,
+                        "target": f"{album}/{filename}" if album else filename,
+                        "local_path": already_local_path,
+                    }
+                )
                 continue
 
             existing_local_path = _find_existing_strict_duplicate(
@@ -794,6 +805,14 @@ def build_iphone_photo_index(
             )
             if existing_local_path:
                 skipped_duplicate_count += 1
+                skipped_duplicate_items.append(
+                    {
+                        "album": album,
+                        "filename": filename,
+                        "target": f"{album}/{filename}" if album else filename,
+                        "existing_local_path": existing_local_path,
+                    }
+                )
                 mobile_repository.mark_skipped_duplicate(
                     device_type="iphone",
                     device_id=normalized_device_id,
@@ -813,6 +832,14 @@ def build_iphone_photo_index(
                 )
                 imported_path = str(imported)
                 hash_repository.add_hash_record("strict", strict_hash, imported_path)
+                imported_items.append(
+                    {
+                        "album": album,
+                        "filename": filename,
+                        "target": f"{album}/{filename}" if album else filename,
+                        "local_path": imported_path,
+                    }
+                )
                 mobile_repository.mark_imported(
                     device_type="iphone",
                     device_id=normalized_device_id,
@@ -845,6 +872,9 @@ def build_iphone_photo_index(
         "imported": imported_count,
         "skipped_duplicate": skipped_duplicate_count,
         "already_imported": already_imported_count,
+        "imported_items": imported_items,
+        "skipped_duplicate_items": skipped_duplicate_items,
+        "already_imported_items": already_imported_items,
         "local_path": imported_path,
         "existing_local_path": existing_local_path,
         "skipped_existing_refs": len(skip_refs),

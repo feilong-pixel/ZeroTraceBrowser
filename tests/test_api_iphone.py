@@ -166,6 +166,7 @@ def test_iphone_index_writes_import_records(api_client, monkeypatch):
 
     assert result["status"] == "imported"
     assert result["imported"] == 1
+    assert result["imported_items"][0]["target"] == "100APPLE/IMG_0001.JPG"
     database_path = root_database_path(image_root)
     records = MobileRepository(database_path).list_import_records("iphone", "Apple iPhone")
 
@@ -444,6 +445,15 @@ def test_iphone_index_does_not_downgrade_existing_import_when_same_item_is_retur
     result = iphone_context.build_iphone_photo_index("Apple iPhone")
 
     assert result["status"] == "already_imported"
+    assert result["already_imported"] == 1
+    assert result["already_imported_items"] == [
+        {
+            "album": "100APPLE",
+            "filename": "IMG_0001.JPG",
+            "target": "100APPLE/IMG_0001.JPG",
+            "local_path": str(previous),
+        }
+    ]
     records = repository.list_import_records("iphone", "Apple iPhone")
     assert records[0]["import_status"] == "imported"
     assert records[0]["save_state"] == "both"
@@ -529,6 +539,14 @@ def test_iphone_index_skips_existing_strict_duplicate(api_client, monkeypatch):
     assert result["status"] == "skipped_duplicate"
     assert result["skipped_duplicate"] == 1
     assert result["existing_local_path"] == str(existing.resolve())
+    assert result["skipped_duplicate_items"] == [
+        {
+            "album": "100APPLE",
+            "filename": "IMG_0001.JPG",
+            "target": "100APPLE/IMG_0001.JPG",
+            "existing_local_path": str(existing.resolve()),
+        }
+    ]
     records = MobileRepository(database_path).list_import_records("iphone", "Apple iPhone")
     assert records[0]["save_state"] == "device_only"
     assert records[0]["import_status"] == "skipped_duplicate"
