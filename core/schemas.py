@@ -74,6 +74,19 @@ class IphoneDeleteRequest(BaseModel):
     target: str = Field(..., min_length=1)
 
 
+class MobileIndexRequest(BaseModel):
+    device_type: str = Field(default="iphone", min_length=1)
+    device_id: str = Field(..., min_length=1)
+    limit: int = Field(default=1, ge=1, le=10000)
+    copy_all: bool = Field(default=False)
+
+
+class MobileDeleteRequest(BaseModel):
+    device_type: str = Field(default="iphone", min_length=1)
+    device_id: str = Field(..., min_length=1)
+    target: str = Field(..., min_length=1)
+
+
 class RestoreDeletedRequest(BaseModel):
     deleted_to: str = Field(..., min_length=1)
 

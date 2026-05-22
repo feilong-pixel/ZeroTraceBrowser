@@ -3,25 +3,19 @@
 import { $, on, setText } from "../core/dom.js";
 import { markI18nReady, t, translateStaticText } from "../locales/i18n.js";
 
-function getIphoneElements() {
+const MOBILE_DEVICE_TYPE = "iphone";
+
+function getMobileImportElements() {
   return {
-    iphonePage: $(".iphone-page"),
+    mobileImportPage: $(".mobile-import-page"),
     iphoneDeviceSelect: $("#iphoneDeviceSelect"),
     iphoneIndexLimitInput: $("#iphoneIndexLimitInput"),
     iphoneCopyAllInput: $("#iphoneCopyAllInput"),
     detectIphoneButton: $("#detectIphoneButton"),
     indexIphoneButton: $("#indexIphoneButton"),
     cancelIphoneIndexButton: $("#cancelIphoneIndexButton"),
-    iphoneQueryFilenameInput: $("#iphoneQueryFilenameInput"),
-    searchIphoneSimilarButton: $("#searchIphoneSimilarButton"),
-    selectAllIphoneResultsButton: $("#selectAllIphoneResultsButton"),
-    invertIphoneSelectionButton: $("#invertIphoneSelectionButton"),
-    clearIphoneSelectionButton: $("#clearIphoneSelectionButton"),
-    moveIphoneResultsButton: $("#moveIphoneResultsButton"),
-    deleteIphoneResultsButton: $("#deleteIphoneResultsButton"),
     iphoneStatus: $("#iphoneStatus"),
     iphoneLog: $("#iphoneLog"),
-    iphoneResults: $("#iphoneResults"),
     iphoneDeviceName: $("#iphoneDeviceName"),
     iphoneAlbumCount: $("#iphoneAlbumCount"),
     iphoneMediaCount: $("#iphoneMediaCount"),
@@ -36,13 +30,13 @@ function setStatus(els, message) {
 function appendLog(els, message) {
   if (!els.iphoneLog) return;
   const current = els.iphoneLog.textContent.trim();
-  els.iphoneLog.textContent = current && current !== t("iphone.logEmpty")
+  els.iphoneLog.textContent = current && current !== t("mobileImport.logEmpty")
     ? `${current}\n${message}`
     : message;
 }
 
 function markPending(els, actionKey) {
-  setStatus(els, t("iphone.pending"));
+  setStatus(els, t("mobileImport.pending"));
   appendLog(els, t(actionKey));
 }
 
@@ -60,7 +54,7 @@ function renderDeviceOptions(els, devices) {
   if (!devices.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = t("iphone.noDevice");
+    option.textContent = t("mobileImport.noDevice");
     els.iphoneDeviceSelect.appendChild(option);
     updateDeviceSummary(els, null);
     return;
@@ -91,47 +85,47 @@ function updateIndexLimitState(els) {
 }
 
 async function detectDevices(els) {
-  setStatus(els, t("iphone.detecting"));
-  appendLog(els, t("iphone.detecting"));
+  setStatus(els, t("mobileImport.detecting"));
+  appendLog(els, t("mobileImport.detecting"));
   try {
-    const response = await fetch("/api/iphone/devices");
+    const response = await fetch(`/api/mobile/devices?device_type=${encodeURIComponent(MOBILE_DEVICE_TYPE)}`);
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     const devices = Array.isArray(data.devices) ? data.devices : [];
     renderDeviceOptions(els, devices);
-    setStatus(els, devices.length ? t("iphone.deviceDetected") : t("iphone.noDeviceDetected"));
-    appendLog(els, devices.length ? t("iphone.deviceDetected") : (data.message || t("iphone.noDeviceDetected")));
+    setStatus(els, devices.length ? t("mobileImport.deviceDetected") : t("mobileImport.noDeviceDetected"));
+    appendLog(els, devices.length ? t("mobileImport.deviceDetected") : (data.message || t("mobileImport.noDeviceDetected")));
   } catch (error) {
-    setStatus(els, t("iphone.detectFailed"));
-    appendLog(els, `${t("iphone.detectFailed")}: ${error.message || error}`);
+    setStatus(els, t("mobileImport.detectFailed"));
+    appendLog(els, `${t("mobileImport.detectFailed")}: ${error.message || error}`);
   }
 }
 
 async function buildDeviceIndex(els) {
   const deviceId = getSelectedDeviceId(els);
   if (!deviceId) {
-    setStatus(els, t("iphone.noDeviceDetected"));
-    appendLog(els, t("iphone.noDeviceDetected"));
+    setStatus(els, t("mobileImport.noDeviceDetected"));
+    appendLog(els, t("mobileImport.noDeviceDetected"));
     return;
   }
 
-  setStatus(els, t("iphone.indexing"));
-  appendLog(els, t("iphone.indexing"));
+  setStatus(els, t("mobileImport.indexing"));
+  appendLog(els, t("mobileImport.indexing"));
   try {
     const copyAll = Boolean(els.iphoneCopyAllInput?.checked);
     const limit = getIndexLimit(els);
-    const response = await fetch("/api/iphone/index", {
+    const response = await fetch("/api/mobile/index", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_id: deviceId, limit, copy_all: copyAll }),
+      body: JSON.stringify({ device_type: MOBILE_DEVICE_TYPE, device_id: deviceId, limit, copy_all: copyAll }),
     });
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     const resultKey = data.status === "imported"
-      ? "iphone.indexedImported"
+      ? "mobileImport.indexedImported"
       : data.status === "skipped_duplicate"
-        ? "iphone.indexedSkipped"
-        : "iphone.indexed";
+        ? "mobileImport.indexedSkipped"
+        : "mobileImport.indexed";
     const resultCount = data.status === "imported"
       ? data.imported ?? data.indexed ?? 0
       : data.status === "skipped_duplicate"
@@ -144,8 +138,8 @@ async function buildDeviceIndex(els) {
     setText(els.iphoneMediaCount, String(data.indexed ?? 0));
     setText(els.iphoneLastIndexedAt, data.indexed_at || "-");
   } catch (error) {
-    setStatus(els, t("iphone.indexFailed"));
-    appendLog(els, `${t("iphone.indexFailed")}: ${error.message || error}`);
+    setStatus(els, t("mobileImport.indexFailed"));
+    appendLog(els, `${t("mobileImport.indexFailed")}: ${error.message || error}`);
   }
 }
 
@@ -165,47 +159,18 @@ function bindIphoneEvents(els) {
   });
 
   on(els.cancelIphoneIndexButton, "click", () => {
-    markPending(els, "iphone.cancelIndexPending");
-  });
-
-  on(els.searchIphoneSimilarButton, "click", () => {
-    const filename = els.iphoneQueryFilenameInput?.value.trim();
-    markPending(els, filename ? "iphone.searchPending" : "iphone.filenameMissing");
-    if (els.iphoneResults) {
-      els.iphoneResults.className = "iphone-results muted";
-      setText(els.iphoneResults, t("iphone.noResults"));
-    }
-  });
-
-  on(els.selectAllIphoneResultsButton, "click", () => {
-    markPending(els, "iphone.selectAllPending");
-  });
-
-  on(els.invertIphoneSelectionButton, "click", () => {
-    markPending(els, "iphone.invertSelectionPending");
-  });
-
-  on(els.clearIphoneSelectionButton, "click", () => {
-    markPending(els, "iphone.clearSelectionPending");
-  });
-
-  on(els.moveIphoneResultsButton, "click", () => {
-    markPending(els, "iphone.movePending");
-  });
-
-  on(els.deleteIphoneResultsButton, "click", () => {
-    markPending(els, "iphone.deletePending");
+    markPending(els, "mobileImport.cancelIndexPending");
   });
 }
 
-export function initIphonePage() {
-  const els = getIphoneElements();
-  if (!els.iphonePage) return;
+export function initMobileImportPage() {
+  const els = getMobileImportElements();
+  if (!els.mobileImportPage) return;
 
   translateStaticText();
   bindIphoneEvents(els);
-  setStatus(els, t("iphone.ready"));
-  setText(els.iphoneLog, t("iphone.logEmpty"));
+  setStatus(els, t("mobileImport.ready"));
+  setText(els.iphoneLog, t("mobileImport.logEmpty"));
   setText(els.iphoneDeviceName, "-");
   setText(els.iphoneAlbumCount, "0");
   setText(els.iphoneMediaCount, "0");

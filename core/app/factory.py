@@ -14,6 +14,7 @@ from core.app.security import cors_origins_from_env, trusted_hosts_from_env
 from core.routes.duplicates_route import create_duplicates_router
 from core.routes.images_route import create_images_router
 from core.routes.iphone_route import create_iphone_router
+from core.routes.mobile_route import create_mobile_router
 from core.routes.recycle_route import create_recycle_router
 from core.routes.settings_route import create_settings_router
 from core.routes.similarity_route import create_similarity_router
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(create_tasks_router(ctx))
     app.include_router(create_duplicates_router(ctx))
     app.include_router(create_similarity_router(ctx))
+    app.include_router(create_mobile_router(ctx))
     app.include_router(create_iphone_router(ctx))
     app.include_router(create_recycle_router(ctx))
     app.include_router(create_images_router(ctx))

@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -305,6 +305,70 @@ def init_root_database(database_path: str | Path) -> Path:
 
             CREATE INDEX IF NOT EXISTS idx_iphone_import_records_phash
                 ON iphone_import_records(phash);
+
+            CREATE TABLE IF NOT EXISTS mobile_devices (
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'mtp',
+                dcim_available INTEGER NOT NULL DEFAULT 0,
+                album_count INTEGER NOT NULL DEFAULT 0,
+                media_count INTEGER NOT NULL DEFAULT 0,
+                indexed_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(device_type, device_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS mobile_photo_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL,
+                album TEXT NOT NULL DEFAULT '',
+                filename TEXT NOT NULL,
+                size INTEGER NOT NULL DEFAULT 0,
+                modified_at TEXT NOT NULL DEFAULT '',
+                strict_hash TEXT NOT NULL DEFAULT '',
+                phash TEXT NOT NULL DEFAULT '',
+                indexed_at TEXT NOT NULL DEFAULT '',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(device_type, device_id, album, filename),
+                FOREIGN KEY(device_type, device_id) REFERENCES mobile_devices(device_type, device_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS mobile_import_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL,
+                device_name TEXT NOT NULL DEFAULT '',
+                album TEXT NOT NULL DEFAULT '',
+                filename TEXT NOT NULL,
+                mobile_ref TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL DEFAULT 0,
+                modified_at TEXT NOT NULL DEFAULT '',
+                strict_hash TEXT NOT NULL DEFAULT '',
+                phash TEXT NOT NULL DEFAULT '',
+                save_state TEXT NOT NULL DEFAULT 'device_only'
+                    CHECK(save_state IN ('device_only', 'local_only', 'both')),
+                import_status TEXT NOT NULL DEFAULT 'indexed',
+                local_path TEXT NOT NULL DEFAULT '',
+                existing_local_path TEXT NOT NULL DEFAULT '',
+                deleted_from_device_at TEXT NOT NULL DEFAULT '',
+                indexed_at TEXT NOT NULL DEFAULT '',
+                imported_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(device_type, device_id, album, filename),
+                FOREIGN KEY(device_type, device_id) REFERENCES mobile_devices(device_type, device_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mobile_import_records_device_state
+                ON mobile_import_records(device_type, device_id, save_state);
+
+            CREATE INDEX IF NOT EXISTS idx_mobile_import_records_strict_hash
+                ON mobile_import_records(strict_hash);
+
+            CREATE INDEX IF NOT EXISTS idx_mobile_import_records_phash
+                ON mobile_import_records(phash);
             """
         )
         connection.execute(

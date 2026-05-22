@@ -12,6 +12,7 @@ from core.storage.exif_repository import ExifRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.iphone_repository import IphoneRepository
+from core.storage.mobile_repository import MobileRepository
 from core.storage.recycle_repository import RecycleRepository
 from core.storage.task_repository import TaskRunRepository
 
@@ -51,6 +52,9 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "iphone_devices",
         "iphone_photo_index",
         "iphone_import_records",
+        "mobile_devices",
+        "mobile_photo_index",
+        "mobile_import_records",
     }.issubset(tables)
 
 
@@ -225,6 +229,59 @@ def test_iphone_repository_records_device_index_and_import_state(tmp_path: Path)
             "deleted_from_iphone_at": "",
             "indexed_at": "2026-05-18T10:00:00+00:00",
             "imported_at": "",
+        }
+    ]
+
+
+def test_mobile_repository_records_device_index_and_import_state(tmp_path: Path) -> None:
+    repository = MobileRepository(tmp_path / "workspace.sqlite3")
+
+    repository.save_index(
+        device_type="iphone",
+        device_id="Apple iPhone",
+        device_name="Apple iPhone",
+        indexed_at="2026-05-18T10:00:00+00:00",
+        records=[
+            {
+                "device_name": "Apple iPhone",
+                "album": "100APPLE",
+                "filename": "IMG_0001.JPG",
+                "size": 123,
+                "modified_at": "2026-05-18 10:00:00",
+                "strict_hash": "strict-demo",
+                "phash": "phash-demo",
+                "temp_path": str(tmp_path / "staging" / "IMG_0001.JPG"),
+            }
+        ],
+    )
+    repository.mark_imported(
+        device_type="iphone",
+        device_id="Apple iPhone",
+        album="100APPLE",
+        filename="IMG_0001.JPG",
+        local_path=tmp_path / "images" / "IMG_0001.JPG",
+        imported_at="2026-05-18T10:01:00+00:00",
+    )
+
+    assert repository.list_import_records("iphone", "Apple iPhone") == [
+        {
+            "device_type": "iphone",
+            "device_id": "Apple iPhone",
+            "device_name": "Apple iPhone",
+            "album": "100APPLE",
+            "filename": "IMG_0001.JPG",
+            "mobile_ref": "mobile://iphone/Apple iPhone/DCIM/100APPLE/IMG_0001.JPG",
+            "size": 123,
+            "modified_at": "2026-05-18 10:00:00",
+            "strict_hash": "strict-demo",
+            "phash": "phash-demo",
+            "save_state": "both",
+            "import_status": "imported",
+            "local_path": str(tmp_path / "images" / "IMG_0001.JPG"),
+            "existing_local_path": "",
+            "deleted_from_device_at": "",
+            "indexed_at": "2026-05-18T10:00:00+00:00",
+            "imported_at": "2026-05-18T10:01:00+00:00",
         }
     ]
 

@@ -3,56 +3,49 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ZeroTraceBrowser iPhone</title>
+    <title>ZeroTraceBrowser Mobile Import</title>
     <style>html.i18n-pending body{visibility:hidden}</style>
-    <link rel="stylesheet" href="css/style.css?v=20260521-iphone-layout" />
+    <link rel="stylesheet" href="css/style.css?v=20260522-mobile-import" />
   </head>
   <body>
-    <main class="tasks-page iphone-page">
+    <main class="tasks-page mobile-import-page iphone-page">
       <section class="tasks-main">
         <section class="tasks-page-header">
           <div>
-            <h1 data-i18n="iphone.pageTitle">iPhone Similarity</h1>
-            <p class="intro" data-i18n="iphone.pageIntro">Index photos directly from a connected iPhone and review similar photos without importing them into the local gallery.</p>
+            <h1 data-i18n="mobileImport.pageTitle">Mobile Import</h1>
+            <p class="intro" data-i18n="mobileImport.pageIntro">Index and import photos from mobile devices while keeping source deletion explicit and controlled.</p>
           </div>
         </section>
 
         <section class="panel task-config-panel task-focus-panel">
           <div class="iphone-device-connect-row">
             <div>
-              <h2 data-i18n="iphone.deviceSection">Device</h2>
-              <button id="detectIphoneButton" type="button" data-i18n="iphone.detectDevice">Detect Device</button>
+              <h2 data-i18n="mobileImport.deviceSection">Device</h2>
+              <button id="detectIphoneButton" type="button" data-i18n="mobileImport.detectDevice">Detect Device</button>
             </div>
             <div>
               <select id="iphoneDeviceSelect">
-                <option value="" data-i18n="iphone.noDevice">No device loaded</option>
+                <option value="" data-i18n="mobileImport.noDevice">No device loaded</option>
               </select>
             </div>
           </div>
           <div class="iphone-index-control-panel">
             <div class="iphone-device-grid">
               <div>
-                <label for="iphoneScanScope" data-i18n="iphone.scanScope">Scan Scope</label>
-                <select id="iphoneScanScope">
-                  <option value="dcim" data-i18n="iphone.scopeDcim">DCIM</option>
-                  <option value="recent" data-i18n="iphone.scopeRecent">Recent samples</option>
-                </select>
-              </div>
-              <div>
-                <label for="iphoneIndexLimitInput" data-i18n="iphone.indexLimit">Photos to index</label>
+                <label for="iphoneIndexLimitInput" data-i18n="mobileImport.indexLimit">Photos to index</label>
                 <input id="iphoneIndexLimitInput" type="number" min="1" max="10000" value="100" />
               </div>
               <div>
                 <label class="iphone-checkbox-spacer" aria-hidden="true">&nbsp;</label>
                 <label class="task-checkbox-label" for="iphoneCopyAllInput">
                   <input id="iphoneCopyAllInput" type="checkbox" />
-                  <span data-i18n="iphone.copyAllPhotos">Copy all photos from device</span>
+                  <span data-i18n="mobileImport.copyAllPhotos">Copy all photos from device</span>
                 </label>
               </div>
             </div>
             <div class="iphone-actions iphone-device-actions">
-              <button id="indexIphoneButton" type="button" class="primary-button" data-i18n="iphone.buildIndex">Build Device Index</button>
-              <button id="cancelIphoneIndexButton" type="button" data-i18n="iphone.cancelIndex">Cancel Indexing</button>
+              <button id="indexIphoneButton" type="button" class="primary-button" data-i18n="mobileImport.buildIndex">Build Device Index</button>
+              <button id="cancelIphoneIndexButton" type="button" data-i18n="mobileImport.cancelIndex">Cancel Indexing</button>
             </div>
           </div>
         </section>
@@ -60,46 +53,46 @@
         <section class="panel task-output-panel">
           <header class="task-output-header">
             <div>
-              <h2 data-i18n="iphone.liveOutput">Device Output</h2>
+              <h2 data-i18n="mobileImport.liveOutput">Device Output</h2>
             </div>
             <strong id="iphoneStatus" class="task-output-status">idle</strong>
           </header>
-          <div id="iphoneLog" class="log-box" data-i18n="iphone.logEmpty">No iPhone operation started.</div>
+          <div id="iphoneLog" class="log-box" data-i18n="mobileImport.logEmpty">No mobile import operation started.</div>
         </section>
       </section>
 
       <aside class="sidebar gallery-sidebar tasks-sidebar">
         <header class="sidebar-header sidebar-header-minimal">
           <div class="sidebar-header-actions">
-            <a href="/index.html" class="button-link" data-i18n="iphone.backToGallery">Back To Gallery</a>
+            <a href="/index.html" class="button-link" data-i18n="mobileImport.backToGallery">Back To Gallery</a>
           </div>
         </header>
 
         <section class="panel tasks-summary-panel">
-          <h2 data-i18n="iphone.deviceSummary">Device Summary</h2>
+          <h2 data-i18n="mobileImport.deviceSummary">Device Summary</h2>
           <div class="summary-list">
             <div class="summary-item summary-item-stacked">
-              <span class="summary-label" data-i18n="iphone.deviceName">Device</span>
+              <span class="summary-label" data-i18n="mobileImport.deviceName">Device</span>
               <strong id="iphoneDeviceName">-</strong>
             </div>
             <div class="summary-item">
-              <span class="summary-label" data-i18n="iphone.albumCount">Albums</span>
+              <span class="summary-label" data-i18n="mobileImport.albumCount">Albums</span>
               <strong id="iphoneAlbumCount">0</strong>
             </div>
             <div class="summary-item">
-              <span class="summary-label" data-i18n="iphone.mediaCount">Media</span>
+              <span class="summary-label" data-i18n="mobileImport.mediaCount">Media</span>
               <strong id="iphoneMediaCount">0</strong>
             </div>
             <div class="summary-item summary-item-stacked">
-              <span class="summary-label" data-i18n="iphone.lastIndexedAt">Last Indexed</span>
+              <span class="summary-label" data-i18n="mobileImport.lastIndexedAt">Last Indexed</span>
               <strong id="iphoneLastIndexedAt">-</strong>
             </div>
           </div>
         </section>
 
         <section class="panel tasks-summary-panel">
-          <h2 data-i18n="iphone.storage">Storage</h2>
-          <div class="muted" data-i18n="iphone.storageNote">Device hashes will be cached in a local SQLite table by device id. Original photos stay on the iPhone.</div>
+          <h2 data-i18n="mobileImport.storage">Storage</h2>
+          <div class="muted" data-i18n="mobileImport.storageNote">Device hashes are cached locally by device id. Original photos stay on the phone unless you explicitly choose otherwise.</div>
         </section>
       </aside>
     </main>
@@ -115,6 +108,6 @@
       </div>
     </div>
 
-    <script type="module" src="./js/app.js?v=20260513-iphone"></script>
+    <script type="module" src="./js/app.js?v=20260522-mobile-import"></script>
   </body>
 </html>

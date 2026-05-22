@@ -27,6 +27,7 @@ from core.services.image_scan_service import clear_image_list_cache
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.iphone_repository import IphoneRepository
+from core.storage.mobile_repository import MobileRepository
 from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
@@ -38,6 +39,14 @@ IPHONE_INDEX_TIMEOUT_SECONDS = 600
 IPHONE_DELETE_TIMEOUT_SECONDS = 60
 IPHONE_INDEX_DEFAULT_LIMIT = 1
 IPHONE_INDEX_MAX_LIMIT = 10000
+SUPPORTED_MOBILE_DEVICE_TYPES = {"iphone"}
+
+
+def _normalize_mobile_device_type(device_type: str = "iphone") -> str:
+    normalized = str(device_type or "iphone").strip().lower()
+    if normalized not in SUPPORTED_MOBILE_DEVICE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported mobile device type: {device_type}")
+    return normalized
 
 
 def _run_iphone_device_probe() -> list[dict[str, Any]]:
@@ -721,6 +730,7 @@ def build_iphone_photo_index(
     database_path = root_database_path(active_root)
     hash_repository = HashDbRepository(database_path)
     iphone_repository = IphoneRepository(database_path)
+    mobile_repository = MobileRepository(database_path)
     import_records_before = iphone_repository.list_import_records(normalized_device_id)
     skip_refs = _existing_iphone_refs(import_records_before)
 
@@ -766,6 +776,13 @@ def build_iphone_photo_index(
             indexed_at=indexed_at,
             records=indexed_records,
         )
+        mobile_repository.save_index(
+            device_type="iphone",
+            device_id=normalized_device_id,
+            device_name=str(device_name),
+            indexed_at=indexed_at,
+            records=indexed_records,
+        )
 
         for record in indexed_records:
             imported_at = datetime.now(timezone.utc).isoformat()
@@ -792,6 +809,14 @@ def build_iphone_photo_index(
                     existing_local_path=existing_local_path,
                     imported_at=imported_at,
                 )
+                mobile_repository.mark_skipped_duplicate(
+                    device_type="iphone",
+                    device_id=normalized_device_id,
+                    album=album,
+                    filename=filename,
+                    existing_local_path=existing_local_path,
+                    imported_at=imported_at,
+                )
             else:
                 staged_path = Path(str(record.get("temp_path", "")))
                 imported = _import_staged_iphone_media(
@@ -804,6 +829,14 @@ def build_iphone_photo_index(
                 imported_path = str(imported)
                 hash_repository.add_hash_record("strict", strict_hash, imported_path)
                 iphone_repository.mark_imported(
+                    device_id=normalized_device_id,
+                    album=album,
+                    filename=filename,
+                    local_path=imported_path,
+                    imported_at=imported_at,
+                )
+                mobile_repository.mark_imported(
+                    device_type="iphone",
                     device_id=normalized_device_id,
                     album=album,
                     filename=filename,
@@ -868,6 +901,13 @@ def delete_iphone_photo(device_id: str, target: str) -> dict[str, Any]:
         filename=str(deleted.get("filename", filename)),
         deleted_at=deleted_at,
     )
+    MobileRepository(root_database_path(active_root)).mark_deleted_from_device(
+        device_type="iphone",
+        device_id=normalized_device_id,
+        album=str(deleted.get("album", album)),
+        filename=str(deleted.get("filename", filename)),
+        deleted_at=deleted_at,
+    )
     return {
         "status": "deleted",
         "deleted": True,
@@ -876,3 +916,32 @@ def delete_iphone_photo(device_id: str, target: str) -> dict[str, Any]:
         "filename": str(deleted.get("filename", filename)),
         "deleted_at": deleted_at,
     }
+
+
+def detect_mobile_devices(device_type: str = "iphone") -> dict[str, Any]:
+    normalized_type = _normalize_mobile_device_type(device_type)
+    result = detect_iphone_devices()
+    return {**result, "device_type": normalized_type}
+
+
+def probe_mobile_item_properties(device_type: str, device_id: str) -> dict[str, Any]:
+    normalized_type = _normalize_mobile_device_type(device_type)
+    result = probe_iphone_item_properties(device_id)
+    return {**result, "device_type": normalized_type}
+
+
+def build_mobile_photo_index(
+    device_type: str,
+    device_id: str,
+    limit: int = IPHONE_INDEX_DEFAULT_LIMIT,
+    copy_all: bool = False,
+) -> dict[str, Any]:
+    normalized_type = _normalize_mobile_device_type(device_type)
+    result = build_iphone_photo_index(device_id, limit=limit, copy_all=copy_all)
+    return {**result, "device_type": normalized_type}
+
+
+def delete_mobile_photo(device_type: str, device_id: str, target: str) -> dict[str, Any]:
+    normalized_type = _normalize_mobile_device_type(device_type)
+    result = delete_iphone_photo(device_id, target)
+    return {**result, "device_type": normalized_type}

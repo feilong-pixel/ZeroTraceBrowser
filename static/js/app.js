@@ -9,7 +9,7 @@ import { initViewerPage } from "./pages/viewer-page.js?v=20260513-viewer-media";
 import { initDuplicatesPage } from "./pages/duplicates-page.js?v=20260424-io10";
 import { initRecyclePage } from "./pages/recycle-page.js?v=20260424-io9";
 import { initTasksPage } from "./pages/tasks-page.js?v=20260513-db-cleanup";
-import { initIphonePage } from "./pages/iphone-page.js?v=20260513-iphone";
+import { initMobileImportPage } from "./pages/mobile-import-page.js?v=20260522-mobile-import";
 import { initSimilarityPage } from "./pages/similarity-page.js?v=20260522-similarity";
 
 function initApp() {
@@ -23,7 +23,7 @@ function initApp() {
   initDuplicatesPage();
   initRecyclePage();
   initTasksPage();
-  initIphonePage();
+  initMobileImportPage();
   initSimilarityPage();
 }
 
