@@ -8,6 +8,7 @@ from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
+from core.storage.mobile_repository import MobileRepository
 from tests.test_api_user_flow import create_test_image
 
 import app as ztb_app
@@ -35,6 +36,37 @@ def save_duplicate_groups(root: Path, groups: list[dict]) -> None:
         },
         source_path=database_path,
     )
+
+
+def save_mobile_records(root: Path, records: list[dict]) -> None:
+    database_path = RootContext.from_root(root, ztb_app.ROOT_DATA_DIR).database_path
+    repository = MobileRepository(database_path)
+    repository.save_index(
+        device_type="iphone",
+        device_id="Apple iPhone",
+        device_name="Apple iPhone",
+        indexed_at="2026-05-22T12:00:00+00:00",
+        records=records,
+    )
+    for record in records:
+        if record.get("local_path"):
+            repository.mark_imported(
+                device_type="iphone",
+                device_id="Apple iPhone",
+                album=record["album"],
+                filename=record["filename"],
+                local_path=record["local_path"],
+                imported_at="2026-05-22T12:00:00+00:00",
+            )
+        if record.get("existing_local_path"):
+            repository.mark_skipped_duplicate(
+                device_type="iphone",
+                device_id="Apple iPhone",
+                album=record["album"],
+                filename=record["filename"],
+                existing_local_path=record["existing_local_path"],
+                imported_at="2026-05-22T12:00:00+00:00",
+            )
 
 
 def test_similarity_search_returns_phash_matches_for_selected_image(api_client) -> None:
@@ -172,3 +204,80 @@ def test_similarity_search_includes_existing_duplicate_group_matches(api_client)
     assert payload["items"][0]["relative_path"] == "elsewhere/query_dup1.jpg"
     assert payload["items"][0]["reason"] == "duplicates:strict"
     assert payload["items"][0]["source"] == "duplicates"
+
+
+def test_similarity_search_returns_indexed_iphone_matches_with_local_files(api_client) -> None:
+    client, _, image_root, _ = api_client
+    query = create_test_image(image_root / "mobile" / "query.jpg", color=(32, 96, 160))
+    imported_match = create_test_image(image_root / "mobile" / "match.jpg", color=(32, 96, 160))
+    skipped_match = create_test_image(image_root / "existing" / "same.jpg", color=(32, 96, 160))
+    device_only = create_test_image(image_root / "device-only-temp.jpg", color=(32, 96, 160))
+    records = [
+        {
+            "album": "100APPLE",
+            "filename": "IMG_0001.JPG",
+            "size": query.stat().st_size,
+            "phash": compute_phash(str(query)),
+            "local_path": str(query),
+        },
+        {
+            "album": "100APPLE",
+            "filename": "IMG_0002.JPG",
+            "size": imported_match.stat().st_size,
+            "phash": compute_phash(str(imported_match)),
+            "local_path": str(imported_match),
+        },
+        {
+            "album": "101APPLE",
+            "filename": "IMG_0003.JPG",
+            "size": skipped_match.stat().st_size,
+            "phash": compute_phash(str(skipped_match)),
+            "existing_local_path": str(skipped_match),
+        },
+        {
+            "album": "102APPLE",
+            "filename": "IMG_0004.JPG",
+            "size": device_only.stat().st_size,
+            "phash": compute_phash(str(device_only)),
+        },
+    ]
+    save_mobile_records(image_root, records)
+    device_only.unlink()
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"source": "iphone", "relative_path": "100APPLE/IMG_0001.JPG", "method": "phash", "threshold": 0},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "iphone"
+    assert payload["query"] == "100APPLE/IMG_0001.JPG"
+    paths = {item["relative_path"] for item in payload["items"]}
+    assert paths == {"mobile/match.jpg", "existing/same.jpg"}
+    assert {item["mobile_target"] for item in payload["items"]} == {"100APPLE/IMG_0002.JPG", "101APPLE/IMG_0003.JPG"}
+
+
+def test_similarity_search_rejects_iphone_device_only_query(api_client) -> None:
+    client, _, image_root, _ = api_client
+    query = create_test_image(image_root / "temp.jpg", color=(32, 96, 160))
+    save_mobile_records(
+        image_root,
+        [
+            {
+                "album": "100APPLE",
+                "filename": "IMG_0001.JPG",
+                "size": query.stat().st_size,
+                "phash": compute_phash(str(query)),
+            }
+        ],
+    )
+    query.unlink()
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"source": "iphone", "relative_path": "100APPLE/IMG_0001.JPG", "method": "phash"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Indexed iPhone photo not found in local root: 100APPLE/IMG_0001.JPG"

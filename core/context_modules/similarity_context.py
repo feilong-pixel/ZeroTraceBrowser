@@ -5,6 +5,7 @@ from .root_workspace import root_database_path
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
+from core.storage.mobile_repository import MobileRepository
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash, phash_distance
 
 FULL_ROOT_SUPPLEMENTAL_SCAN_LIMIT = 1000
@@ -150,12 +151,177 @@ def _collect_duplicate_group_matches(active_root: Path, query_relative_path: str
     return matches
 
 
-def search_similar_images(
+def _mobile_record_target(record: dict[str, Any]) -> str:
+    album = str(record.get("album", "") or "").strip().strip("/")
+    filename = str(record.get("filename", "") or "").strip()
+    return f"{album}/{filename}" if album else filename
+
+
+def _mobile_record_local_path(active_root: Path, record: dict[str, Any]) -> tuple[Path, str] | None:
+    for key in ("local_path", "existing_local_path"):
+        raw_path = str(record.get(key, "") or "").strip()
+        if not raw_path:
+            continue
+        path = Path(raw_path).expanduser().resolve()
+        if not path.is_file():
+            continue
+        try:
+            relative_path = path.relative_to(active_root).as_posix()
+        except ValueError:
+            continue
+        return path, relative_path
+    return None
+
+
+def _collect_local_mobile_records(active_root: Path, device_type: str) -> list[dict[str, Any]]:
+    database_path = root_database_path(active_root)
+    records = MobileRepository(database_path).list_import_records(device_type)
+    local_records: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for record in records:
+        local_path = _mobile_record_local_path(active_root, record)
+        if local_path is None:
+            continue
+        path, relative_path = local_path
+        phash = str(record.get("phash", "") or "").strip()
+        if not phash:
+            phash = compute_phash(str(path)) or ""
+        if not phash:
+            continue
+        if relative_path in seen_paths:
+            continue
+        seen_paths.add(relative_path)
+        local_records.append(
+            {
+                **record,
+                "target": _mobile_record_target(record),
+                "local_file_path": path,
+                "relative_path": relative_path,
+                "phash": phash,
+            }
+        )
+    return local_records
+
+
+def _find_mobile_query_record(
+    records: list[dict[str, Any]],
+    query: str,
+) -> dict[str, Any]:
+    normalized_query = str(query or "").strip().strip('"').replace("\\", "/").strip("/")
+    if not normalized_query:
+        raise HTTPException(status_code=400, detail="Image path is required")
+
+    target_matches = [
+        record
+        for record in records
+        if str(record.get("target", "")).replace("\\", "/").strip("/") == normalized_query
+    ]
+    if len(target_matches) == 1:
+        return target_matches[0]
+    if len(target_matches) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Multiple indexed iPhone photos matched. Use album/filename: {normalized_query}",
+        )
+
+    filename_matches = [
+        record
+        for record in records
+        if str(record.get("filename", "") or "").strip() == normalized_query
+        or str(record.get("relative_path", "") or "").replace("\\", "/").strip("/") == normalized_query
+    ]
+    if len(filename_matches) == 1:
+        return filename_matches[0]
+    if len(filename_matches) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Multiple indexed iPhone photos matched filename. Use album/filename: {normalized_query}",
+        )
+
+    raise HTTPException(status_code=404, detail=f"Indexed iPhone photo not found in local root: {normalized_query}")
+
+
+def search_similar_mobile_images(
     relative_path: str,
+    device_type: str = "iphone",
     method: str = "phash",
     threshold: int = 8,
     limit: int = 50,
 ) -> dict[str, Any]:
+    method = str(method or "phash").strip().lower()
+    if method != "phash":
+        raise HTTPException(status_code=400, detail="Unsupported similarity method")
+
+    normalized_device_type = str(device_type or "iphone").strip().lower()
+    if normalized_device_type != "iphone":
+        raise HTTPException(status_code=400, detail=f"Unsupported similarity source: {normalized_device_type}")
+
+    settings = load_settings()
+    active_root = Path(settings["active_root"]).expanduser().resolve()
+    records = _collect_local_mobile_records(active_root, normalized_device_type)
+    query_record = _find_mobile_query_record(records, relative_path)
+    query_hash = str(query_record.get("phash", "") or "").strip()
+
+    items: list[dict[str, Any]] = []
+    query_relative_path = str(query_record.get("relative_path", ""))
+    query_target = str(query_record.get("target", ""))
+    for record in records:
+        candidate_relative = str(record.get("relative_path", ""))
+        candidate_target = str(record.get("target", ""))
+        if candidate_relative == query_relative_path and candidate_target == query_target:
+            continue
+        try:
+            distance = phash_distance(query_hash, str(record.get("phash", "")))
+        except ValueError:
+            continue
+        if distance > threshold:
+            continue
+        items.append(
+            {
+                "relative_path": candidate_relative,
+                "hash": str(record.get("phash", "")),
+                "distance": distance,
+                "score": round(1 - (distance / 64), 4),
+                "reason": method,
+                "source": normalized_device_type,
+                "device_type": normalized_device_type,
+                "device_id": str(record.get("device_id", "")),
+                "device_name": str(record.get("device_name", "")),
+                "album": str(record.get("album", "")),
+                "filename": str(record.get("filename", "")),
+                "mobile_target": candidate_target,
+                "import_status": str(record.get("import_status", "")),
+                "save_state": str(record.get("save_state", "")),
+            }
+        )
+
+    items.sort(key=lambda item: (item["distance"], item["relative_path"].lower(), item["mobile_target"].lower()))
+    items = items[:limit]
+    return {
+        "query": query_target or query_relative_path,
+        "query_relative_path": query_relative_path,
+        "source": normalized_device_type,
+        "method": method,
+        "query_hash": query_hash,
+        "threshold": threshold,
+        "items": items,
+        "count": len(items),
+    }
+
+
+def search_similar_images(
+    relative_path: str,
+    source: str = "local",
+    method: str = "phash",
+    threshold: int = 8,
+    limit: int = 50,
+) -> dict[str, Any]:
+    source = str(source or "local").strip().lower()
+    if source == "iphone":
+        return search_similar_mobile_images(relative_path, "iphone", method, threshold, limit)
+    if source != "local":
+        raise HTTPException(status_code=400, detail=f"Unsupported similarity source: {source}")
+
     method = str(method or "phash").strip().lower()
     if method != "phash":
         raise HTTPException(status_code=400, detail="Unsupported similarity method")
@@ -211,6 +377,7 @@ def search_similar_images(
     items = items[:limit]
     return {
         "query": normalized_relative_path,
+        "source": "local",
         "method": method,
         "query_hash": query_hash,
         "threshold": threshold,

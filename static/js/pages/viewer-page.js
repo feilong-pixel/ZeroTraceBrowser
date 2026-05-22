@@ -54,6 +54,7 @@ function createViewerState() {
     isLoadingMoreImages: false,
     backgroundLoadHandle: 0,
     exifLoadToken: 0,
+    returnTo: "",
   };
 }
 
@@ -482,7 +483,26 @@ function shiftImage(els, state, delta) {
   );
 }
 
+function safeReturnTo(value) {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+
+  try {
+    const url = new URL(rawValue, window.location.origin);
+    if (url.origin !== window.location.origin) return "";
+    if (url.pathname !== "/similarity.html" && url.pathname !== "/index.html") return "";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
+}
+
 function goBack(state) {
+  if (state.returnTo) {
+    window.location.href = state.returnTo;
+    return;
+  }
+
   const params = new URLSearchParams();
 
   if (state.query) {
@@ -720,6 +740,7 @@ async function initializeViewerPage(els, state) {
   state.query = params.get("q") || "";
   state.dateStart = params.get("from") || "";
   state.dateEnd = params.get("to") || "";
+  state.returnTo = safeReturnTo(params.get("return_to") || "");
 
   await loadConfig(state);
   translateViewerPage(els, state);

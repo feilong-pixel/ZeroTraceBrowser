@@ -177,7 +177,7 @@ class MobileRepository:
             connection.execute(
                 """
                 UPDATE mobile_import_records
-                SET save_state = 'device_only',
+                SET save_state = 'both',
                     import_status = 'skipped_duplicate',
                     local_path = '',
                     existing_local_path = ?,

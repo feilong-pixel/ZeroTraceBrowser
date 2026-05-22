@@ -17,6 +17,7 @@ def create_similarity_router(ctx: Any) -> APIRouter:
     def search_similarity(payload: SimilaritySearchRequest) -> dict[str, Any]:
         return ctx.search_similar_images(
             relative_path=payload.relative_path,
+            source=payload.source,
             method=payload.method,
             threshold=payload.threshold,
             limit=payload.limit,

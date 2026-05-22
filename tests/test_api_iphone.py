@@ -548,7 +548,7 @@ def test_iphone_index_skips_existing_strict_duplicate(api_client, monkeypatch):
         }
     ]
     records = MobileRepository(database_path).list_import_records("iphone", "Apple iPhone")
-    assert records[0]["save_state"] == "device_only"
+    assert records[0]["save_state"] == "both"
     assert records[0]["import_status"] == "skipped_duplicate"
     assert records[0]["local_path"] == ""
     assert records[0]["existing_local_path"] == str(existing.resolve())

@@ -104,8 +104,28 @@ function clearResults(els, state) {
 }
 
 function viewerUrl(relativePath) {
-  const params = new URLSearchParams({ path: relativePath });
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  const params = new URLSearchParams({ path: relativePath, return_to: returnTo });
   return `/viewer.html?${params.toString()}`;
+}
+
+function resultTitle(item) {
+  return item.mobile_target || item.relative_path.split("/").pop() || item.relative_path;
+}
+
+function resultSubtitle(item) {
+  if (item.mobile_target && item.mobile_target !== item.relative_path) {
+    return `${item.mobile_target} / ${item.relative_path}`;
+  }
+  return item.relative_path;
+}
+
+function resultMethodLabel(item, data) {
+  const base = `${data.method || "phash"}:${data.threshold ?? "-"}`;
+  if (item.source === "iphone" && item.import_status) {
+    return `${base} / ${item.import_status}`;
+  }
+  return base;
 }
 
 function renderResults(els, state, data) {
@@ -147,7 +167,7 @@ function renderResults(els, state, data) {
     image.decoding = "async";
     image.width = 320;
     image.height = 320;
-    image.alt = item.relative_path;
+    image.alt = resultTitle(item);
     image.src = `/api/thumbnail?relative_path=${encodeURIComponent(item.relative_path)}`;
 
     const body = document.createElement("div");
@@ -156,15 +176,15 @@ function renderResults(els, state, data) {
     const path = document.createElement("a");
     path.className = "file-name similarity-result-path";
     path.href = viewerUrl(item.relative_path);
-    path.textContent = item.relative_path.split("/").pop() || item.relative_path;
+    path.textContent = resultTitle(item);
 
     const relative = document.createElement("span");
     relative.className = "file-path";
-    relative.textContent = item.relative_path;
+    relative.textContent = resultSubtitle(item);
 
     const meta = document.createElement("div");
     meta.className = "similarity-result-meta";
-    const methodLabel = `${data.method || "phash"}:${data.threshold ?? "-"}`;
+    const methodLabel = resultMethodLabel(item, data);
     meta.textContent = t(
       "similarity.resultMeta",
       item.distance ?? "-",
@@ -208,7 +228,7 @@ async function searchSimilarity(els, state) {
     return;
   }
 
-  if (source !== "local") {
+  if (source === "android") {
     setState(els, t("similarity.sourceUnavailable"));
     return;
   }
@@ -224,7 +244,7 @@ async function searchSimilarity(els, state) {
     const response = await fetch("/api/similarity/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ relative_path: relativePath, method, threshold, limit }),
+      body: JSON.stringify({ relative_path: relativePath, source, method, threshold, limit }),
     });
     if (!response.ok) throw new Error(await response.text());
     renderResults(els, state, await response.json());
