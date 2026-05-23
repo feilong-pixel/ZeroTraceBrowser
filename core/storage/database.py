@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -309,6 +309,21 @@ def init_root_database(database_path: str | Path) -> Path:
 
             CREATE INDEX IF NOT EXISTS idx_mobile_import_records_phash
                 ON mobile_import_records(phash);
+
+            CREATE TABLE IF NOT EXISTS local_deleted_markers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strict_hash TEXT NOT NULL,
+                relative_path TEXT NOT NULL DEFAULT '',
+                original_path TEXT NOT NULL DEFAULT '',
+                deleted_to TEXT NOT NULL DEFAULT '',
+                delete_source TEXT NOT NULL DEFAULT 'local_gallery',
+                deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(strict_hash, delete_source)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_local_deleted_markers_strict_hash
+                ON local_deleted_markers(strict_hash);
             """
         )
         connection.execute(

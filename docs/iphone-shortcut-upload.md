@@ -32,7 +32,8 @@ http://<windows-ip>:8000/upload
 ## Required Request Shape
 
 - Method: `POST`
-- Body: selected photo file bytes
+- Body: selected photo file bytes. In Shortcuts, set `Request Body` to `File`
+  and bind it to the current selected photo.
 - Headers:
 
 ```text
@@ -64,6 +65,50 @@ If Shortcuts says it has no permission to transfer photos, fix the iPhone side:
 - Allow full photo access, or allow access to the selected photo.
 - Reopen the Shortcut and approve any photo/network permission prompts.
 
+## Troubleshooting
+
+If the server logs this:
+
+```text
+POST /upload HTTP/1.1" 400 Bad Request
+```
+
+and the response body is:
+
+```json
+{"detail":"Upload body is empty"}
+```
+
+the iPhone reached the server, but Shortcuts did not send the photo bytes. This
+usually happens after copying or editing a Shortcut: the `File` field appears to
+exist, but its variable binding is empty.
+
+Fix it on the iPhone:
+
+- Open the Shortcut.
+- Open the `Get Contents of URL` action.
+- Set `Request Body` to `File`.
+- Re-select the current photo variable in the `File` field.
+- Run the Shortcut again.
+
+If the server logs this instead:
+
+```text
+WARNING: Invalid HTTP request received.
+```
+
+check that the URL starts with `http://`, not `https://`, and remove any trailing
+full-width spaces from the URL.
+
+## Local Deleted Markers
+
+When a photo is deleted through ZeroTraceBrowser, the root workspace records a
+local deleted marker keyed by the photo strict hash. Later iPhone uploads with
+the same content return `skipped_deleted_locally` and are not re-imported.
+
+This only applies to photos deleted by ZeroTraceBrowser after this marker logic
+exists. Old deletions without a marker can still be imported again.
+
 ## Storage
 
 Imported files are copied into the current active image root, grouped by date:
@@ -76,6 +121,12 @@ Upload metadata and device identity are stored in the current root workspace:
 
 ```text
 data/roots/<root_id>/workspace.sqlite3
+```
+
+Local deleted markers are stored in the same database table:
+
+```text
+local_deleted_markers
 ```
 
 The upload is copy-only. It does not delete photos from the iPhone.

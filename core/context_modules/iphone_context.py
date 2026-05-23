@@ -738,6 +738,31 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
         )
 
         hash_repository = HashDbRepository(database_path)
+        deleted_marker = mobile_repository.find_deleted_local_marker(strict_hash)
+        if deleted_marker:
+            mobile_repository.mark_skipped_deleted_locally(
+                device_type="iphone",
+                device_id=device_id,
+                album=IPHONE_SHORTCUT_ALBUM,
+                filename=filename,
+                imported_at=imported_at,
+            )
+            return {
+                "status": "skipped_deleted_locally",
+                "imported": False,
+                "file": filename,
+                "size": size,
+                "declared_size": declared_size,
+                "device_name": device_name,
+                "device_id": device_id,
+                "device_model": device_model,
+                "uploader": uploader,
+                "deleted_at": str(deleted_marker.get("deleted_at", "")),
+                "deleted_relative_path": str(deleted_marker.get("relative_path", "")),
+                "delete_source": str(deleted_marker.get("delete_source", "")),
+                "database_path": str(database_path),
+            }
+
         existing_local_path = _find_existing_strict_duplicate(hash_repository.load_hash_db(), strict_hash, active_root)
         if existing_local_path:
             mobile_repository.mark_skipped_duplicate(
@@ -1120,7 +1145,26 @@ def build_iphone_photo_index(
                 strict_hash,
                 active_root,
             )
-            if existing_local_path:
+            deleted_marker = mobile_repository.find_deleted_local_marker(strict_hash)
+            if deleted_marker:
+                skipped_duplicate_count += 1
+                skipped_duplicate_items.append(
+                    {
+                        "album": album,
+                        "filename": filename,
+                        "target": f"{album}/{filename}" if album else filename,
+                        "existing_local_path": "",
+                        "status": "skipped_deleted_locally",
+                    }
+                )
+                mobile_repository.mark_skipped_deleted_locally(
+                    device_type="iphone",
+                    device_id=normalized_device_id,
+                    album=album,
+                    filename=filename,
+                    imported_at=imported_at,
+                )
+            elif existing_local_path:
                 skipped_duplicate_count += 1
                 skipped_duplicate_items.append(
                     {

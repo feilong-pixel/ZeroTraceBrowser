@@ -267,6 +267,39 @@ def test_iphone_shortcut_upload_alias_skips_existing_duplicate(api_client, monke
     assert data["existing_local_path"] == str(existing.resolve())
 
 
+def test_iphone_shortcut_upload_skips_photo_deleted_by_system(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    original = image_root / "album" / "deleted.jpeg"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"deleted-by-system")
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-deleted")
+
+    delete_response = client.post("/api/delete", json={"relative_path": "album/deleted.jpeg"})
+    assert delete_response.status_code == 200
+    assert delete_response.json()["status"] == "deleted"
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"deleted-by-system",
+        headers={
+            "X-Original-Filename": "IMG_3001.jpeg",
+            "X-ZTB-DeviceId": "pyf-iphone-13-main",
+            "X-Original-DeviceName": "iPhone",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "skipped_deleted_locally"
+    assert data["imported"] is False
+    assert data["deleted_relative_path"] == "album/deleted.jpeg"
+    assert not (image_root / "IMG_3001.jpeg").exists()
+
+    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "pyf-iphone-13-main")
+    assert records[0]["filename"] == "IMG_3001.jpeg"
+    assert records[0]["import_status"] == "skipped_deleted_locally"
+
+
 def test_iphone_index_writes_import_records(api_client, monkeypatch):
     _, _, image_root, _ = api_client
 

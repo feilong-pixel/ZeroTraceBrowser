@@ -189,6 +189,31 @@ class MobileRepository:
             )
             connection.commit()
 
+    def mark_skipped_deleted_locally(
+        self,
+        *,
+        device_type: str,
+        device_id: str,
+        album: str,
+        filename: str,
+        imported_at: str,
+    ) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE mobile_import_records
+                SET save_state = 'device_only',
+                    import_status = 'skipped_deleted_locally',
+                    local_path = '',
+                    existing_local_path = '',
+                    imported_at = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE device_type = ? AND device_id = ? AND album = ? AND filename = ?
+                """,
+                (imported_at, self._device_type(device_type), device_id, album, filename),
+            )
+            connection.commit()
+
     def mark_deleted_from_device(
         self,
         *,
@@ -209,6 +234,64 @@ class MobileRepository:
                 (deleted_at, self._device_type(device_type), device_id, album, filename),
             )
             connection.commit()
+
+    def mark_deleted_locally(
+        self,
+        *,
+        strict_hash: str,
+        relative_path: str,
+        original_path: str | Path,
+        deleted_to: str | Path,
+        deleted_at: str,
+        delete_source: str = "local_gallery",
+        raw_json: dict[str, Any] | None = None,
+    ) -> None:
+        strict_hash_value = str(strict_hash or "").strip()
+        if not strict_hash_value:
+            return
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO local_deleted_markers (
+                    strict_hash, relative_path, original_path, deleted_to,
+                    delete_source, deleted_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(strict_hash, delete_source) DO UPDATE SET
+                    relative_path = excluded.relative_path,
+                    original_path = excluded.original_path,
+                    deleted_to = excluded.deleted_to,
+                    deleted_at = excluded.deleted_at,
+                    raw_json = excluded.raw_json
+                """,
+                (
+                    strict_hash_value,
+                    str(relative_path or ""),
+                    str(original_path),
+                    str(deleted_to),
+                    str(delete_source or "local_gallery"),
+                    str(deleted_at or ""),
+                    self._raw_json(raw_json or {}),
+                ),
+            )
+            connection.commit()
+
+    def find_deleted_local_marker(self, strict_hash: str) -> dict[str, Any] | None:
+        strict_hash_value = str(strict_hash or "").strip()
+        if not strict_hash_value:
+            return None
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT strict_hash, relative_path, original_path, deleted_to,
+                       delete_source, deleted_at, raw_json
+                FROM local_deleted_markers
+                WHERE strict_hash = ?
+                ORDER BY deleted_at DESC, id DESC
+                LIMIT 1
+                """,
+                (strict_hash_value,),
+            ).fetchone()
+        return dict(row) if row is not None else None
 
     @staticmethod
     def _device_type(device_type: str) -> str:

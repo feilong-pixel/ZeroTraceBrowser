@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from core.services.image_scan_service import clear_image_list_cache
 from core.services.recycle_paths import build_deleted_path
 from core.services.thumbnail_service import thumbnail_path_for
 from core.storage.recycle_repository import RecycleRepository
+from core.storage.mobile_repository import MobileRepository
 
 
 class DeleteImageRequest(BaseModel):
@@ -79,6 +81,7 @@ class DeleteImageUseCase:
         # 3. Build the target deleted path (timestamp + digest prefix).
         deleted_path = build_deleted_path(self.ctx.deleted_dir, root, relative_path)
         deleted_path.parent.mkdir(parents=True, exist_ok=True)
+        strict_hash = self._sha256_file(image_path)
 
         # 4. Move the file to the recycle area.
         move_file_preserve_times(image_path, deleted_path)
@@ -87,7 +90,7 @@ class DeleteImageUseCase:
         clear_image_list_cache(root)
 
         # 6. Write delete log entry.
-        self._write_log(root, relative_path, deleted_path)
+        self._write_log(root, relative_path, image_path, deleted_path, strict_hash)
 
         # 7. Remove the stale thumbnail, if one exists.
         stale_thumb = thumbnail_path_for(self.thumbnails_dir, root, relative_path)
@@ -100,7 +103,14 @@ class DeleteImageUseCase:
     # Internal helpers – easily replaceable with LogRepository in phase 2
     # ------------------------------------------------------------------
 
-    def _write_log(self, root: Path, relative_path: str, deleted_path: Path) -> None:
+    def _write_log(
+        self,
+        root: Path,
+        relative_path: str,
+        original_path: Path,
+        deleted_path: Path,
+        strict_hash: str,
+    ) -> None:
         """Append a row to the delete CSV log."""
         log_path = self.ctx.logs_dir / "delete_log.csv"
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,3 +143,19 @@ class DeleteImageUseCase:
                 deleted_to=str(deleted_path),
                 action="deleted",
             )
+            MobileRepository(database_path).mark_deleted_locally(
+                strict_hash=strict_hash,
+                relative_path=relative_path,
+                original_path=original_path,
+                deleted_to=deleted_path,
+                deleted_at=timestamp,
+                raw_json={"action": "deleted"},
+            )
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
