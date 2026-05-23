@@ -42,15 +42,15 @@ X-Original-CreateDate: 2026/05/17 10:26:47 JST
 X-Original-UpdateDate: 2026/05/17 11:42:31 JST
 X-Original-FileSize: 2.5 MB
 X-Original-FileType: jpeg
-X-Original-DeviceName: Peng Yufei s iPhone 13
+X-Original-DeviceName: User Name s iPhone 13
 X-Original-DeviceModel: iPhone
 ```
 
 Recommended headers for multi-person use:
 
 ```text
-X-ZTB-Uploader: Peng Yufei
-X-ZTB-DeviceId: pyf-iphone-13-main
+X-ZTB-Uploader: User Name
+X-ZTB-DeviceId: un-iphone-13-main
 ```
 
 `X-ZTB-DeviceId` is the stable identity used in the root workspace database. If

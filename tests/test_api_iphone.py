@@ -153,8 +153,8 @@ def test_iphone_shortcut_upload_imports_header_image(api_client, monkeypatch):
             "X-Original-UpdateDate": "2026/05/17 11:42:31 JST",
             "X-Original-FileSize": "2.5 MB",
             "X-Original-FileType": "jpeg",
-            "X-ZTB-Uploader": "Peng Yufei",
-            "X-Original-DeviceName": "Peng Yufei s iPhone 13",
+            "X-ZTB-Uploader": "User Name",
+            "X-Original-DeviceName": "User Name s iPhone 13",
             "X-Original-DeviceModel": "iPhone",
         },
     )
@@ -162,8 +162,8 @@ def test_iphone_shortcut_upload_imports_header_image(api_client, monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert data["device_id"] == "Peng Yufei::Peng Yufei s iPhone 13"
-    assert data["uploader"] == "Peng Yufei"
+    assert data["device_id"] == "User Name::User Name s iPhone 13"
+    assert data["uploader"] == "User Name"
     imported = Path(data["local_path"])
     assert imported.is_relative_to(image_root)
     assert imported.parts[-4:] == ("2026", "05", "17", "IMG_0948.jpeg")
@@ -172,7 +172,7 @@ def test_iphone_shortcut_upload_imports_header_image(api_client, monkeypatch):
 
     records = MobileRepository(root_database_path(image_root)).list_import_records(
         "iphone",
-        "Peng Yufei::Peng Yufei s iPhone 13",
+        "User Name::User Name s iPhone 13",
     )
     assert records[0]["album"] == "ShortcutUpload"
     assert records[0]["filename"] == "IMG_0948.jpeg"
@@ -185,7 +185,7 @@ def test_iphone_shortcut_upload_separates_people_with_same_device_name(api_clien
     monkeypatch.setattr(iphone_context, "compute_phash", lambda path: f"phash-{Path(path).read_text(encoding='utf-8')}")
 
     for owner, content, filename in (
-        ("Peng Yufei", b"person-a", "IMG_1001.jpeg"),
+        ("User Name", b"person-a", "IMG_1001.jpeg"),
         ("Family Member", b"person-b", "IMG_1002.jpeg"),
     ):
         response = client.post(
@@ -200,7 +200,7 @@ def test_iphone_shortcut_upload_separates_people_with_same_device_name(api_clien
         assert response.status_code == 200
 
     repository = MobileRepository(root_database_path(image_root))
-    owner_a_records = repository.list_import_records("iphone", "Peng Yufei::iPhone 13")
+    owner_a_records = repository.list_import_records("iphone", "User Name::iPhone 13")
     owner_b_records = repository.list_import_records("iphone", "Family Member::iPhone 13")
 
     assert [record["filename"] for record in owner_a_records] == ["IMG_1001.jpeg"]
@@ -216,15 +216,15 @@ def test_iphone_shortcut_upload_accepts_explicit_device_id(api_client, monkeypat
         content=b"explicit-device",
         headers={
             "X-Original-Filename": "IMG_2001.jpeg",
-            "X-ZTB-Uploader": "Peng Yufei",
-            "X-ZTB-DeviceId": "pyf-iphone-13-main",
+            "X-ZTB-Uploader": "User Name",
+            "X-ZTB-DeviceId": "user-iphone-13-main",
             "X-Original-DeviceName": "iPhone",
         },
     )
 
     assert response.status_code == 200
-    assert response.json()["device_id"] == "pyf-iphone-13-main"
-    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "pyf-iphone-13-main")
+    assert response.json()["device_id"] == "user-iphone-13-main"
+    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "user-iphone-13-main")
     assert records[0]["filename"] == "IMG_2001.jpeg"
 
 
@@ -257,7 +257,7 @@ def test_iphone_shortcut_upload_alias_skips_existing_duplicate(api_client, monke
         content=b"shortcut-image",
         headers={
             "X-Original-Filename": "IMG_0948.jpeg",
-            "X-Original-DeviceName": "Peng Yufei s iPhone 13",
+            "X-Original-DeviceName": "User Name s iPhone 13",
         },
     )
 
@@ -283,7 +283,7 @@ def test_iphone_shortcut_upload_skips_photo_deleted_by_system(api_client, monkey
         content=b"deleted-by-system",
         headers={
             "X-Original-Filename": "IMG_3001.jpeg",
-            "X-ZTB-DeviceId": "pyf-iphone-13-main",
+            "X-ZTB-DeviceId": "user-iphone-13-main",
             "X-Original-DeviceName": "iPhone",
         },
     )
@@ -295,7 +295,7 @@ def test_iphone_shortcut_upload_skips_photo_deleted_by_system(api_client, monkey
     assert data["deleted_relative_path"] == "album/deleted.jpeg"
     assert not (image_root / "IMG_3001.jpeg").exists()
 
-    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "pyf-iphone-13-main")
+    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "user-iphone-13-main")
     assert records[0]["filename"] == "IMG_3001.jpeg"
     assert records[0]["import_status"] == "skipped_deleted_locally"
 
@@ -426,7 +426,7 @@ def test_iphone_index_returns_failed_status_when_mtp_copy_fails(api_client, monk
 def test_iphone_index_copy_error_message_is_cleaned():
     message = iphone_context._clean_powershell_error(
         """
-�����ꏊ C:\\Users\\pyf\\AppData\\Local\\Temp\\ztb_iphone_index\\staging\\iphone_index_copy.ps1:103 ����
+�����ꏊ C:\\Users\\User\\AppData\\Local\\Temp\\ztb_iphone_index\\staging\\iphone_index_copy.ps1:103 ����
 :24
 + if ($null -eq $dcim) { throw "DCIM folder not found." }
 +                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
