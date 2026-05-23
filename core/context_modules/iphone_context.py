@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import hashlib
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import HTTPException
 
@@ -39,6 +40,22 @@ IPHONE_DELETE_TIMEOUT_SECONDS = 60
 IPHONE_INDEX_DEFAULT_LIMIT = 1
 IPHONE_INDEX_MAX_LIMIT = 10000
 SUPPORTED_MOBILE_DEVICE_TYPES = {"iphone"}
+IPHONE_SHORTCUT_DEFAULT_DEVICE_ID = "shortcut-upload"
+IPHONE_SHORTCUT_ALBUM = "ShortcutUpload"
+IPHONE_SHORTCUT_DATE_FORMATS = (
+    "%Y/%m/%d %H:%M:%S %Z",
+    "%Y-%m-%d %H:%M:%S %Z",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y/%m/%d %H:%M %Z",
+    "%Y-%m-%d %H:%M %Z",
+    "%Y/%m/%d %H:%M",
+    "%Y-%m-%d %H:%M",
+)
+IPHONE_SHORTCUT_TZINFOS = {
+    "JST": timezone(timedelta(hours=9)),
+    "UTC": timezone.utc,
+}
 
 
 def _normalize_mobile_device_type(device_type: str = "iphone") -> str:
@@ -194,15 +211,18 @@ function Find-ChildFolder {
     }
     return $null
 }
-function Find-DcimFolder {
+function Find-PhotoAlbumRoot {
     param([Parameter(Mandatory = $true)] $Device)
     $deviceFolder = $Device.GetFolder
     $internal = Find-ChildFolder -Folder $deviceFolder -Name "Internal Storage"
     if ($null -ne $internal) {
         $dcim = Find-ChildFolder -Folder $internal -Name "DCIM"
         if ($null -ne $dcim) { return $dcim }
+        return $internal
     }
-    return Find-ChildFolder -Folder $deviceFolder -Name "DCIM"
+    $dcim = Find-ChildFolder -Folder $deviceFolder -Name "DCIM"
+    if ($null -ne $dcim) { return $dcim }
+    return $deviceFolder
 }
 $shell = New-Object -ComObject Shell.Application
 $thisPc = $shell.Namespace(17)
@@ -215,12 +235,12 @@ foreach ($item in Get-ShellFolderItems -Folder $thisPc) {
     }
 }
 if ($null -eq $target) { throw "iPhone device not found: $DeviceId" }
-$dcim = Find-DcimFolder -Device $target
-if ($null -eq $dcim) { throw "DCIM folder not found." }
+$albumRoot = Find-PhotoAlbumRoot -Device $target
+if ($null -eq $albumRoot) { throw "Photo album root not found." }
 $albumName = ""
 $media = $null
 $mediaFolder = $null
-:albumLoop foreach ($album in Get-ShellFolderItems -Folder $dcim) {
+:albumLoop foreach ($album in Get-ShellFolderItems -Folder $albumRoot) {
     if (-not $album.IsFolder) { continue }
     $folder = $album.GetFolder
     foreach ($item in Get-ShellFolderItems -Folder $folder) {
@@ -338,15 +358,18 @@ function Find-ChildFolder {
     }
     return $null
 }
-function Find-DcimFolder {
+function Find-PhotoAlbumRoot {
     param([Parameter(Mandatory = $true)] $Device)
     $deviceFolder = $Device.GetFolder
     $internal = Find-ChildFolder -Folder $deviceFolder -Name "Internal Storage"
     if ($null -ne $internal) {
         $dcim = Find-ChildFolder -Folder $internal -Name "DCIM"
         if ($null -ne $dcim) { return $dcim }
+        return $internal
     }
-    return Find-ChildFolder -Folder $deviceFolder -Name "DCIM"
+    $dcim = Find-ChildFolder -Folder $deviceFolder -Name "DCIM"
+    if ($null -ne $dcim) { return $dcim }
+    return $deviceFolder
 }
 function Get-MtpItemModifiedAt {
     param([Parameter(Mandatory = $true)] $Item)
@@ -414,8 +437,8 @@ foreach ($item in Get-ShellFolderItems -Folder $thisPc) {
     }
 }
 if ($null -eq $target) { throw "iPhone device not found: $DeviceId" }
-$dcim = Find-DcimFolder -Device $target
-if ($null -eq $dcim) { throw "DCIM folder not found." }
+$albumRoot = Find-PhotoAlbumRoot -Device $target
+if ($null -eq $albumRoot) { throw "Photo album root not found." }
 $cutoff = $null
 if ($CutoffModifiedAt.Trim()) {
     $cutoff = [datetime]::Parse($CutoffModifiedAt, [Globalization.CultureInfo]::InvariantCulture)
@@ -426,7 +449,7 @@ if ($SkipRefsPath.Trim() -and (Test-Path -LiteralPath $SkipRefsPath)) {
     foreach ($skipRef in $rawSkipRefs) { $skipRefs[[string]$skipRef] = $true }
 }
 $records = @()
-:albumLoop foreach ($album in Get-ShellFolderItems -Folder $dcim) {
+:albumLoop foreach ($album in Get-ShellFolderItems -Folder $albumRoot) {
     if (-not $album.IsFolder) { continue }
     foreach ($media in Get-ShellFolderItems -Folder $album.GetFolder) {
         if ($media.IsFolder) { continue }
@@ -484,7 +507,7 @@ $records | ConvertTo-Json -Depth 4 -Compress
         timeout=IPHONE_INDEX_TIMEOUT_SECONDS,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "iPhone index copy failed")
+        raise RuntimeError(_clean_powershell_error(completed.stderr, completed.stdout, "iPhone index copy failed"))
     output = completed.stdout.strip()
     if not output:
         return []
@@ -494,12 +517,284 @@ $records | ConvertTo-Json -Depth 4 -Compress
     return parsed if isinstance(parsed, list) else []
 
 
+def _clean_powershell_error(stderr: str, stdout: str = "", fallback: str = "PowerShell command failed") -> str:
+    raw_message = str(stderr or stdout or "").strip()
+    if not raw_message:
+        return fallback
+
+    for line in raw_message.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        if cleaned.startswith("+") or cleaned.startswith("~"):
+            continue
+        if "CategoryInfo" in cleaned or "FullyQualifiedErrorId" in cleaned:
+            continue
+        if "場所 " in cleaned or "����" in cleaned:
+            continue
+        if cleaned.endswith(".") and not cleaned.lower().startswith("at "):
+            return cleaned
+
+    known_errors = [
+        "DCIM folder not found.",
+        "Cannot open Shell namespace for This PC.",
+    ]
+    for known_error in known_errors:
+        if known_error in raw_message:
+            return known_error
+
+    first_line = next((line.strip() for line in raw_message.splitlines() if line.strip()), "")
+    return first_line or fallback
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _header_value(headers: Mapping[str, str], name: str, default: str = "") -> str:
+    value = headers.get(name, default)
+    return str(value or "").strip()
+
+
+def _safe_upload_filename(value: str) -> str:
+    raw = str(value or "").strip()
+    if "/" in raw or "\\" in raw:
+        raise HTTPException(status_code=400, detail="Invalid upload filename")
+    filename = Path(raw).name.strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="X-Original-Filename is required")
+    if filename in {".", ".."} or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid upload filename")
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported upload file type: {suffix or filename}")
+    return filename
+
+
+def _safe_identity_part(value: str, fallback: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        normalized = fallback
+    for char in ("/", "\\", "\r", "\n", "\t"):
+        normalized = normalized.replace(char, " ")
+    return " ".join(normalized.split()) or fallback
+
+
+def _shortcut_device_identity(headers: Mapping[str, str]) -> tuple[str, str, str, str]:
+    device_name = _safe_identity_part(
+        _header_value(headers, "X-Original-DeviceName"),
+        IPHONE_SHORTCUT_DEFAULT_DEVICE_ID,
+    )
+    device_model = _safe_identity_part(_header_value(headers, "X-Original-DeviceModel"), "")
+    uploader = _safe_identity_part(
+        _header_value(headers, "X-ZTB-Uploader")
+        or _header_value(headers, "X-Original-Uploader")
+        or _header_value(headers, "X-Original-Owner"),
+        "",
+    )
+    explicit_device_id = _safe_identity_part(
+        _header_value(headers, "X-ZTB-DeviceId")
+        or _header_value(headers, "X-Original-DeviceId"),
+        "",
+    )
+
+    if explicit_device_id:
+        device_id = explicit_device_id
+    elif uploader:
+        device_id = f"{uploader}::{device_name}"
+    else:
+        device_id = device_name
+    return device_id, device_name, device_model, uploader
+
+
+def _parse_human_size(value: str) -> int:
+    raw = str(value or "").strip()
+    if not raw:
+        return 0
+    parts = raw.replace(",", "").split()
+    try:
+        number = float(parts[0])
+    except (ValueError, IndexError):
+        return 0
+    unit = parts[1].lower() if len(parts) > 1 else "b"
+    factors = {
+        "b": 1,
+        "byte": 1,
+        "bytes": 1,
+        "kb": 1024,
+        "mb": 1024 * 1024,
+        "gb": 1024 * 1024 * 1024,
+    }
+    return int(number * factors.get(unit, 1))
+
+
+def _parse_iphone_shortcut_time(value: str) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    normalized = f"{raw[:10]} {raw[11:]}" if len(raw) > 10 and raw[10] == "T" else raw
+    for tz_name, tz_value in IPHONE_SHORTCUT_TZINFOS.items():
+        if normalized.endswith(f" {tz_name}"):
+            base = normalized[: -len(tz_name)].strip()
+            for fmt in IPHONE_SHORTCUT_DATE_FORMATS:
+                if "%Z" in fmt:
+                    continue
+                try:
+                    return datetime.strptime(base, fmt).replace(tzinfo=tz_value)
+                except ValueError:
+                    continue
+
+    for fmt in IPHONE_SHORTCUT_DATE_FORMATS:
+        try:
+            parsed = datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=IPHONE_SHORTCUT_TZINFOS["JST"])
+        return parsed
+
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=IPHONE_SHORTCUT_TZINFOS["JST"])
+    return parsed
+
+
+def _local_time_text(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return value.astimezone().replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _apply_portable_file_times(path: Path, created_at: datetime | None, modified_at: datetime | None) -> None:
+    timestamp_dt = modified_at or created_at
+    if timestamp_dt is None:
+        return
+    timestamp = timestamp_dt.timestamp()
+    try:
+        path.touch()
+        os.utime(path, (timestamp, timestamp))
+    except OSError:
+        return
+    _apply_iphone_file_times(path, _local_time_text(created_at), _local_time_text(modified_at))
+
+
+def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
+    if not body:
+        raise HTTPException(status_code=400, detail="Upload body is empty")
+
+    filename = _safe_upload_filename(_header_value(headers, "X-Original-Filename", "photo.jpg"))
+    created_at = _parse_iphone_shortcut_time(_header_value(headers, "X-Original-CreateDate"))
+    modified_at = _parse_iphone_shortcut_time(_header_value(headers, "X-Original-UpdateDate"))
+    device_id, device_name, device_model, uploader = _shortcut_device_identity(headers)
+    file_type = _header_value(headers, "X-Original-FileType")
+    declared_size = _parse_human_size(_header_value(headers, "X-Original-FileSize"))
+
+    settings = load_settings()
+    active_root = Path(settings["active_root"]).expanduser().resolve()
+    database_path = root_database_path(active_root)
+    indexed_at = datetime.now(timezone.utc).isoformat()
+    imported_at = indexed_at
+
+    with tempfile.TemporaryDirectory(prefix="ztb_iphone_upload_") as temp_name:
+        staging_dir = Path(temp_name)
+        staged_path = staging_dir / filename
+        staged_path.write_bytes(body)
+        _apply_portable_file_times(staged_path, created_at, modified_at)
+
+        strict_hash = _sha256_file(staged_path)
+        phash = compute_phash(str(staged_path)) or ""
+        size = staged_path.stat().st_size
+        record = {
+            "device_name": device_name,
+            "device_model": device_model,
+            "uploader": uploader,
+            "album": IPHONE_SHORTCUT_ALBUM,
+            "filename": filename,
+            "size": size,
+            "declared_size": declared_size,
+            "file_type": file_type,
+            "created_at": _local_time_text(created_at),
+            "modified_at": _local_time_text(modified_at),
+            "strict_hash": strict_hash,
+            "phash": phash,
+            "indexed_at": indexed_at,
+        }
+
+        mobile_repository = MobileRepository(database_path)
+        mobile_repository.save_index(
+            device_type="iphone",
+            device_id=device_id,
+            device_name=device_name,
+            indexed_at=indexed_at,
+            records=[record],
+        )
+
+        hash_repository = HashDbRepository(database_path)
+        existing_local_path = _find_existing_strict_duplicate(hash_repository.load_hash_db(), strict_hash, active_root)
+        if existing_local_path:
+            mobile_repository.mark_skipped_duplicate(
+                device_type="iphone",
+                device_id=device_id,
+                album=IPHONE_SHORTCUT_ALBUM,
+                filename=filename,
+                existing_local_path=existing_local_path,
+                imported_at=imported_at,
+            )
+            return {
+                "status": "skipped_duplicate",
+                "imported": False,
+                "file": filename,
+                "existing_local_path": existing_local_path,
+                "size": size,
+                "declared_size": declared_size,
+                "device_name": device_name,
+                "device_id": device_id,
+                "device_model": device_model,
+                "uploader": uploader,
+                "database_path": str(database_path),
+            }
+
+        imported = _import_staged_iphone_media(
+            staged_path,
+            filename,
+            active_root,
+            _local_time_text(created_at),
+            _local_time_text(modified_at),
+        )
+        hash_repository.add_hash_record("strict", strict_hash, str(imported))
+        mobile_repository.mark_imported(
+            device_type="iphone",
+            device_id=device_id,
+            album=IPHONE_SHORTCUT_ALBUM,
+            filename=filename,
+            local_path=imported,
+            imported_at=imported_at,
+        )
+        _invalidate_gallery_index(active_root)
+
+    return {
+        "status": "success",
+        "imported": True,
+        "file": filename,
+        "local_path": str(imported),
+        "size": size,
+        "declared_size": declared_size,
+        "device_name": device_name,
+        "device_id": device_id,
+        "device_model": device_model,
+        "uploader": uploader,
+        "created_at": _local_time_text(created_at),
+        "modified_at": _local_time_text(modified_at),
+        "database_path": str(database_path),
+    }
 
 
 def _parse_iphone_target(target: str) -> tuple[str, str]:
@@ -748,13 +1043,35 @@ def build_iphone_photo_index(
     with tempfile.TemporaryDirectory(prefix="ztb_iphone_index_") as temp_name:
         staging_dir = Path(temp_name) / "staging"
         staging_dir.mkdir(parents=True, exist_ok=True)
-        copied_records = _copy_iphone_media_for_index(
-            normalized_device_id,
-            staging_dir,
-            "",
-            skip_refs,
-            copy_limit,
-        )
+        try:
+            copied_records = _copy_iphone_media_for_index(
+                normalized_device_id,
+                staging_dir,
+                "",
+                skip_refs,
+                copy_limit,
+            )
+        except RuntimeError as exc:
+            return {
+                "status": "failed",
+                "device_id": normalized_device_id,
+                "device_name": normalized_device_id,
+                "album_count": 0,
+                "indexed": 0,
+                "imported": 0,
+                "skipped_duplicate": 0,
+                "already_imported": 0,
+                "imported_items": [],
+                "skipped_duplicate_items": [],
+                "already_imported_items": [],
+                "local_path": "",
+                "existing_local_path": "",
+                "skipped_existing_refs": len(skip_refs),
+                "indexed_at": indexed_at,
+                "copy_all": copy_all,
+                "limit": requested_limit,
+                "message": str(exc),
+            }
         for record in copied_records:
             temp_path = Path(str(record.get("temp_path", "")))
             if not temp_path.exists() or not temp_path.is_file():

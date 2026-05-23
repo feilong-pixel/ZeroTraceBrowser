@@ -139,6 +139,134 @@ def test_iphone_delete_api_deletes_selected_photo(api_client, monkeypatch):
     assert data["filename"] == "IMG_0001.JPG"
 
 
+def test_iphone_shortcut_upload_imports_header_image(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-upload")
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"shortcut-image",
+        headers={
+            "X-Original-Filename": "IMG_0948.jpeg",
+            "X-Original-CreateDate": "2026/05/17 10:26:47 JST",
+            "X-Original-UpdateDate": "2026/05/17 11:42:31 JST",
+            "X-Original-FileSize": "2.5 MB",
+            "X-Original-FileType": "jpeg",
+            "X-ZTB-Uploader": "Peng Yufei",
+            "X-Original-DeviceName": "Peng Yufei s iPhone 13",
+            "X-Original-DeviceModel": "iPhone",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["device_id"] == "Peng Yufei::Peng Yufei s iPhone 13"
+    assert data["uploader"] == "Peng Yufei"
+    imported = Path(data["local_path"])
+    assert imported.is_relative_to(image_root)
+    assert imported.parts[-4:] == ("2026", "05", "17", "IMG_0948.jpeg")
+    assert imported.read_bytes() == b"shortcut-image"
+    assert data["declared_size"] == int(2.5 * 1024 * 1024)
+
+    records = MobileRepository(root_database_path(image_root)).list_import_records(
+        "iphone",
+        "Peng Yufei::Peng Yufei s iPhone 13",
+    )
+    assert records[0]["album"] == "ShortcutUpload"
+    assert records[0]["filename"] == "IMG_0948.jpeg"
+    assert records[0]["local_path"] == str(imported)
+    assert records[0]["import_status"] == "imported"
+
+
+def test_iphone_shortcut_upload_separates_people_with_same_device_name(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: f"phash-{Path(path).read_text(encoding='utf-8')}")
+
+    for owner, content, filename in (
+        ("Peng Yufei", b"person-a", "IMG_1001.jpeg"),
+        ("Family Member", b"person-b", "IMG_1002.jpeg"),
+    ):
+        response = client.post(
+            "/api/iphone/upload",
+            content=content,
+            headers={
+                "X-Original-Filename": filename,
+                "X-ZTB-Uploader": owner,
+                "X-Original-DeviceName": "iPhone 13",
+            },
+        )
+        assert response.status_code == 200
+
+    repository = MobileRepository(root_database_path(image_root))
+    owner_a_records = repository.list_import_records("iphone", "Peng Yufei::iPhone 13")
+    owner_b_records = repository.list_import_records("iphone", "Family Member::iPhone 13")
+
+    assert [record["filename"] for record in owner_a_records] == ["IMG_1001.jpeg"]
+    assert [record["filename"] for record in owner_b_records] == ["IMG_1002.jpeg"]
+
+
+def test_iphone_shortcut_upload_accepts_explicit_device_id(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-explicit")
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"explicit-device",
+        headers={
+            "X-Original-Filename": "IMG_2001.jpeg",
+            "X-ZTB-Uploader": "Peng Yufei",
+            "X-ZTB-DeviceId": "pyf-iphone-13-main",
+            "X-Original-DeviceName": "iPhone",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["device_id"] == "pyf-iphone-13-main"
+    records = MobileRepository(root_database_path(image_root)).list_import_records("iphone", "pyf-iphone-13-main")
+    assert records[0]["filename"] == "IMG_2001.jpeg"
+
+
+def test_iphone_shortcut_upload_rejects_path_filename(api_client):
+    client, *_ = api_client
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"bad",
+        headers={"X-Original-Filename": "../IMG_0948.jpeg"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid upload filename"
+
+
+def test_iphone_shortcut_upload_alias_skips_existing_duplicate(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    existing = image_root / "existing.jpeg"
+    existing.write_bytes(b"shortcut-image")
+    strict_hash = "6ab7af8533feae986ea1d5358b7f8504fe2b129f138cdc7c5ae293233e24bcb0"
+    HashDbRepository(root_database_path(image_root)).save_hash_db(
+        {"phash": {}, "strict": {strict_hash: [str(existing)]}},
+        source_path=root_database_path(image_root),
+    )
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-upload")
+
+    response = client.post(
+        "/upload",
+        content=b"shortcut-image",
+        headers={
+            "X-Original-Filename": "IMG_0948.jpeg",
+            "X-Original-DeviceName": "Peng Yufei s iPhone 13",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "skipped_duplicate"
+    assert data["existing_local_path"] == str(existing.resolve())
+
+
 def test_iphone_index_writes_import_records(api_client, monkeypatch):
     _, _, image_root, _ = api_client
 
@@ -244,6 +372,39 @@ def test_iphone_index_copy_all_passes_unlimited_copy_limit(api_client, monkeypat
     assert captured_limits == [0]
     assert result["copy_all"] is True
     assert result["limit"] == 7
+
+
+def test_iphone_index_returns_failed_status_when_mtp_copy_fails(api_client, monkeypatch):
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        raise RuntimeError("DCIM folder not found.")
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone", limit=5)
+
+    assert result["status"] == "failed"
+    assert result["indexed"] == 0
+    assert result["imported"] == 0
+    assert result["message"] == "DCIM folder not found."
+
+
+def test_iphone_index_copy_error_message_is_cleaned():
+    message = iphone_context._clean_powershell_error(
+        """
+�����ꏊ C:\\Users\\pyf\\AppData\\Local\\Temp\\ztb_iphone_index\\staging\\iphone_index_copy.ps1:103 ����
+:24
++ if ($null -eq $dcim) { throw "DCIM folder not found." }
++                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (DCIM folder not found.:String) [], RuntimeException
+    + FullyQualifiedErrorId : DCIM folder not found.
+""",
+        "",
+        "iPhone index copy failed",
+    )
+
+    assert message == "DCIM folder not found."
 
 
 def test_iphone_file_time_restore_uses_created_and_modified(monkeypatch, tmp_path):

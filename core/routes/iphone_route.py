@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from core.schemas import IphoneDeleteRequest, IphoneIndexRequest
 
@@ -31,5 +31,18 @@ def create_iphone_router(ctx: Any) -> APIRouter:
     @router.post("/api/iphone/delete")
     def delete_iphone_photo(payload: IphoneDeleteRequest) -> dict[str, Any]:
         return ctx.delete_mobile_photo("iphone", payload.device_id, payload.target)
+
+    async def upload_iphone_photo_from_shortcut(request: Request) -> dict[str, Any]:
+        return ctx.import_iphone_shortcut_upload(request.headers, await request.body())
+
+    # POST /api/iphone/upload
+    @router.post("/api/iphone/upload")
+    async def upload_iphone_photo(request: Request) -> dict[str, Any]:
+        return await upload_iphone_photo_from_shortcut(request)
+
+    # POST /upload
+    @router.post("/upload")
+    async def upload_iphone_photo_alias(request: Request) -> dict[str, Any]:
+        return await upload_iphone_photo_from_shortcut(request)
 
     return router

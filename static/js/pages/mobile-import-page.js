@@ -211,6 +211,10 @@ async function buildDeviceIndex(els) {
       const data = await response.json();
       lastData = data;
 
+      if (data.status === "failed") {
+        throw new Error(data.message || t("mobileImport.indexFailed"));
+      }
+
       if ((data.indexed ?? 0) < 1) {
         appendLog(els, t("mobileImport.noMorePhotos"));
         break;
