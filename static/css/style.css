@@ -2850,15 +2850,15 @@ button:disabled:hover {
   }
 
   .gallery-main {
-    grid-template-rows: auto auto;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .view-panel {
-    height: min(68vh, 620px);
+    height: min(72vh, 660px);
   }
 
   .gallery-page.is-date-filter-open .view-panel {
-    height: min(60vh, 560px);
+    height: min(62vh, 580px);
   }
 
   .gallery-index-button {
@@ -2946,6 +2946,231 @@ button:disabled:hover {
   .similarity-search-actions button,
   .similarity-result-actions button {
     width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --page-pad: 10px;
+    --panel-gap: 8px;
+    --gallery-card-height: 178px;
+    --gallery-thumb-height: 126px;
+  }
+
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .gallery-page {
+    height: 100dvh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .gallery-page.has-selection {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .gallery-main {
+    min-height: 0;
+    height: 100%;
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .gallery-header {
+    gap: 6px;
+  }
+
+  .gallery-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .date-filter-toggle {
+    width: auto;
+    min-width: 58px;
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+
+  .gallery-search input {
+    min-height: 34px;
+    font-size: 12px;
+  }
+
+  .date-filter-panel {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .date-filter-field {
+    min-width: 0;
+  }
+
+  .gallery-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .meta-card {
+    min-width: 0;
+    padding: 7px 8px;
+    border-radius: 8px;
+  }
+
+  .meta-card span,
+  .meta-inline-note {
+    display: none;
+  }
+
+  .meta-card strong {
+    min-width: 0;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #imageCount {
+    font-size: 13px;
+  }
+
+  .view-panel,
+  .gallery-page.is-date-filter-open .view-panel {
+    height: auto;
+    min-height: 0;
+  }
+
+  .gallery-scroller {
+    padding-right: 0;
+  }
+
+  .gallery-virtual-row {
+    gap: 8px;
+  }
+
+  .card {
+    gap: 5px;
+    padding: 6px;
+    border-radius: 10px;
+  }
+
+  .thumb {
+    border-radius: 8px;
+  }
+
+  .card-body {
+    min-height: 32px;
+  }
+
+  .file-name {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .file-path {
+    display: none;
+  }
+
+  .gallery-index {
+    top: 8px;
+    right: 4px;
+    bottom: 8px;
+    width: 36px;
+    gap: 4px;
+    padding: 4px 0;
+    opacity: 0.34;
+  }
+
+  .gallery-index-button {
+    width: 34px;
+    min-width: 34px;
+    height: 22px;
+    min-height: 22px;
+    font-size: 8px;
+  }
+
+  .gallery-sidebar {
+    display: none;
+    height: auto;
+    max-height: 32dvh;
+    padding: 8px;
+    overflow-y: auto;
+    border-top: 1px solid var(--line);
+    background: rgba(251, 248, 243, 0.94);
+  }
+
+  .gallery-page.has-selection .gallery-sidebar {
+    display: block;
+  }
+
+  .sidebar-header,
+  .tools-panel,
+  .duplicates-panel {
+    display: none;
+  }
+
+  .panel {
+    margin-top: 0;
+    padding: 8px;
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .selection-panel {
+    gap: 6px;
+  }
+
+  .selection-panel h2,
+  .selection-context,
+  .selection-hint {
+    display: none;
+  }
+
+  .selection-summary {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: 6px;
+  }
+
+  .selection-count,
+  .selection-file-name {
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .selection-primary-action,
+  .selection-secondary-actions,
+  .selection-tertiary-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .selection-primary-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .selection-primary-action .primary-button,
+  .selection-secondary-actions button,
+  .selection-tertiary-actions button {
+    min-height: 34px;
+    padding: 5px 6px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+
+  .sidebar-toggle {
+    display: none;
   }
 }
 

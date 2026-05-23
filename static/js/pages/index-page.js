@@ -244,6 +244,8 @@ function updateSelection(els, state) {
     );
   }
 
+  els.galleryPage?.classList.toggle("has-selection", hasSelection);
+
   if (els.previewSelectedButton) {
     els.previewSelectedButton.disabled = !selectedImage || !imageExists(selectedImage);
   }
@@ -447,6 +449,17 @@ function getGalleryMinCardWidth(els) {
   return els.galleryScroller?.clientWidth <= 720 ? 150 : 170;
 }
 
+function getCssPixelValue(name, fallback) {
+  const value = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(name),
+  );
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function getVirtualCardHeight() {
+  return getCssPixelValue("--gallery-card-height", VIRTUAL_CARD_HEIGHT);
+}
+
 function getVirtualColumnCount(els) {
   const width = els.gallery?.clientWidth || els.galleryScroller?.clientWidth || 0;
   const minCardWidth = getGalleryMinCardWidth(els);
@@ -456,7 +469,7 @@ function getVirtualColumnCount(els) {
 
 function getLoadMoreThreshold(els, state) {
   const pageRows = Math.ceil(IMAGE_PAGE_SIZE / Math.max(1, state.virtual.columns || getVirtualColumnCount(els)));
-  const pageHeight = pageRows * (VIRTUAL_CARD_HEIGHT + VIRTUAL_GAP);
+  const pageHeight = pageRows * (getVirtualCardHeight() + VIRTUAL_GAP);
   const viewportHeight = els.galleryScroller?.clientHeight || window.innerHeight;
 
   return Math.max(viewportHeight * 2, pageHeight * LOAD_MORE_THRESHOLD_PAGES);
@@ -580,6 +593,7 @@ function createGalleryCard(els, state, item) {
 
 function buildVirtualGalleryLayout(els, state) {
   const columns = getVirtualColumnCount(els);
+  const cardHeight = getVirtualCardHeight();
   const rows = [];
   const groups = [];
   let y = 0;
@@ -617,9 +631,9 @@ function buildVirtualGalleryLayout(els, state) {
         key: currentKey,
         items: currentItems.slice(index, index + columns),
         y,
-        height: VIRTUAL_CARD_HEIGHT,
+        height: cardHeight,
       });
-      y += VIRTUAL_CARD_HEIGHT + VIRTUAL_GAP;
+      y += cardHeight + VIRTUAL_GAP;
     }
 
     currentItems = [];
