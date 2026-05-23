@@ -414,13 +414,11 @@ function Copy-MtpItem {
     Get-ChildItem -LiteralPath $albumDir -File -Force | ForEach-Object { $before[$_.FullName] = $true }
     $destination.CopyHere($Item, 16)
     $copied = $null
+    $expectedPath = Join-Path $albumDir $Item.Name
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 250
-        $copied = Get-ChildItem -LiteralPath $albumDir -File -Force |
-            Where-Object { -not $before.ContainsKey($_.FullName) } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
+        $copied = Get-Item -LiteralPath $expectedPath -ErrorAction SilentlyContinue
         if ($null -ne $copied -and $copied.Length -gt 0) { break }
     }
     if ($null -eq $copied) { return $null }
@@ -1014,9 +1012,13 @@ def _existing_local_path_for_record(records: list[dict[str, Any]], album: str, f
         if str(record.get("album", "")) != album or str(record.get("filename", "")) != filename:
             continue
         local_path = str(record.get("local_path") or record.get("existing_local_path") or "").strip()
-        if local_path and Path(local_path).expanduser().is_file():
+        if local_path and Path(local_path).expanduser().is_file() and _local_path_matches_mobile_filename(local_path, filename):
             return local_path
     return ""
+
+
+def _local_path_matches_mobile_filename(local_path: str | Path, filename: str) -> bool:
+    return Path(local_path).name.lower() == str(filename or "").strip().lower()
 
 
 def _existing_iphone_refs(records: list[dict[str, Any]]) -> list[str]:
@@ -1024,8 +1026,8 @@ def _existing_iphone_refs(records: list[dict[str, Any]]) -> list[str]:
     for record in records:
         album = str(record.get("album", "")).strip()
         filename = str(record.get("filename", "")).strip()
-        local_path = str(record.get("local_path") or record.get("existing_local_path") or "").strip()
-        if album and filename and local_path and Path(local_path).expanduser().is_file():
+        import_status = str(record.get("import_status", "")).strip()
+        if album and filename and import_status in {"imported", "skipped_duplicate", "skipped_deleted_locally"}:
             refs.append(f"{album}/{filename}")
     return refs
 
@@ -1100,6 +1102,8 @@ def build_iphone_photo_index(
         for record in copied_records:
             temp_path = Path(str(record.get("temp_path", "")))
             if not temp_path.exists() or not temp_path.is_file():
+                continue
+            if temp_path.name.lower() != str(record.get("filename", "")).strip().lower():
                 continue
             strict_hash = _sha256_file(temp_path)
             phash = compute_phash(str(temp_path)) or ""

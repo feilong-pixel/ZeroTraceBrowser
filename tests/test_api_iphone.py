@@ -578,6 +578,68 @@ def test_iphone_index_skips_existing_refs_and_imports_first_unprocessed_item(api
     assert [record["filename"] for record in records] == ["IMG_0001.JPG", "IMG_0002.JPG"]
 
 
+def test_iphone_index_skips_previous_strict_duplicate_refs(api_client, monkeypatch):
+    _, _, image_root, _ = api_client
+    existing = image_root / "2026" / "05" / "18" / "IMG_5611.JPG"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("same-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    repository = MobileRepository(database_path)
+    repository.save_index(
+        device_type="iphone",
+        device_id="Apple iPhone",
+        device_name="Apple iPhone",
+        indexed_at="2026-05-18T00:00:00+00:00",
+        records=[
+            {
+                "device_name": "Apple iPhone",
+                "album": "201806_a",
+                "filename": "IMG_5402.JPG",
+                "size": existing.stat().st_size,
+                "modified_at": "2026-05-18 10:00:00",
+                "strict_hash": "duplicate-hash",
+                "phash": "duplicate-phash",
+            }
+        ],
+    )
+    repository.mark_skipped_duplicate(
+        device_type="iphone",
+        device_id="Apple iPhone",
+        album="201806_a",
+        filename="IMG_5402.JPG",
+        existing_local_path=existing,
+        imported_at="2026-05-18T01:00:00+00:00",
+    )
+
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-next")
+    captured_skip_refs = []
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        captured_skip_refs.append(skip_refs)
+        temp_path = temp_dir / "IMG_5403.JPG"
+        temp_path.write_text("next-content", encoding="utf-8")
+        return [
+            {
+                "device_id": device_id,
+                "device_name": "Apple iPhone",
+                "album": "201806_a",
+                "filename": "IMG_5403.JPG",
+                "temp_path": str(temp_path),
+                "size": temp_path.stat().st_size,
+                "modified_at": "2026-05-18 09:59:00",
+            }
+        ]
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone")
+
+    assert result["status"] == "imported"
+    assert result["skipped_existing_refs"] == 1
+    assert captured_skip_refs == [["201806_a/IMG_5402.JPG"]]
+
+
 def test_iphone_index_does_not_downgrade_existing_import_when_same_item_is_returned(api_client, monkeypatch):
     _, _, image_root, _ = api_client
     previous = image_root / "2026" / "05" / "18" / "IMG_0001.JPG"
@@ -747,3 +809,46 @@ def test_iphone_index_skips_existing_strict_duplicate(api_client, monkeypatch):
     assert records[0]["local_path"] == ""
     assert records[0]["existing_local_path"] == str(existing.resolve())
     assert HashDbRepository(database_path).load_hash_db()["strict"][strict_hash] == [str(existing)]
+
+
+def test_iphone_index_ignores_mtp_copy_name_mismatch(api_client, monkeypatch):
+    _, _, image_root, _ = api_client
+
+    database_path = root_database_path(image_root)
+    existing = image_root / "2019" / "08" / "10" / "IMG_2064.JPG"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("jpg-content", encoding="utf-8")
+    strict_hash = "c48b477601d78d5aa0d0828b74584711c165904c808cb1a9ab849143b62a70aa"
+    HashDbRepository(database_path).save_hash_db(
+        {"phash": {}, "strict": {strict_hash: [str(existing)]}},
+        source_path=database_path,
+    )
+
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-demo")
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        temp_path = temp_dir / "201909_a" / "IMG_2064.JPG"
+        temp_path.parent.mkdir(parents=True)
+        temp_path.write_text("jpg-content", encoding="utf-8")
+        return [
+            {
+                "device_id": device_id,
+                "device_name": "Apple iPhone",
+                "album": "201909_a",
+                "filename": "IMG_2325.MOV",
+                "temp_path": str(temp_path),
+                "size": temp_path.stat().st_size,
+                "modified_at": "2026-05-18 10:00:00",
+            }
+        ]
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone")
+
+    assert result["status"] == "indexed"
+    assert result["indexed"] == 0
+    assert result["imported"] == 0
+    assert result["skipped_duplicate"] == 0
+    assert MobileRepository(database_path).list_import_records("iphone", "Apple iPhone") == []

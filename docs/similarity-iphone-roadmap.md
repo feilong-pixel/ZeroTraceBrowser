@@ -161,6 +161,39 @@ Start with normal filesystem-visible imports:
 
 Do not start with direct MTP/iPhone device browsing unless it becomes necessary. Direct device access is platform-sensitive and harder to test.
 
+### Import Direction
+
+The preferred long-term direction is a local Wi-Fi import loop:
+
+```text
+ZeroTraceBrowser requests the next small batch
+  -> phone app uploads the requested originals over local Wi-Fi
+  -> ZeroTraceBrowser hashes, dedupes, imports, and records results
+  -> ZeroTraceBrowser requests the next batch
+```
+
+Keep the local app in control of import state, target paths, strict hash checks,
+deleted-local markers, and audit logs. The phone-side tool should only select
+and upload original media bytes. It should not delete photos, choose final local
+paths, or decide duplicate policy.
+
+The first production path should be HTTP upload over the LAN, using paired
+device identity and small batches. Direct iPhone MTP browsing should remain a
+fallback or experimental path for device probing and small manual recovery
+imports, not the main large-library import mechanism.
+
+### Batch Rules
+
+Use small batches, for example 5 items, until reliability is proven:
+
+- Each uploaded item is acknowledged individually.
+- Imported, strict-duplicate, already-imported, deleted-local, and failed states
+  are persisted in the root workspace.
+- A completed mobile reference is skipped by later batches, even when the
+  strict duplicate points to a differently named local file.
+- If transfer stops, the next session resumes from persisted mobile import
+  records rather than trusting client memory alone.
+
 ### Import Behavior
 
 Default behavior:
