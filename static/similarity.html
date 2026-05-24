@@ -38,20 +38,23 @@
               <label for="similarityMethodSelect" data-i18n="similarity.method">Method</label>
               <select id="similarityMethodSelect">
                 <option value="phash" data-i18n="similarity.methodPhash">pHash</option>
-                <option value="embedding" data-i18n="similarity.methodEmbedding" disabled>Embedding</option>
+                <option value="document" data-i18n="similarity.methodDocument">Document Layout</option>
+                <option value="feature" data-i18n="similarity.methodFeature">ORB/AKAZE Features</option>
+                <option value="embedding" data-i18n="similarity.methodEmbedding">Embedding</option>
               </select>
             </div>
             <div>
               <label for="similarityThresholdInput" data-i18n="similarity.threshold">Threshold</label>
-              <input id="similarityThresholdInput" type="number" min="0" max="64" value="8" />
+              <input id="similarityThresholdInput" type="number" min="0" max="256" value="8" />
             </div>
             <div>
               <label for="similarityLimitInput" data-i18n="similarity.limit">Result limit</label>
-              <input id="similarityLimitInput" type="number" min="1" max="200" value="50" />
+              <input id="similarityLimitInput" type="number" min="1" max="200" value="5" />
             </div>
           </div>
           <div class="similarity-search-actions">
             <button id="searchSimilarityButton" type="button" class="primary-button" data-i18n="similarity.searchSimilar">Find Similar</button>
+            <button id="buildSimilarityCacheButton" type="button" data-i18n="similarity.buildCache">Build Similarity Cache</button>
             <button id="clearSimilarityButton" type="button" data-i18n="similarity.clear">Clear</button>
           </div>
         </section>
@@ -91,7 +94,7 @@
       <aside class="sidebar gallery-sidebar tasks-sidebar">
         <header class="sidebar-header sidebar-header-minimal">
           <div class="sidebar-header-actions">
-            <a href="/index.html" class="button-link" data-i18n="similarity.backToGallery">Back To Gallery</a>
+            <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="similarity.backToGallery">Back To Gallery</a>
           </div>
         </header>
 

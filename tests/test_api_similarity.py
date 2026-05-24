@@ -4,14 +4,41 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PIL import Image, ImageDraw
+
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
+from core.storage.similarity_repository import SimilarityRepository
 from tests.test_api_user_flow import create_test_image
 
 import app as ztb_app
+import core.context_modules.similarity_context as similarity_context
+
+
+def create_document_photo(path: Path, *, shift: int = 0, rotate: float = 0) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (420, 560), (232, 229, 218))
+    draw = ImageDraw.Draw(image)
+    paper = (55 + shift, 45, 365 + shift, 505)
+    draw.rectangle(paper, fill=(247, 245, 236), outline=(24, 24, 24), width=3)
+    for index in range(1, 11):
+        y = paper[1] + index * 38
+        draw.line((paper[0], y, paper[2], y), fill=(40, 40, 40), width=2)
+    for index in range(1, 5):
+        x = paper[0] + index * 62
+        draw.line((x, paper[1], x, paper[3]), fill=(50, 50, 50), width=2)
+    for index in range(7):
+        y = paper[1] + 22 + index * 55
+        draw.ellipse((paper[0] + 18, y, paper[0] + 48, y + 24), outline=(170, 30, 30), width=4)
+        draw.text((paper[0] + 88, y - 2), "S", fill=(25, 45, 150))
+        draw.text((paper[2] - 92, y - 4), "14:00", fill=(180, 40, 40))
+    if rotate:
+        image = image.rotate(rotate, expand=True, fillcolor=(45, 43, 40))
+    image.save(path)
+    return path
 
 
 def save_phash_records(root: Path, paths: list[Path]) -> None:
@@ -89,13 +116,286 @@ def test_similarity_search_returns_phash_matches_for_selected_image(api_client) 
     assert payload["items"][0]["distance"] == 0
 
 
+def test_similarity_search_document_method_matches_form_layout_photos(api_client) -> None:
+    client, _, image_root, _ = api_client
+    query = create_document_photo(image_root / "2026" / "05" / "22" / "IMG_4394.jpeg")
+    match_one = create_document_photo(image_root / "2026" / "05" / "21" / "IMG_4392.jpeg", shift=-18, rotate=3)
+    match_two = create_document_photo(image_root / "2026" / "05" / "21" / "IMG_4393.jpeg", shift=12, rotate=-2)
+    create_test_image(image_root / "other.jpg", color=(160, 32, 96))
+    save_phash_records(image_root, [query, match_one, match_two])
+
+    response = client.post(
+        "/api/similarity/search",
+        json={
+            "relative_path": "IMG_4394.jpeg",
+            "method": "document",
+            "threshold": 96,
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    paths = {item["relative_path"] for item in payload["items"]}
+    assert payload["method"] == "document"
+    assert paths == {
+        "2026/05/21/IMG_4392.jpeg",
+        "2026/05/21/IMG_4393.jpeg",
+    }
+    assert all(item["source"] == "document" for item in payload["items"])
+
+
+def test_similarity_search_document_method_uses_persistent_cache(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    query = create_document_photo(image_root / "query.jpeg")
+    match = create_document_photo(image_root / "match.jpeg", shift=10)
+    save_phash_records(image_root, [query, match])
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "query.jpeg", "method": "document", "threshold": 96, "limit": 10},
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+    def fail_document_hash(path: str):
+        raise AssertionError(f"document hash should be loaded from cache: {path}")
+
+    monkeypatch.setattr(similarity_context, "compute_document_hash", fail_document_hash)
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "query.jpeg", "method": "document", "threshold": 96, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+
+def test_similarity_search_feature_method_ranks_orb_akaze_matches(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    query = create_test_image(image_root / "query.jpg")
+    close_match = create_test_image(image_root / "same-form.jpg", color=(10, 20, 30))
+    far_match = create_test_image(image_root / "different.jpg", color=(200, 120, 30))
+    save_phash_records(image_root, [query, close_match, far_match])
+
+    monkeypatch.setattr(similarity_context, "_feature_descriptors", lambda path: ("orb", 20, object()))
+
+    def fake_feature_distance(left: Path, right: Path, left_features=None):
+        if right.name == "same-form.jpg":
+            return 22, 0.78, "orb"
+        if right.name == "different.jpg":
+            return 91, 0.09, "orb"
+        return None
+
+    monkeypatch.setattr(similarity_context, "_feature_similarity_distance", fake_feature_distance)
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "query.jpg", "method": "feature", "threshold": 70, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["method"] == "feature"
+    assert payload["count"] == 1
+    assert payload["items"][0]["relative_path"] == "same-form.jpg"
+    assert payload["items"][0]["distance"] == 22
+    assert payload["items"][0]["source"] == "feature"
+
+
+def test_similarity_search_feature_method_persists_descriptors(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    query = create_document_photo(image_root / "query.jpeg")
+    match = create_document_photo(image_root / "match.jpeg", shift=8)
+    save_phash_records(image_root, [query, match])
+    similarity_context.FEATURE_DESCRIPTOR_CACHE.clear()
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "query.jpeg", "method": "feature", "threshold": 100, "limit": 10},
+    )
+    assert response.status_code == 200
+
+    repository = SimilarityRepository(RootContext.from_root(image_root, ztb_app.ROOT_DATA_DIR).database_path)
+    query_feature = repository.get_feature(
+        "query.jpeg",
+        method="feature",
+        model=similarity_context.FEATURE_CACHE_MODEL,
+        size=query.stat().st_size,
+        mtime_ns=query.stat().st_mtime_ns,
+    )
+    match_feature = repository.get_feature(
+        "match.jpeg",
+        method="feature",
+        model=similarity_context.FEATURE_CACHE_MODEL,
+        size=match.stat().st_size,
+        mtime_ns=match.stat().st_mtime_ns,
+    )
+    assert query_feature is not None
+    assert match_feature is not None
+    assert query_feature.value_blob
+    assert match_feature.value_blob
+
+    similarity_context.FEATURE_DESCRIPTOR_CACHE.clear()
+
+    def fail_load_image(path: Path):
+        raise AssertionError(f"feature descriptor should be loaded from cache: {path}")
+
+    monkeypatch.setattr(similarity_context, "_load_feature_image", fail_load_image)
+    assert similarity_context._feature_descriptors(query) is not None
+    assert similarity_context._feature_descriptors(match) is not None
+
+
+def test_similarity_search_embedding_method_matches_and_persists_vector(api_client) -> None:
+    client, _, image_root, _ = api_client
+    query = create_document_photo(image_root / "query.jpeg")
+    match = create_document_photo(image_root / "match.jpeg", shift=6)
+    create_test_image(image_root / "other.jpg", color=(200, 20, 30))
+    save_phash_records(image_root, [query, match])
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "query.jpeg", "method": "embedding", "threshold": 20, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["method"] == "embedding"
+    assert payload["items"][0]["relative_path"] == "match.jpeg"
+    assert payload["items"][0]["source"] == "embedding"
+
+    repository = SimilarityRepository(RootContext.from_root(image_root, ztb_app.ROOT_DATA_DIR).database_path)
+    cached = repository.get_feature(
+        "query.jpeg",
+        method="embedding",
+        model=similarity_context.EMBEDDING_CACHE_MODEL,
+        size=query.stat().st_size,
+        mtime_ns=query.stat().st_mtime_ns,
+    )
+    assert cached is not None
+    assert cached.dimension > 0
+    assert cached.value_blob
+
+
+def test_similarity_cache_build_warms_document_feature_and_embedding(api_client) -> None:
+    client, _, image_root, _ = api_client
+    create_document_photo(image_root / "query.jpeg")
+    create_document_photo(image_root / "match.jpeg", shift=6)
+
+    response = client.post(
+        "/api/similarity/cache/build",
+        json={"source": "local", "methods": ["document", "feature", "embedding"], "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 2
+    assert payload["method_counts"]["document"] == 2
+    assert payload["method_counts"]["feature"] == 2
+    assert payload["method_counts"]["embedding"] == 2
+
+
+def test_similarity_cache_build_skips_current_cached_files_incrementally(api_client) -> None:
+    client, _, image_root, _ = api_client
+    create_document_photo(image_root / "a.jpeg")
+    create_document_photo(image_root / "b.jpeg", shift=6)
+
+    first = client.post(
+        "/api/similarity/cache/build",
+        json={"source": "local", "methods": ["embedding"], "limit": 1},
+    )
+    second = client.post(
+        "/api/similarity/cache/build",
+        json={"source": "local", "methods": ["embedding"], "limit": 1},
+    )
+    third = client.post(
+        "/api/similarity/cache/build",
+        json={"source": "local", "methods": ["embedding"], "limit": 1},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 200
+    assert first.json()["processed"] == 1
+    assert first.json()["skipped_cached"] == 0
+    assert second.json()["processed"] == 1
+    assert second.json()["skipped_cached"] == 1
+    assert third.json()["processed"] == 0
+    assert third.json()["skipped_cached"] == 2
+
+
+def test_similarity_cache_build_treats_empty_methods_as_default(api_client) -> None:
+    client, _, image_root, _ = api_client
+    create_document_photo(image_root / "a.jpeg")
+
+    response = client.post(
+        "/api/similarity/cache/build",
+        json={"source": "local", "methods": [], "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 1
+    assert payload["methods"] == ["document", "embedding", "feature"]
+
+
+def test_similarity_search_feature_method_uses_full_source_scope(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    create_test_image(image_root / "2026" / "05" / "22" / "IMG_4394.jpeg")
+    full_scope_match = create_test_image(image_root / "2026" / "05" / "21" / "IMG_4392.jpeg")
+    create_test_image(image_root / "2026" / "04" / "01" / "old.jpg")
+    monkeypatch.setattr(similarity_context, "_feature_descriptors", lambda path: ("orb", 20, object()))
+
+    def fake_feature_distance(left: Path, right: Path, left_features=None):
+        if right == full_scope_match:
+            return 40, 0.6, "orb"
+        return 95, 0.05, "orb"
+
+    monkeypatch.setattr(similarity_context, "_feature_similarity_distance", fake_feature_distance)
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "IMG_4394.jpeg", "method": "feature", "threshold": 70, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    assert [item["relative_path"] for item in response.json()["items"]] == ["2026/05/21/IMG_4392.jpeg"]
+
+
+def test_similarity_search_feature_method_stops_at_result_limit(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    create_test_image(image_root / "query.jpg")
+    create_test_image(image_root / "match_1.jpg")
+    create_test_image(image_root / "match_2.jpg")
+    create_test_image(image_root / "match_3.jpg")
+    calls: list[str] = []
+    monkeypatch.setattr(similarity_context, "_feature_descriptors", lambda path: ("orb", 20, object()))
+
+    def fake_feature_distance(left: Path, right: Path, left_features=None):
+        calls.append(right.name)
+        return 40, 0.6, "orb"
+
+    monkeypatch.setattr(similarity_context, "_feature_similarity_distance", fake_feature_distance)
+
+    response = client.post(
+        "/api/similarity/search",
+        json={"relative_path": "query.jpg", "method": "feature", "threshold": 70, "limit": 2},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 2
+    assert len(payload["items"]) == 2
+    assert len(calls) == 2
+
+
 def test_similarity_search_rejects_unsupported_method(api_client) -> None:
     client, _, image_root, _ = api_client
     create_test_image(image_root / "query.jpg")
 
     response = client.post(
         "/api/similarity/search",
-        json={"relative_path": "query.jpg", "method": "embedding"},
+        json={"relative_path": "query.jpg", "method": "neural"},
     )
 
     assert response.status_code == 400
@@ -150,7 +450,7 @@ def test_similarity_search_rejects_ambiguous_filename(api_client) -> None:
     assert response.json()["detail"] == "Multiple images matched filename. Use a relative path: same.jpg"
 
 
-def test_similarity_search_supplements_missing_hash_db_records_from_query_directory(api_client) -> None:
+def test_similarity_search_supplements_missing_hash_db_records_from_full_root(api_client) -> None:
     client, _, image_root, _ = api_client
     query = create_test_image(image_root / "2010" / "03" / "12" / "query_dup7.jpg", color=(32, 96, 160))
     match_one = create_test_image(image_root / "2010" / "03" / "12" / "query.jpg", color=(32, 96, 160))

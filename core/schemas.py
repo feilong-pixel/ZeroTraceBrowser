@@ -60,8 +60,14 @@ class SimilaritySearchRequest(BaseModel):
     relative_path: str = Field(..., min_length=1)
     source: str = Field(default="local")
     method: str = Field(default="phash")
-    threshold: int = Field(default=8, ge=0, le=64)
+    threshold: int = Field(default=8, ge=0, le=256)
     limit: int = Field(default=50, ge=1, le=200)
+
+
+class SimilarityCacheBuildRequest(BaseModel):
+    source: str = Field(default="local")
+    methods: list[str] = Field(default_factory=lambda: ["document", "feature", "embedding"])
+    limit: int = Field(default=200, ge=1, le=10000)
 
 
 class IphoneIndexRequest(BaseModel):
