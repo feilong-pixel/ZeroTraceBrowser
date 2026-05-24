@@ -12,6 +12,7 @@ function getSimilarityElements() {
     methodSelect: $("#similarityMethodSelect"),
     thresholdInput: $("#similarityThresholdInput"),
     limitInput: $("#similarityLimitInput"),
+    buildCacheButton: $("#buildSimilarityCacheButton"),
     startDateInput: $("#similarityStartDateInput"),
     endDateInput: $("#similarityEndDateInput"),
     searchButton: $("#searchSimilarityButton"),
@@ -82,12 +83,14 @@ function updateSummary(els, queryPath = "-", count = 0, method = "pHash", thresh
 function thresholdMaxForMethod(method) {
   if (method === "document") return 256;
   if (method === "feature") return 100;
+  if (method === "embedding") return 100;
   return 64;
 }
 
 function thresholdDefaultForMethod(method) {
   if (method === "document") return 80;
   if (method === "feature") return 70;
+  if (method === "embedding") return 20;
   return 8;
 }
 
@@ -122,6 +125,7 @@ function setBusyState(els, state, isBusy) {
     els.thresholdInput,
     els.limitInput,
     els.searchButton,
+    els.buildCacheButton,
     els.clearButton,
   ].forEach((control) => {
     if (control) control.disabled = isBusy;
@@ -305,6 +309,41 @@ async function searchSimilarity(els, state) {
   }
 }
 
+async function buildSimilarityCache(els, state) {
+  if (state.isBusy) return;
+  const source = els.sourceSelect?.value || "local";
+
+  if (source !== "local") {
+    setState(els, t("similarity.cacheLocalOnly"));
+    return;
+  }
+
+  setState(els, t("similarity.cacheBuilding"));
+  setBusyState(els, state, true);
+  try {
+    const data = await postJson("/api/similarity/cache/build", {
+      source,
+      methods: ["document", "feature", "embedding"],
+    });
+    setState(
+      els,
+      t(
+        "similarity.cacheBuilt",
+        data.processed ?? 0,
+        data.method_counts?.document ?? 0,
+        data.method_counts?.feature ?? 0,
+        data.method_counts?.embedding ?? 0,
+        data.skipped_cached ?? 0,
+      ),
+      false,
+    );
+  } catch (error) {
+    setState(els, `${t("similarity.cacheFailed")}: ${error.message || error}`);
+  } finally {
+    setBusyState(els, state, false);
+  }
+}
+
 function selectAllResults(els, state) {
   if (state.isBusy) return;
   state.selectedPaths = new Set(state.items.map((item) => item.relative_path));
@@ -431,6 +470,7 @@ function applyQueryParams(els) {
 
 function bindSimilarityEvents(els, state) {
   on(els.searchButton, "click", () => searchSimilarity(els, state));
+  on(els.buildCacheButton, "click", () => buildSimilarityCache(els, state));
   on(els.methodSelect, "change", () => {
     if (state.isBusy) return;
     const max = thresholdMaxForMethod(els.methodSelect?.value || "phash");

@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -245,6 +245,40 @@ def init_root_database(database_path: str | Path) -> Path:
                 raw_json TEXT NOT NULL DEFAULT '{}',
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS similarity_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                relative_path TEXT NOT NULL UNIQUE,
+                absolute_path TEXT NOT NULL DEFAULT '',
+                file_name TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL DEFAULT 0,
+                mtime_ns INTEGER NOT NULL DEFAULT 0,
+                media_type TEXT NOT NULL DEFAULT 'image',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_similarity_files_signature
+                ON similarity_files(relative_path, size, mtime_ns);
+
+            CREATE TABLE IF NOT EXISTS similarity_features (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id INTEGER NOT NULL,
+                method TEXT NOT NULL,
+                model TEXT NOT NULL DEFAULT '',
+                version INTEGER NOT NULL DEFAULT 1,
+                value_text TEXT NOT NULL DEFAULT '',
+                value_blob BLOB,
+                dimension INTEGER NOT NULL DEFAULT 0,
+                keypoint_count INTEGER NOT NULL DEFAULT 0,
+                detector TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(file_id, method, model, version),
+                FOREIGN KEY(file_id) REFERENCES similarity_files(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_similarity_features_method
+                ON similarity_features(method, model, version);
 
             CREATE TABLE IF NOT EXISTS mobile_devices (
                 device_type TEXT NOT NULL DEFAULT 'iphone',

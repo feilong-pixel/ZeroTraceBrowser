@@ -2,10 +2,13 @@ from .base import *
 from .settings_context import load_settings
 from .image_context import iter_image_files, resolve_under_root
 from .root_workspace import root_database_path
+import io
+import math
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
+from core.storage.similarity_repository import SimilarityRepository
 from MediaArchiveOrganizer.core.duplicate_detector import (
     compute_document_hash,
     compute_phash,
@@ -15,6 +18,12 @@ from MediaArchiveOrganizer.core.duplicate_detector import (
 
 FEATURE_DISTANCE_MAX = 100
 FEATURE_DESCRIPTOR_CACHE: dict[tuple[str, int, int], tuple[str, int, Any]] = {}
+FEATURE_CACHE_MODEL = "orb-akaze"
+FEATURE_CACHE_VERSION = 1
+DOCUMENT_CACHE_VERSION = 1
+EMBEDDING_CACHE_MODEL = "ztb-lite-v1"
+EMBEDDING_CACHE_VERSION = 1
+EMBEDDING_DISTANCE_MAX = 100
 
 
 def _resolve_similarity_query_path(active_root: Path, candidate: str) -> tuple[Path, str]:
@@ -190,6 +199,104 @@ def _load_feature_image(path: Path):
         return None
 
 
+def _active_similarity_cache_context(path: Path) -> tuple[Path, str, SimilarityRepository] | None:
+    try:
+        settings = load_settings()
+        active_root = Path(settings["active_root"]).expanduser().resolve()
+        resolved_path = path.expanduser().resolve()
+        relative_path = resolved_path.relative_to(active_root).as_posix()
+    except Exception:
+        return None
+    return active_root, relative_path, SimilarityRepository(root_database_path(active_root))
+
+
+def _serialize_descriptors(descriptors: Any) -> bytes:
+    try:
+        import numpy
+    except ImportError:
+        return b""
+
+    buffer = io.BytesIO()
+    numpy.save(buffer, descriptors, allow_pickle=False)
+    return buffer.getvalue()
+
+
+def _deserialize_descriptors(payload: bytes | None) -> Any | None:
+    if not payload:
+        return None
+    try:
+        import numpy
+
+        buffer = io.BytesIO(payload)
+        return numpy.load(buffer, allow_pickle=False)
+    except Exception:
+        return None
+
+
+def _cache_feature_descriptors(
+    path: Path,
+    stat,
+    result: tuple[str, int, Any],
+    cache_context: tuple[Path, str, SimilarityRepository] | None,
+) -> None:
+    if cache_context is None:
+        return
+
+    _active_root, relative_path, repository = cache_context
+    detector, keypoint_count, descriptors = result
+    payload = _serialize_descriptors(descriptors)
+    if not payload:
+        return
+    try:
+        file_record = repository.upsert_file(
+            relative_path=relative_path,
+            absolute_path=path,
+            file_name=path.name,
+            size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
+        shape = getattr(descriptors, "shape", ())
+        dimension = int(shape[1]) if len(shape) > 1 else 0
+        repository.upsert_feature(
+            file_id=file_record.id,
+            method="feature",
+            model=FEATURE_CACHE_MODEL,
+            version=FEATURE_CACHE_VERSION,
+            value_blob=payload,
+            dimension=dimension,
+            keypoint_count=keypoint_count,
+            detector=detector,
+        )
+    except Exception:
+        return
+
+
+def _load_cached_feature_descriptors(
+    stat,
+    cache_context: tuple[Path, str, SimilarityRepository] | None,
+) -> tuple[str, int, Any] | None:
+    if cache_context is None:
+        return None
+    _active_root, relative_path, repository = cache_context
+    try:
+        record = repository.get_feature(
+            relative_path,
+            method="feature",
+            model=FEATURE_CACHE_MODEL,
+            version=FEATURE_CACHE_VERSION,
+            size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
+    except Exception:
+        return None
+    if record is None:
+        return None
+    descriptors = _deserialize_descriptors(record.value_blob)
+    if descriptors is None:
+        return None
+    return record.detector or "feature", record.keypoint_count, descriptors
+
+
 def _feature_descriptors(path: Path) -> tuple[str, int, Any] | None:
     import cv2
 
@@ -203,6 +310,12 @@ def _feature_descriptors(path: Path) -> tuple[str, int, Any] | None:
     if cached is not None:
         return cached
 
+    cache_context = _active_similarity_cache_context(path)
+    persistent = _load_cached_feature_descriptors(stat, cache_context)
+    if persistent is not None:
+        FEATURE_DESCRIPTOR_CACHE[cache_key] = persistent
+        return persistent
+
     image = _load_feature_image(path)
     if image is None:
         return None
@@ -212,6 +325,7 @@ def _feature_descriptors(path: Path) -> tuple[str, int, Any] | None:
     if descriptors is not None and len(keypoints) >= 12:
         result = ("orb", len(keypoints), descriptors)
         FEATURE_DESCRIPTOR_CACHE[cache_key] = result
+        _cache_feature_descriptors(path, stat, result, cache_context)
         return result
 
     akaze = cv2.AKAZE_create()
@@ -219,8 +333,213 @@ def _feature_descriptors(path: Path) -> tuple[str, int, Any] | None:
     if descriptors is not None and len(keypoints) >= 8:
         result = ("akaze", len(keypoints), descriptors)
         FEATURE_DESCRIPTOR_CACHE[cache_key] = result
+        _cache_feature_descriptors(path, stat, result, cache_context)
         return result
     return None
+
+
+def _document_hash(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except OSError:
+        return ""
+
+    cache_context = _active_similarity_cache_context(path)
+    if cache_context is not None:
+        _active_root, relative_path, repository = cache_context
+        try:
+            cached = repository.get_feature(
+                relative_path,
+                method="document",
+                version=DOCUMENT_CACHE_VERSION,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+            )
+        except Exception:
+            cached = None
+        if cached is not None and cached.value_text:
+            return cached.value_text
+
+    value = compute_document_hash(str(path)) or ""
+    if not value or cache_context is None:
+        return value
+
+    _active_root, relative_path, repository = cache_context
+    try:
+        file_record = repository.upsert_file(
+            relative_path=relative_path,
+            absolute_path=path,
+            file_name=path.name,
+            size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
+        repository.upsert_feature(
+            file_id=file_record.id,
+            method="document",
+            version=DOCUMENT_CACHE_VERSION,
+            value_text=value,
+        )
+    except Exception:
+        pass
+    return value
+
+
+def _serialize_float_vector(vector: list[float]) -> bytes:
+    try:
+        import numpy
+    except ImportError:
+        return b""
+    array = numpy.asarray(vector, dtype=numpy.float32)
+    buffer = io.BytesIO()
+    numpy.save(buffer, array, allow_pickle=False)
+    return buffer.getvalue()
+
+
+def _deserialize_float_vector(payload: bytes | None) -> list[float] | None:
+    if not payload:
+        return None
+    try:
+        import numpy
+
+        buffer = io.BytesIO(payload)
+        array = numpy.load(buffer, allow_pickle=False)
+        return [float(value) for value in array.astype(numpy.float32).ravel()]
+    except Exception:
+        return None
+
+
+def _compute_lite_embedding(path: Path) -> list[float]:
+    try:
+        import numpy
+    except ImportError:
+        return []
+    if Image is None or ImageOps is None:
+        return []
+
+    try:
+        with Image.open(path) as img:
+            rgb = ImageOps.exif_transpose(img).convert("RGB").resize((32, 32))
+            gray = rgb.convert("L").resize((16, 16))
+    except Exception:
+        return []
+
+    rgb_array = numpy.asarray(rgb, dtype=numpy.float32) / 255.0
+    gray_array = numpy.asarray(gray, dtype=numpy.float32) / 255.0
+    low_freq = gray_array.reshape(8, 2, 8, 2).mean(axis=(1, 3)).ravel()
+    channel_mean = rgb_array.mean(axis=(0, 1))
+    channel_std = rgb_array.std(axis=(0, 1))
+    grad_x = numpy.abs(numpy.diff(gray_array, axis=1)).mean(axis=1)
+    grad_y = numpy.abs(numpy.diff(gray_array, axis=0)).mean(axis=0)
+    vector = numpy.concatenate([low_freq, channel_mean, channel_std, grad_x, grad_y])
+    norm = float(numpy.linalg.norm(vector))
+    if norm <= 0:
+        return []
+    return [float(value) for value in (vector / norm)]
+
+
+def _embedding_vector(path: Path) -> list[float]:
+    try:
+        stat = path.stat()
+    except OSError:
+        return []
+
+    cache_context = _active_similarity_cache_context(path)
+    if cache_context is not None:
+        _active_root, relative_path, repository = cache_context
+        try:
+            cached = repository.get_feature(
+                relative_path,
+                method="embedding",
+                model=EMBEDDING_CACHE_MODEL,
+                version=EMBEDDING_CACHE_VERSION,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+            )
+        except Exception:
+            cached = None
+        if cached is not None:
+            vector = _deserialize_float_vector(cached.value_blob)
+            if vector:
+                return vector
+
+    vector = _compute_lite_embedding(path)
+    if not vector or cache_context is None:
+        return vector
+
+    payload = _serialize_float_vector(vector)
+    if not payload:
+        return vector
+    _active_root, relative_path, repository = cache_context
+    try:
+        file_record = repository.upsert_file(
+            relative_path=relative_path,
+            absolute_path=path,
+            file_name=path.name,
+            size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+        )
+        repository.upsert_feature(
+            file_id=file_record.id,
+            method="embedding",
+            model=EMBEDDING_CACHE_MODEL,
+            version=EMBEDDING_CACHE_VERSION,
+            value_blob=payload,
+            dimension=len(vector),
+        )
+    except Exception:
+        pass
+    return vector
+
+
+def _embedding_distance(left: list[float], right: list[float]) -> tuple[int, float] | None:
+    if not left or not right or len(left) != len(right):
+        return None
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(a * a for a in left))
+    right_norm = math.sqrt(sum(b * b for b in right))
+    if left_norm <= 0 or right_norm <= 0:
+        return None
+    score = max(0.0, min(1.0, dot / (left_norm * right_norm)))
+    return round(EMBEDDING_DISTANCE_MAX * (1 - score)), round(score, 4)
+
+
+def _has_current_similarity_cache(path: Path, methods: set[str]) -> bool:
+    try:
+        stat = path.stat()
+    except OSError:
+        return False
+    cache_context = _active_similarity_cache_context(path)
+    if cache_context is None:
+        return False
+
+    _active_root, relative_path, repository = cache_context
+    for method in methods:
+        model = ""
+        version = DOCUMENT_CACHE_VERSION
+        if method == "feature":
+            model = FEATURE_CACHE_MODEL
+            version = FEATURE_CACHE_VERSION
+        elif method == "embedding":
+            model = EMBEDDING_CACHE_MODEL
+            version = EMBEDDING_CACHE_VERSION
+        try:
+            cached = repository.get_feature(
+                relative_path,
+                method=method,
+                model=model,
+                version=version,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+            )
+        except Exception:
+            return False
+        if cached is None:
+            return False
+        if method == "document" and not cached.value_text:
+            return False
+        if method in {"feature", "embedding"} and not cached.value_blob:
+            return False
+    return True
 
 
 def _feature_similarity_distance(
@@ -436,7 +755,7 @@ def search_similar_images(
         raise HTTPException(status_code=400, detail=f"Unsupported similarity source: {source}")
 
     method = str(method or "phash").strip().lower()
-    if method not in {"phash", "document", "feature"}:
+    if method not in {"phash", "document", "feature", "embedding"}:
         raise HTTPException(status_code=400, detail="Unsupported similarity method")
 
     settings = load_settings()
@@ -447,11 +766,22 @@ def search_similar_images(
 
     query_hash = ""
     if method == "document":
-        query_hash = compute_document_hash(str(query_path)) or ""
+        query_hash = _document_hash(query_path)
     elif method == "phash":
         query_hash = compute_phash(str(query_path)) or ""
     query_features = _feature_descriptors(query_path) if method == "feature" else None
+    query_embedding = _embedding_vector(query_path) if method == "embedding" else []
     if method == "feature" and query_features is None:
+        return {
+            "query": normalized_relative_path,
+            "source": "local",
+            "method": method,
+            "query_hash": "",
+            "threshold": threshold,
+            "items": [],
+            "count": 0,
+        }
+    if method == "embedding" and not query_embedding:
         return {
             "query": normalized_relative_path,
             "source": "local",
@@ -464,6 +794,8 @@ def search_similar_images(
     if not query_hash:
         if method == "feature":
             query_hash = "feature"
+        elif method == "embedding":
+            query_hash = EMBEDDING_CACHE_MODEL
         else:
             return {
                 "query": normalized_relative_path,
@@ -520,7 +852,7 @@ def search_similar_images(
         for candidate_path in _collect_similarity_candidate_paths(active_root, query_path, hash_db):
             if len(items_by_path) >= limit:
                 break
-            candidate_hash = compute_document_hash(str(candidate_path))
+            candidate_hash = _document_hash(candidate_path)
             if not candidate_hash:
                 continue
             try:
@@ -541,7 +873,7 @@ def search_similar_images(
             }
             if current is None or item["distance"] < current["distance"]:
                 items_by_path[candidate_relative] = item
-    else:
+    elif method == "feature":
         for candidate_path in _collect_similarity_candidate_paths(active_root, query_path, hash_db):
             if len(items_by_path) >= limit:
                 break
@@ -563,6 +895,29 @@ def search_similar_images(
             }
             if current is None or item["distance"] < current["distance"]:
                 items_by_path[candidate_relative] = item
+    else:
+        for candidate_path in _collect_similarity_candidate_paths(active_root, query_path, hash_db):
+            if len(items_by_path) >= limit:
+                break
+            candidate_embedding = _embedding_vector(candidate_path)
+            result = _embedding_distance(query_embedding, candidate_embedding)
+            if result is None:
+                continue
+            distance, score = result
+            if distance > threshold:
+                continue
+            candidate_relative = candidate_path.relative_to(active_root).as_posix()
+            current = items_by_path.get(candidate_relative)
+            item = {
+                "relative_path": candidate_relative,
+                "hash": EMBEDDING_CACHE_MODEL,
+                "distance": distance,
+                "score": score,
+                "reason": method,
+                "source": "embedding",
+            }
+            if current is None or item["distance"] < current["distance"]:
+                items_by_path[candidate_relative] = item
 
     items = list(items_by_path.values())
     items.sort(key=lambda item: (item["distance"], item["relative_path"].lower()))
@@ -575,4 +930,67 @@ def search_similar_images(
         "threshold": threshold,
         "items": items,
         "count": len(items),
+    }
+
+
+def build_similarity_cache(
+    source: str = "local",
+    methods: list[str] | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    normalized_source = str(source or "local").strip().lower()
+    if normalized_source != "local":
+        raise HTTPException(status_code=400, detail="Similarity cache build supports local source only")
+
+    requested_methods = {
+        str(method or "").strip().lower()
+        for method in (methods or ["document", "feature", "embedding"])
+        if str(method or "").strip()
+    }
+    if not requested_methods:
+        requested_methods = {"document", "feature", "embedding"}
+    supported_methods = {"document", "feature", "embedding"}
+    unknown_methods = sorted(requested_methods - supported_methods)
+    if unknown_methods:
+        raise HTTPException(status_code=400, detail=f"Unsupported cache methods: {', '.join(unknown_methods)}")
+
+    settings = load_settings()
+    active_root = Path(settings["active_root"]).expanduser().resolve()
+    processed = 0
+    skipped_cached = 0
+    scanned = 0
+    failed = 0
+    method_counts = {method: 0 for method in sorted(requested_methods)}
+
+    for path in iter_image_files(active_root):
+        if processed >= limit:
+            break
+        scanned += 1
+        if _has_current_similarity_cache(path, requested_methods):
+            skipped_cached += 1
+            continue
+        processed += 1
+        for method in sorted(requested_methods):
+            try:
+                if method == "document":
+                    if _document_hash(path):
+                        method_counts[method] += 1
+                elif method == "feature":
+                    if _feature_descriptors(path) is not None:
+                        method_counts[method] += 1
+                elif method == "embedding":
+                    if _embedding_vector(path):
+                        method_counts[method] += 1
+            except Exception:
+                failed += 1
+
+    return {
+        "source": normalized_source,
+        "methods": sorted(requested_methods),
+        "processed": processed,
+        "limit": limit,
+        "scanned": scanned,
+        "skipped_cached": skipped_cached,
+        "failed": failed,
+        "method_counts": method_counts,
     }

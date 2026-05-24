@@ -141,6 +141,12 @@ export default {
   },
   similarity: {
     backToGallery: "Back to gallery",
+    buildCache: "Build Similarity Cache",
+    cacheBuilt: (processed, documentCount, featureCount, embeddingCount, skippedCached) =>
+      `Similarity cache built: added ${processed} / skipped cached ${skippedCached} / document ${documentCount} / features ${featureCount} / embedding ${embeddingCount}`,
+    cacheBuilding: "Building similarity cache...",
+    cacheFailed: "Failed to build similarity cache",
+    cacheLocalOnly: "Similarity cache warmup currently supports only the current local root.",
     clear: "Clear",
     confirmLeaveWhileBusy: "A similarity search or delete operation is still running. Leaving this page may interrupt the current operation or stop the live status display. Continue?",
     currentMethod: "Method",
@@ -154,7 +160,7 @@ export default {
     matchCount: "Matches",
     method: "Method",
     methodDocument: "Document Layout",
-    methodEmbedding: "Doc Embedding",
+    methodEmbedding: "Lite Visual Embedding",
     methodFeature: "ORB/AKAZE Features",
     methodPhash: "pHash",
     noMatches: "No similar images found. Rebuild the Hash DB or mobile index, or raise the threshold if needed.",

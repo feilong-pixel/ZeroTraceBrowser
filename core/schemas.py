@@ -64,6 +64,12 @@ class SimilaritySearchRequest(BaseModel):
     limit: int = Field(default=50, ge=1, le=200)
 
 
+class SimilarityCacheBuildRequest(BaseModel):
+    source: str = Field(default="local")
+    methods: list[str] = Field(default_factory=lambda: ["document", "feature", "embedding"])
+    limit: int = Field(default=200, ge=1, le=10000)
+
+
 class IphoneIndexRequest(BaseModel):
     device_id: str = Field(..., min_length=1)
     limit: int = Field(default=1, ge=1, le=10000)

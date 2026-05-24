@@ -13,6 +13,7 @@ from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.mobile_repository import MobileRepository
 from core.storage.recycle_repository import RecycleRepository
+from core.storage.similarity_repository import SimilarityRepository
 from core.storage.task_repository import TaskRunRepository
 
 
@@ -48,6 +49,8 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "task_skipped_existing",
         "skipped_existing_index",
         "image_exif_cache",
+        "similarity_files",
+        "similarity_features",
         "mobile_devices",
         "mobile_photo_index",
         "mobile_import_records",
@@ -237,6 +240,111 @@ def test_mobile_repository_records_device_index_and_import_state(tmp_path: Path)
             "imported_at": "2026-05-18T10:01:00+00:00",
         }
     ]
+
+
+def test_similarity_repository_round_trips_file_and_features(tmp_path: Path) -> None:
+    repository = SimilarityRepository(tmp_path / "workspace.sqlite3")
+
+    file_record = repository.upsert_file(
+        relative_path="2026/05/a.jpg",
+        absolute_path=tmp_path / "images" / "2026" / "05" / "a.jpg",
+        size=123,
+        mtime_ns=456,
+    )
+    feature = repository.upsert_feature(
+        file_id=file_record.id,
+        method="feature",
+        model="orb",
+        version=1,
+        value_blob=b"descriptor-bytes",
+        keypoint_count=42,
+        detector="orb",
+    )
+
+    assert feature.relative_path == "2026/05/a.jpg"
+    assert feature.file_name == "a.jpg"
+    assert feature.value_blob == b"descriptor-bytes"
+    assert feature.keypoint_count == 42
+    assert repository.get_current_file("2026/05/a.jpg", size=123, mtime_ns=456) == file_record
+    assert repository.get_feature(
+        "2026/05/a.jpg",
+        method="feature",
+        model="orb",
+        size=123,
+        mtime_ns=456,
+    ) == feature
+    assert repository.list_features(method="feature", model="orb") == [feature]
+
+
+def test_similarity_repository_updates_feature_and_invalidates_by_signature(
+    tmp_path: Path,
+) -> None:
+    repository = SimilarityRepository(tmp_path / "workspace.sqlite3")
+
+    file_record = repository.upsert_file(
+        relative_path="a.jpg",
+        absolute_path=tmp_path / "images" / "a.jpg",
+        size=100,
+        mtime_ns=200,
+    )
+    first = repository.upsert_feature(
+        file_id=file_record.id,
+        method="phash",
+        value_text="abc",
+    )
+    second = repository.upsert_feature(
+        file_id=file_record.id,
+        method="phash",
+        value_text="def",
+    )
+
+    assert second.id == first.id
+    assert repository.get_feature("a.jpg", method="phash").value_text == "def"
+    assert repository.get_feature("a.jpg", method="phash", size=101, mtime_ns=200) is None
+
+    refreshed = repository.upsert_file(
+        relative_path="a.jpg",
+        absolute_path=tmp_path / "images" / "a.jpg",
+        size=101,
+        mtime_ns=201,
+    )
+    assert refreshed.id == file_record.id
+    assert repository.get_current_file("a.jpg", size=100, mtime_ns=200) is None
+    assert repository.get_feature("a.jpg", method="phash", size=101, mtime_ns=201).value_text == "def"
+
+
+def test_similarity_repository_deletes_file_with_cached_features(tmp_path: Path) -> None:
+    repository = SimilarityRepository(tmp_path / "workspace.sqlite3")
+    first = repository.upsert_file(relative_path="a.jpg", size=1, mtime_ns=2)
+    second = repository.upsert_file(relative_path="b.jpg", size=3, mtime_ns=4)
+    repository.upsert_feature(file_id=first.id, method="document", value_text="hash-a")
+    repository.upsert_feature(file_id=second.id, method="document", value_text="hash-b")
+
+    assert repository.delete_file("a.jpg") is True
+    assert repository.delete_file("missing.jpg") is False
+
+    assert repository.get_file("a.jpg") is None
+    assert [item.relative_path for item in repository.list_features(method="document")] == ["b.jpg"]
+
+
+def test_similarity_repository_prunes_missing_or_stale_file_records(tmp_path: Path) -> None:
+    repository = SimilarityRepository(tmp_path / "workspace.sqlite3")
+    current = repository.upsert_file(relative_path="current.jpg", size=1, mtime_ns=2)
+    stale = repository.upsert_file(relative_path="stale.jpg", size=3, mtime_ns=4)
+    missing = repository.upsert_file(relative_path="missing.jpg", size=5, mtime_ns=6)
+    repository.upsert_feature(file_id=current.id, method="document", value_text="current")
+    repository.upsert_feature(file_id=stale.id, method="document", value_text="stale")
+    repository.upsert_feature(file_id=missing.id, method="document", value_text="missing")
+
+    deleted = repository.delete_stale_files(
+        {
+            "current.jpg": (1, 2),
+            "stale.jpg": (3, 5),
+        }
+    )
+
+    assert deleted == 2
+    assert [item.relative_path for item in repository.list_features(method="document")] == ["current.jpg"]
 
 
 def test_recycle_repository_updates_lifecycle_action(tmp_path: Path) -> None:

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from core.schemas import SimilaritySearchRequest
+from core.schemas import SimilarityCacheBuildRequest, SimilaritySearchRequest
 
 
 def create_similarity_router(ctx: Any) -> APIRouter:
@@ -20,6 +20,14 @@ def create_similarity_router(ctx: Any) -> APIRouter:
             source=payload.source,
             method=payload.method,
             threshold=payload.threshold,
+            limit=payload.limit,
+        )
+
+    @router.post("/api/similarity/cache/build")
+    def build_similarity_cache(payload: SimilarityCacheBuildRequest) -> dict[str, Any]:
+        return ctx.build_similarity_cache(
+            source=payload.source,
+            methods=payload.methods,
             limit=payload.limit,
         )
 

@@ -141,6 +141,12 @@ export default {
   },
   similarity: {
     backToGallery: "返回主画面",
+    buildCache: "建立相似缓存",
+    cacheBuilt: (processed, documentCount, featureCount, embeddingCount, skippedCached) =>
+      `相似缓存已建立：新增 ${processed} 张 / 已缓存跳过 ${skippedCached} 张 / 文档 ${documentCount} / 特征点 ${featureCount} / 向量 ${embeddingCount}`,
+    cacheBuilding: "正在建立相似缓存...",
+    cacheFailed: "建立相似缓存失败",
+    cacheLocalOnly: "相似缓存预热目前只支持当前本地 root 图库。",
     clear: "清除",
     confirmLeaveWhileBusy: "相似检索或删除操作仍在运行中。离开页面可能中断当前操作或停止状态显示。继续离开吗？",
     currentMethod: "方式",
@@ -154,7 +160,7 @@ export default {
     matchCount: "匹配",
     method: "方式",
     methodDocument: "表单/文档布局",
-    methodEmbedding: "文档向量",
+    methodEmbedding: "轻量视觉向量",
     methodFeature: "ORB/AKAZE 特征点",
     methodPhash: "pHash",
     noMatches: "没有找到相似图片。请确认 Hash DB 或手机索引已重建，或适当调高阈值。",
