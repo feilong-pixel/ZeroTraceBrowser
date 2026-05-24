@@ -218,6 +218,8 @@ export default {
     pageIntro: "从当前本地图片目录或已导入本地的 iPhone 索引照片中，基于一张明确选择的图片查找视觉相似照片。",
     pageTitle: "相似照片检索",
     queryImage: "查询图片",
+    queryCardLabel: "查询图",
+    queryCardMeta: (method, threshold) => `${method}:${threshold} / 来源图片`,
     queryMissing: "请输入当前目录下图片的相对路径，或 iPhone 照片的 album/filename。",
     queryPath: "查询图片相对路径",
     queryPathPlaceholder: "例如 2026/05/IMG_0001.JPG 或 100APPLE/IMG_0001.JPG",

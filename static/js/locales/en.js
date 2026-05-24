@@ -218,6 +218,8 @@ export default {
     pageIntro: "Find visually similar photos in the current local image root or indexed iPhone photos that already have a local file.",
     pageTitle: "Similar Photo Search",
     queryImage: "Query Image",
+    queryCardLabel: "Query",
+    queryCardMeta: (method, threshold) => `${method}:${threshold} / source image`,
     queryMissing: "Enter a relative path from the current root, or an iPhone album/filename.",
     queryPath: "Query image relative path",
     queryPathPlaceholder: "For example 2026/05/IMG_0001.JPG or 100APPLE/IMG_0001.JPG",

@@ -218,6 +218,8 @@ export default {
     pageIntro: "現在のローカル画像フォルダ、またはローカルファイルがある索引済み iPhone 写真から類似写真を検索します。",
     pageTitle: "類似写真検索",
     queryImage: "検索画像",
+    queryCardLabel: "検索画像",
+    queryCardMeta: (method, threshold) => `${method}:${threshold} / 元画像`,
     queryMissing: "現在の画像フォルダ内の相対パス、または iPhone の album/filename を入力してください。",
     queryPath: "検索画像の相対パス",
     queryPathPlaceholder: "例 2026/05/IMG_0001.JPG または 100APPLE/IMG_0001.JPG",

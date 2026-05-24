@@ -2451,6 +2451,43 @@ button:disabled:hover {
   height: calc(var(--gallery-card-height) + 34px);
 }
 
+.similarity-query-card {
+  position: relative;
+  border: 1px solid rgba(15, 109, 97, 0.4);
+  background: rgba(15, 109, 97, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+  cursor: default;
+}
+
+.similarity-query-card:hover {
+  transform: none;
+}
+
+.similarity-query-badge {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  max-width: calc(100% - 20px);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 109, 97, 0.92);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.similarity-query-thumb {
+  outline: 2px solid rgba(15, 109, 97, 0.18);
+  outline-offset: -2px;
+}
+
+.similarity-query-meta {
+  background: rgba(15, 109, 97, 0.14);
+  color: var(--accent);
+}
+
 .similarity-result-thumb {
   width: 100%;
   height: var(--gallery-thumb-height);
