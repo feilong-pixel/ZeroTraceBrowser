@@ -58,6 +58,7 @@ export default {
       endDate: "終了日",
       imageCount: "画像数",
       imageCountUpdatedAt: (time) => `件数更新時刻：${time}`,
+      info: "情報",
       search: "検索",
       selection: "選択中",
       startDate: "開始日",

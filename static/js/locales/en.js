@@ -58,6 +58,7 @@ export default {
       endDate: "End date",
       imageCount: "Images",
       imageCountUpdatedAt: (time) => `Count updated: ${time}`,
+      info: "Info",
       search: "Search",
       selection: "Selection",
       startDate: "Start date",

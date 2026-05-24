@@ -58,6 +58,7 @@ export default {
       endDate: "结束日期",
       imageCount: "图片数量",
       imageCountUpdatedAt: (time) => `统计更新时间：${time}`,
+      info: "信息",
       search: "搜索",
       selection: "当前选择",
       startDate: "开始日期",
