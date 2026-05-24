@@ -2,7 +2,7 @@
 
 import hashlib
 import math
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 
 
 def _dct_1d(values: list[float]) -> list[float]:
@@ -70,6 +70,43 @@ def compute_phash(path: str) -> str | None:
 
 def phash_distance(left: str, right: str) -> int:
     # Compare perceptual hashes using Hamming distance.
+    return bin(int(left, 16) ^ int(right, 16)).count("1")
+
+
+def _bits_to_hex(bits: str) -> str:
+    return f"{int(bits, 2):0{len(bits) // 4}x}"
+
+
+def compute_document_hash(path: str) -> str | None:
+    """
+    Compute a coarse layout hash for photographed paper/document scenes.
+
+    This intentionally differs from pHash. pHash is good for near-duplicate
+    photos, but phone shots of the same form can move, rotate, and change
+    handwritten content. A small edge map keeps the page/table layout signal
+    while ignoring much of the exact text and color.
+    """
+    try:
+        with Image.open(path) as img:
+            normalized = ImageOps.exif_transpose(img).convert("L")
+            edge_map = normalized.filter(ImageFilter.FIND_EDGES)
+            thumbnail = ImageOps.pad(
+                edge_map,
+                (16, 16),
+                method=Image.Resampling.LANCZOS,
+                color=0,
+            )
+            pixels = list(thumbnail.tobytes())
+    except Exception:
+        return None
+
+    median = sorted(pixels)[len(pixels) // 2]
+    bits = "".join("1" if value >= median else "0" for value in pixels)
+    return _bits_to_hex(bits)
+
+
+def document_hash_distance(left: str, right: str) -> int:
+    # Compare 16x16 layout hashes using Hamming distance.
     return bin(int(left, 16) ^ int(right, 16)).count("1")
 
 

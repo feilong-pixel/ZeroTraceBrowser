@@ -12,6 +12,8 @@ function getSimilarityElements() {
     methodSelect: $("#similarityMethodSelect"),
     thresholdInput: $("#similarityThresholdInput"),
     limitInput: $("#similarityLimitInput"),
+    startDateInput: $("#similarityStartDateInput"),
+    endDateInput: $("#similarityEndDateInput"),
     searchButton: $("#searchSimilarityButton"),
     clearButton: $("#clearSimilarityButton"),
     state: $("#similarityState"),
@@ -20,6 +22,7 @@ function getSimilarityElements() {
     invertSelectionButton: $("#invertSimilaritySelectionButton"),
     clearSelectionButton: $("#clearSimilaritySelectionButton"),
     deleteSelectedButton: $("#deleteSimilarityResultsButton"),
+    backToGalleryLink: $("#backToGalleryLink"),
     summary: $("#similaritySummary"),
     querySummary: $("#similarityQuerySummary"),
     matchCount: $("#similarityMatchCount"),
@@ -32,6 +35,8 @@ function createSimilarityState() {
   return {
     items: [],
     selectedPaths: new Set(),
+    isBusy: false,
+    allowNavigation: false,
   };
 }
 
@@ -74,6 +79,18 @@ function updateSummary(els, queryPath = "-", count = 0, method = "pHash", thresh
   setText(els.summary, count ? t("similarity.summary", count) : "-");
 }
 
+function thresholdMaxForMethod(method) {
+  if (method === "document") return 256;
+  if (method === "feature") return 100;
+  return 64;
+}
+
+function thresholdDefaultForMethod(method) {
+  if (method === "document") return 80;
+  if (method === "feature") return 70;
+  return 8;
+}
+
 function getSelectedItems(state) {
   if (!state.selectedPaths.size) return [];
   return state.items.filter((item) => state.selectedPaths.has(item.relative_path));
@@ -88,10 +105,28 @@ function updateResultSelection(els, state) {
 
   const hasResults = state.items.length > 0;
   const hasSelection = state.selectedPaths.size > 0;
-  if (els.selectAllButton) els.selectAllButton.disabled = !hasResults;
-  if (els.invertSelectionButton) els.invertSelectionButton.disabled = !hasResults;
-  if (els.clearSelectionButton) els.clearSelectionButton.disabled = !hasSelection;
-  if (els.deleteSelectedButton) els.deleteSelectedButton.disabled = !hasSelection;
+  if (els.selectAllButton) els.selectAllButton.disabled = state.isBusy || !hasResults;
+  if (els.invertSelectionButton) els.invertSelectionButton.disabled = state.isBusy || !hasResults;
+  if (els.clearSelectionButton) els.clearSelectionButton.disabled = state.isBusy || !hasSelection;
+  if (els.deleteSelectedButton) els.deleteSelectedButton.disabled = state.isBusy || !hasSelection;
+  if (els.startDateInput) els.startDateInput.disabled = state.isBusy || !hasResults;
+  if (els.endDateInput) els.endDateInput.disabled = state.isBusy || !hasResults;
+}
+
+function setBusyState(els, state, isBusy) {
+  state.isBusy = isBusy;
+  [
+    els.sourceSelect,
+    els.queryInput,
+    els.methodSelect,
+    els.thresholdInput,
+    els.limitInput,
+    els.searchButton,
+    els.clearButton,
+  ].forEach((control) => {
+    if (control) control.disabled = isBusy;
+  });
+  updateResultSelection(els, state);
 }
 
 function clearResults(els, state) {
@@ -145,6 +180,7 @@ function renderResults(els, state, data) {
 
   if (!items.length) {
     setState(els, t("similarity.noMatches"));
+    updateResultSelection(els, state);
     return;
   }
 
@@ -177,6 +213,10 @@ function renderResults(els, state, data) {
     path.className = "file-name similarity-result-path";
     path.href = viewerUrl(item.relative_path);
     path.textContent = resultTitle(item);
+    on(path, "click", (event) => {
+      if (!state.isBusy) return;
+      event.preventDefault();
+    });
 
     const relative = document.createElement("span");
     relative.className = "file-path";
@@ -195,6 +235,7 @@ function renderResults(els, state, data) {
     body.append(path, relative, meta);
     card.append(indicator, image, body);
     on(card, "click", () => {
+      if (state.isBusy) return;
       if (state.selectedPaths.has(item.relative_path)) {
         state.selectedPaths.delete(item.relative_path);
       } else {
@@ -203,9 +244,11 @@ function renderResults(els, state, data) {
       updateResultSelection(els, state);
     });
     on(card, "dblclick", () => {
+      if (state.isBusy) return;
       window.location.href = viewerUrl(item.relative_path);
     });
     on(card, "keydown", (event) => {
+      if (state.isBusy) return;
       if (event.key === "Enter") {
         window.location.href = viewerUrl(item.relative_path);
       }
@@ -217,10 +260,16 @@ function renderResults(els, state, data) {
 }
 
 async function searchSimilarity(els, state) {
+  if (state.isBusy) return;
   const relativePath = els.queryInput?.value.trim() || "";
   const source = els.sourceSelect?.value || "local";
   const method = els.methodSelect?.value || "phash";
-  const threshold = clampNumber(els.thresholdInput?.value || "8", 0, 64, 8);
+  const threshold = clampNumber(
+    els.thresholdInput?.value || String(thresholdDefaultForMethod(method)),
+    0,
+    thresholdMaxForMethod(method),
+    thresholdDefaultForMethod(method),
+  );
   const limit = clampNumber(els.limitInput?.value || "50", 1, 200, 50);
 
   if (!relativePath) {
@@ -234,6 +283,7 @@ async function searchSimilarity(els, state) {
   }
 
   setState(els, t("similarity.searching"));
+  setBusyState(els, state, true);
   if (els.results) els.results.innerHTML = "";
   state.items = [];
   state.selectedPaths.clear();
@@ -250,15 +300,19 @@ async function searchSimilarity(els, state) {
     renderResults(els, state, await response.json());
   } catch (error) {
     setState(els, `${t("similarity.searchFailed")}: ${error.message || error}`);
+  } finally {
+    setBusyState(els, state, false);
   }
 }
 
 function selectAllResults(els, state) {
+  if (state.isBusy) return;
   state.selectedPaths = new Set(state.items.map((item) => item.relative_path));
   updateResultSelection(els, state);
 }
 
 function invertResultSelection(els, state) {
+  if (state.isBusy) return;
   const nextSelectedPaths = new Set(state.selectedPaths);
   for (const item of state.items) {
     if (nextSelectedPaths.has(item.relative_path)) {
@@ -272,11 +326,13 @@ function invertResultSelection(els, state) {
 }
 
 function clearResultSelection(els, state) {
+  if (state.isBusy) return;
   state.selectedPaths.clear();
   updateResultSelection(els, state);
 }
 
 async function deleteSelectedResults(els, state) {
+  if (state.isBusy) return;
   const selectedItems = getSelectedItems(state);
   if (!selectedItems.length) {
     await showAlert(t("browser.selection.chooseImage"), {
@@ -299,6 +355,7 @@ async function deleteSelectedResults(els, state) {
   if (!confirmed) return;
 
   try {
+    setBusyState(els, state, true);
     for (let index = 0; index < selectedItems.length; index += 1) {
       const item = selectedItems[index];
       setState(
@@ -332,7 +389,38 @@ async function deleteSelectedResults(els, state) {
       title: t("dialog.title.error"),
       confirmText: t("dialog.buttons.ok"),
     });
+  } finally {
+    setBusyState(els, state, false);
   }
+}
+
+async function confirmLeaveWhileBusy() {
+  return showConfirm(
+    t("similarity.confirmLeaveWhileBusy"),
+    {
+      title: t("dialog.title.confirm"),
+      confirmText: t("similarity.leavePage"),
+      cancelText: t("dialog.buttons.cancel"),
+    },
+  );
+}
+
+function bindLeaveGuard(els, state) {
+  on(window, "beforeunload", (event) => {
+    if (!state.isBusy || state.allowNavigation) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  on(els.backToGalleryLink, "click", async (event) => {
+    if (!state.isBusy) return;
+    event.preventDefault();
+    const confirmed = await confirmLeaveWhileBusy();
+    if (confirmed) {
+      state.allowNavigation = true;
+      window.location.href = els.backToGalleryLink.href;
+    }
+  });
 }
 
 function applyQueryParams(els) {
@@ -343,11 +431,22 @@ function applyQueryParams(els) {
 
 function bindSimilarityEvents(els, state) {
   on(els.searchButton, "click", () => searchSimilarity(els, state));
+  on(els.methodSelect, "change", () => {
+    if (state.isBusy) return;
+    const max = thresholdMaxForMethod(els.methodSelect?.value || "phash");
+    const fallback = thresholdDefaultForMethod(els.methodSelect?.value || "phash");
+    if (els.thresholdInput) {
+      els.thresholdInput.max = String(max);
+      els.thresholdInput.value = String(fallback);
+    }
+  });
   on(els.clearButton, "click", () => {
+    if (state.isBusy) return;
     if (els.queryInput) els.queryInput.value = "";
     clearResults(els, state);
   });
   on(els.queryInput, "keydown", (event) => {
+    if (state.isBusy) return;
     if (event.key === "Enter") searchSimilarity(els, state);
   });
   on(els.selectAllButton, "click", () => selectAllResults(els, state));
@@ -366,6 +465,7 @@ export function initSimilarityPage() {
   setDialogLanguage();
   applyQueryParams(els);
   bindSimilarityEvents(els, state);
+  bindLeaveGuard(els, state);
   clearResults(els, state);
   markI18nReady();
 }

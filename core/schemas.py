@@ -60,7 +60,7 @@ class SimilaritySearchRequest(BaseModel):
     relative_path: str = Field(..., min_length=1)
     source: str = Field(default="local")
     method: str = Field(default="phash")
-    threshold: int = Field(default=8, ge=0, le=64)
+    threshold: int = Field(default=8, ge=0, le=256)
     limit: int = Field(default=50, ge=1, le=200)
 
 

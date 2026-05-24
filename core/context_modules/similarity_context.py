@@ -6,9 +6,15 @@ from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
-from MediaArchiveOrganizer.core.duplicate_detector import compute_phash, phash_distance
+from MediaArchiveOrganizer.core.duplicate_detector import (
+    compute_document_hash,
+    compute_phash,
+    document_hash_distance,
+    phash_distance,
+)
 
-FULL_ROOT_SUPPLEMENTAL_SCAN_LIMIT = 1000
+FEATURE_DISTANCE_MAX = 100
+FEATURE_DESCRIPTOR_CACHE: dict[tuple[str, int, int], tuple[str, int, Any]] = {}
 
 
 def _resolve_similarity_query_path(active_root: Path, candidate: str) -> tuple[Path, str]:
@@ -48,16 +54,6 @@ def _resolve_similarity_query_path(active_root: Path, candidate: str) -> tuple[P
     return query_path, relative_path
 
 
-def _iter_query_directory_images(query_path: Path) -> Iterable[Path]:
-    if not query_path.parent.exists():
-        return []
-    return (
-        path
-        for path in query_path.parent.iterdir()
-        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-    )
-
-
 def _collect_similarity_candidates(
     active_root: Path,
     query_path: Path,
@@ -87,19 +83,39 @@ def _collect_similarity_candidates(
         for path in paths:
             add_candidate(Path(path), str(hash_value))
 
-    for path in _iter_query_directory_images(query_path):
+    for path in iter_image_files(active_root):
         add_candidate(path)
 
-    root_file_count = 0
-    root_files: list[Path] = []
+    return candidates
+
+
+def _collect_similarity_candidate_paths(
+    active_root: Path,
+    query_path: Path,
+    hash_db: dict[str, dict[str, list[str]]],
+) -> list[Path]:
+    seen_paths: set[Path] = set()
+    candidates: list[Path] = []
+
+    def add_path(path: Path) -> None:
+        candidate_path = path.expanduser().resolve()
+        if candidate_path == query_path or candidate_path in seen_paths:
+            return
+        if not candidate_path.exists() or not candidate_path.is_file():
+            return
+        try:
+            candidate_path.relative_to(active_root)
+        except ValueError:
+            return
+        seen_paths.add(candidate_path)
+        candidates.append(candidate_path)
+
+    for paths in hash_db.get("phash", {}).values():
+        for path in paths:
+            add_path(Path(path))
+
     for path in iter_image_files(active_root):
-        root_file_count += 1
-        if root_file_count > FULL_ROOT_SUPPLEMENTAL_SCAN_LIMIT:
-            break
-        root_files.append(path)
-    if root_file_count <= FULL_ROOT_SUPPLEMENTAL_SCAN_LIMIT:
-        for path in root_files:
-            add_candidate(path)
+        add_path(path)
 
     return candidates
 
@@ -149,6 +165,103 @@ def _collect_duplicate_group_matches(active_root: Path, query_relative_path: str
                 "source": "duplicates",
             }
     return matches
+
+
+def _load_feature_image(path: Path):
+    try:
+        import cv2
+        import numpy
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenCV is required for feature similarity. Install opencv-python-headless.",
+        ) from exc
+
+    try:
+        if Image is None or ImageOps is None:
+            image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                return None
+            return image
+        with Image.open(path) as img:
+            normalized = ImageOps.exif_transpose(img).convert("L")
+            return numpy.array(normalized)
+    except Exception:
+        return None
+
+
+def _feature_descriptors(path: Path) -> tuple[str, int, Any] | None:
+    import cv2
+
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+
+    cache_key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    cached = FEATURE_DESCRIPTOR_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    image = _load_feature_image(path)
+    if image is None:
+        return None
+
+    orb = cv2.ORB_create(nfeatures=1200, fastThreshold=7)
+    keypoints, descriptors = orb.detectAndCompute(image, None)
+    if descriptors is not None and len(keypoints) >= 12:
+        result = ("orb", len(keypoints), descriptors)
+        FEATURE_DESCRIPTOR_CACHE[cache_key] = result
+        return result
+
+    akaze = cv2.AKAZE_create()
+    keypoints, descriptors = akaze.detectAndCompute(image, None)
+    if descriptors is not None and len(keypoints) >= 8:
+        result = ("akaze", len(keypoints), descriptors)
+        FEATURE_DESCRIPTOR_CACHE[cache_key] = result
+        return result
+    return None
+
+
+def _feature_similarity_distance(
+    left_path: Path,
+    right_path: Path,
+    left: tuple[str, int, Any] | None = None,
+) -> tuple[int, float, str] | None:
+    try:
+        import cv2
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenCV is required for feature similarity. Install opencv-python-headless.",
+        ) from exc
+
+    left = left or _feature_descriptors(left_path)
+    right = _feature_descriptors(right_path)
+    if left is None or right is None:
+        return None
+
+    left_method, left_count, left_descriptors = left
+    right_method, right_count, right_descriptors = right
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = matcher.match(left_descriptors, right_descriptors)
+    if not matches:
+        return None
+
+    matches = sorted(matches, key=lambda match: match.distance)
+    good_distance = 64 if left_method == "orb" and right_method == "orb" else 80
+    good_matches = [match for match in matches if match.distance <= good_distance]
+    comparable_count = max(1, min(left_count, right_count))
+    match_ratio = min(1.0, len(good_matches) / comparable_count)
+    if not good_matches:
+        average_quality = 0.0
+    else:
+        average_distance = sum(match.distance for match in good_matches[:50]) / min(len(good_matches), 50)
+        average_quality = max(0.0, 1.0 - (average_distance / 100.0))
+    score = round((match_ratio * 0.7) + (average_quality * 0.3), 4)
+    distance = round(FEATURE_DISTANCE_MAX * (1 - score))
+    detector = left_method if left_method == right_method else f"{left_method}+{right_method}"
+    return distance, score, detector
 
 
 def _mobile_record_target(record: dict[str, Any]) -> str:
@@ -323,7 +436,7 @@ def search_similar_images(
         raise HTTPException(status_code=400, detail=f"Unsupported similarity source: {source}")
 
     method = str(method or "phash").strip().lower()
-    if method != "phash":
+    if method not in {"phash", "document", "feature"}:
         raise HTTPException(status_code=400, detail="Unsupported similarity method")
 
     settings = load_settings()
@@ -332,8 +445,35 @@ def search_similar_images(
     if not query_path.exists() or not query_path.is_file():
         raise HTTPException(status_code=404, detail=f"Image not found in current root: {normalized_relative_path}")
 
-    query_hash = compute_phash(str(query_path))
+    query_hash = ""
+    if method == "document":
+        query_hash = compute_document_hash(str(query_path)) or ""
+    elif method == "phash":
+        query_hash = compute_phash(str(query_path)) or ""
+    query_features = _feature_descriptors(query_path) if method == "feature" else None
+    if method == "feature" and query_features is None:
+        return {
+            "query": normalized_relative_path,
+            "source": "local",
+            "method": method,
+            "query_hash": "",
+            "threshold": threshold,
+            "items": [],
+            "count": 0,
+        }
     if not query_hash:
+        if method == "feature":
+            query_hash = "feature"
+        else:
+            return {
+                "query": normalized_relative_path,
+                "method": method,
+                "query_hash": "",
+                "items": [],
+                "count": 0,
+            }
+
+    if method != "feature" and not query_hash:
         return {
             "query": normalized_relative_path,
             "method": method,
@@ -344,30 +484,82 @@ def search_similar_images(
 
     database_path = root_database_path(active_root)
     hash_db = HashDbRepository(database_path).load_hash_db()
-    records = _collect_similarity_candidates(active_root, query_path, hash_db)
     items_by_path = _collect_duplicate_group_matches(active_root, normalized_relative_path)
 
-    for candidate_hash, paths in records.items():
-        try:
-            distance = phash_distance(query_hash, str(candidate_hash))
-        except ValueError:
-            continue
-        if distance > threshold:
-            continue
-
-        for candidate_path in paths:
+    if method == "phash":
+        records = _collect_similarity_candidates(active_root, query_path, hash_db)
+        for candidate_hash, paths in records.items():
             try:
-                candidate_relative = candidate_path.relative_to(active_root).as_posix()
+                distance = phash_distance(query_hash, str(candidate_hash))
             except ValueError:
                 continue
+            if distance > threshold:
+                continue
+
+            for candidate_path in paths:
+                try:
+                    candidate_relative = candidate_path.relative_to(active_root).as_posix()
+                except ValueError:
+                    continue
+                current = items_by_path.get(candidate_relative)
+                item = {
+                    "relative_path": candidate_relative,
+                    "hash": str(candidate_hash),
+                    "distance": distance,
+                    "score": round(1 - (distance / 64), 4),
+                    "reason": method,
+                    "source": "phash",
+                }
+                if current is None or item["distance"] < current["distance"]:
+                    items_by_path[candidate_relative] = item
+                if len(items_by_path) >= limit:
+                    break
+            if len(items_by_path) >= limit:
+                break
+    elif method == "document":
+        for candidate_path in _collect_similarity_candidate_paths(active_root, query_path, hash_db):
+            if len(items_by_path) >= limit:
+                break
+            candidate_hash = compute_document_hash(str(candidate_path))
+            if not candidate_hash:
+                continue
+            try:
+                distance = document_hash_distance(query_hash, candidate_hash)
+            except ValueError:
+                continue
+            if distance > threshold:
+                continue
+            candidate_relative = candidate_path.relative_to(active_root).as_posix()
             current = items_by_path.get(candidate_relative)
             item = {
                 "relative_path": candidate_relative,
                 "hash": str(candidate_hash),
                 "distance": distance,
-                "score": round(1 - (distance / 64), 4),
+                "score": round(1 - (distance / 256), 4),
                 "reason": method,
-                "source": "phash",
+                "source": "document",
+            }
+            if current is None or item["distance"] < current["distance"]:
+                items_by_path[candidate_relative] = item
+    else:
+        for candidate_path in _collect_similarity_candidate_paths(active_root, query_path, hash_db):
+            if len(items_by_path) >= limit:
+                break
+            result = _feature_similarity_distance(query_path, candidate_path, query_features)
+            if result is None:
+                continue
+            distance, score, detector = result
+            if distance > threshold:
+                continue
+            candidate_relative = candidate_path.relative_to(active_root).as_posix()
+            current = items_by_path.get(candidate_relative)
+            item = {
+                "relative_path": candidate_relative,
+                "hash": detector,
+                "distance": distance,
+                "score": score,
+                "reason": method,
+                "source": "feature",
             }
             if current is None or item["distance"] < current["distance"]:
                 items_by_path[candidate_relative] = item
