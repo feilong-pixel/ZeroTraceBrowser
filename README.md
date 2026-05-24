@@ -87,6 +87,17 @@ Any image can be opened in the OS default application (e.g. Photos, Paint) direc
 
 The gallery timeline uses backend-generated `timeline_time` / `timeline_ts` values for sorting and grouping. The frontend does not parse image dates on its own, which keeps timeline behavior consistent.
 
+### iPhone Import
+
+The iPhone Import page can import photos from an iPhone into the current active image root while keeping source deletion explicit and controlled.
+
+Supported paths:
+
+* Windows iPhone MTP import for small manual batches
+* iPhone Shortcut upload over the local network
+
+Android import is not supported. The feature is intentionally scoped to iPhone because Android MTP storage layouts vary widely across vendors and devices.
+
 ### Multi-language Support
 
 * English
@@ -322,6 +333,7 @@ http://127.0.0.1:8000
 6. Restore or clean files on the Recycle page.
 7. Generate Hash DB / duplicate results on the Tasks page.
 8. Review and handle duplicate images manually on the Duplicates page.
+9. Import iPhone photos from the iPhone Import page when needed.
 
 ---
 

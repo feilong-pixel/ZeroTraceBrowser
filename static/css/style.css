@@ -1587,12 +1587,12 @@ button:disabled:hover {
 }
 
 .iphone-device-connect-row {
-  grid-template-columns: minmax(128px, 240px) minmax(0, 1fr);
+  grid-template-columns: minmax(150px, 220px) minmax(220px, 1fr);
   align-items: end;
 }
 
 .iphone-device-grid {
-  grid-template-columns: minmax(180px, 240px) minmax(120px, 180px) minmax(260px, auto);
+  grid-template-columns: minmax(220px, 1.2fr) minmax(140px, 180px) minmax(240px, 1fr);
   align-items: end;
 }
 
@@ -1628,17 +1628,16 @@ button:disabled:hover {
 }
 
 .iphone-device-actions {
-  display: flex;
-  width: min(50%, 760px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  width: min(100%, 720px);
 }
 
 .iphone-device-actions .primary-button {
-  flex: 1 1 0;
   min-width: 0;
 }
 
 .iphone-device-actions button:not(.primary-button) {
-  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -2917,6 +2916,7 @@ button:disabled:hover {
 
   .iphone-device-actions {
     align-items: stretch;
+    grid-template-columns: 1fr;
     width: 100%;
   }
 

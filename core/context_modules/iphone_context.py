@@ -479,31 +479,37 @@ $records | ConvertTo-Json -Depth 4 -Compress
     skip_refs_path = temp_dir / "iphone_skip_refs.json"
     script_path.write_text(script, encoding="utf-8")
     skip_refs_path.write_text(json.dumps(skip_refs or [], ensure_ascii=False), encoding="utf-8")
-    completed = subprocess.run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(script_path),
-            "-DeviceId",
-            device_id,
-            "-TempDir",
-            str(temp_dir),
-            "-Limit",
-            str(limit),
-            "-CutoffModifiedAt",
-            cutoff_modified_at,
-            "-SkipRefsPath",
-            str(skip_refs_path),
-        ],
-        capture_output=True,
-        check=False,
-        encoding="utf-8",
-        errors="replace",
-        timeout=IPHONE_INDEX_TIMEOUT_SECONDS,
-    )
+    try:
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                "-DeviceId",
+                device_id,
+                "-TempDir",
+                str(temp_dir),
+                "-Limit",
+                str(limit),
+                "-CutoffModifiedAt",
+                cutoff_modified_at,
+                "-SkipRefsPath",
+                str(skip_refs_path),
+            ],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+            timeout=IPHONE_INDEX_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"iPhone index copy timed out after {int(exc.timeout or IPHONE_INDEX_TIMEOUT_SECONDS)} seconds. "
+            "Unlock the device, keep the Photos/DCIM view available, and try a smaller index limit."
+        ) from exc
     if completed.returncode != 0:
         raise RuntimeError(_clean_powershell_error(completed.stderr, completed.stdout, "iPhone index copy failed"))
     output = completed.stdout.strip()
@@ -513,7 +519,6 @@ $records | ConvertTo-Json -Depth 4 -Compress
     if isinstance(parsed, dict):
         return [parsed]
     return parsed if isinstance(parsed, list) else []
-
 
 def _clean_powershell_error(stderr: str, stdout: str = "", fallback: str = "PowerShell command failed") -> str:
     raw_message = str(stderr or stdout or "").strip()

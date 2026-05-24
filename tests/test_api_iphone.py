@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+
+import pytest
 
 import core.context_modules.iphone_context as iphone_context
 import core.context as context
@@ -421,6 +424,34 @@ def test_iphone_index_returns_failed_status_when_mtp_copy_fails(api_client, monk
     assert result["indexed"] == 0
     assert result["imported"] == 0
     assert result["message"] == "DCIM folder not found."
+
+
+def test_iphone_index_returns_failed_status_when_mtp_copy_times_out(api_client, monkeypatch):
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        raise RuntimeError("iPhone index copy timed out after 600 seconds. Unlock the device and try again.")
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone", limit=5)
+
+    assert result["status"] == "failed"
+    assert result["indexed"] == 0
+    assert result["imported"] == 0
+    assert "timed out after 600 seconds" in result["message"]
+
+
+def test_iphone_index_copy_timeout_is_clean_runtime_error(tmp_path, monkeypatch):
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=kwargs.get("args", "powershell"), timeout=600)
+
+    monkeypatch.setattr(iphone_context.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        iphone_context._copy_iphone_media_for_index("Apple iPhone", tmp_path, limit=5)
+
+    assert "timed out after 600 seconds" in str(exc_info.value)
 
 
 def test_iphone_index_copy_error_message_is_cleaned():

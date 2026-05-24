@@ -1,113 +1,120 @@
 <!DOCTYPE html>
 <html lang="en" class="i18n-pending">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ZeroTraceBrowser Mobile Import</title>
-    <style>html.i18n-pending body{visibility:hidden}</style>
-    <link rel="stylesheet" href="css/style.css?v=20260522-mobile-import" />
-  </head>
-  <body>
-    <main class="tasks-page mobile-import-page iphone-page">
-      <section class="tasks-main">
-        <section class="tasks-page-header">
-          <div>
-            <h1 data-i18n="mobileImport.pageTitle">Mobile Import</h1>
-            <p class="intro" data-i18n="mobileImport.pageIntro">Index and import photos from mobile devices while keeping source deletion explicit and controlled.</p>
-          </div>
-        </section>
 
-        <section class="panel task-config-panel task-focus-panel">
-          <div class="iphone-device-connect-row">
-            <div>
-              <h2 data-i18n="mobileImport.deviceSection">Device</h2>
-              <button id="detectIphoneButton" type="button" data-i18n="mobileImport.detectDevice">Detect Device</button>
-            </div>
-            <div>
-              <select id="iphoneDeviceSelect">
-                <option value="" data-i18n="mobileImport.noDevice">No device loaded</option>
-              </select>
-            </div>
-          </div>
-          <div class="iphone-index-control-panel">
-            <div class="iphone-device-grid">
-              <div>
-                <label for="iphoneIndexLimitInput" data-i18n="mobileImport.indexLimit">Photos to index</label>
-                <input id="iphoneIndexLimitInput" type="number" min="1" max="10000" value="100" />
-              </div>
-              <div>
-                <label class="iphone-checkbox-spacer" aria-hidden="true">&nbsp;</label>
-                <label class="task-checkbox-label" for="iphoneCopyAllInput">
-                  <input id="iphoneCopyAllInput" type="checkbox" />
-                  <span data-i18n="mobileImport.copyAllPhotos">Copy all photos from device</span>
-                </label>
-              </div>
-            </div>
-            <div class="iphone-actions iphone-device-actions">
-              <button id="indexIphoneButton" type="button" class="primary-button" data-i18n="mobileImport.buildIndex" disabled>Build Device Index</button>
-              <button id="cancelIphoneIndexButton" type="button" data-i18n="mobileImport.cancelIndex" disabled>Cancel Indexing</button>
-            </div>
-          </div>
-        </section>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroTraceBrowser iPhone Import</title>
+  <style>
+    html.i18n-pending body {
+      visibility: hidden
+    }
+  </style>
+  <link rel="stylesheet" href="css/style.css?v=20260524-mobile-import-layout" />
+</head>
 
-        <section class="panel task-output-panel">
-          <header class="task-output-header">
-            <div>
-              <h2 data-i18n="mobileImport.liveOutput">Device Output</h2>
-            </div>
-            <strong id="iphoneStatus" class="task-output-status">idle</strong>
-          </header>
-          <div id="iphoneLog" class="log-box" data-i18n="mobileImport.logEmpty">No mobile import operation started.</div>
-        </section>
+<body>
+  <main class="tasks-page mobile-import-page iphone-page">
+    <section class="tasks-main">
+      <section class="tasks-page-header">
+        <div>
+          <h1 data-i18n="mobileImport.pageTitle">iPhone Import</h1>
+          <p class="intro" data-i18n="mobileImport.pageIntro">Index and import photos from iPhone while keeping
+            source deletion explicit and controlled.</p>
+        </div>
       </section>
 
-      <aside class="sidebar gallery-sidebar tasks-sidebar">
-        <header class="sidebar-header sidebar-header-minimal">
-          <div class="sidebar-header-actions">
-            <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="mobileImport.backToGallery">Back To Gallery</a>
-          </div>
+      <section class="panel task-config-panel task-focus-panel">
+        <header class="task-panel-head">
+          <h2 data-i18n="mobileImport.importSection">Import</h2>
         </header>
-
-        <section class="panel tasks-summary-panel">
-          <h2 data-i18n="mobileImport.deviceSummary">Device Summary</h2>
-          <div class="summary-list">
-            <div class="summary-item summary-item-stacked">
-              <span class="summary-label" data-i18n="mobileImport.deviceName">Device</span>
-              <strong id="iphoneDeviceName">-</strong>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label" data-i18n="mobileImport.albumCount">Albums</span>
-              <strong id="iphoneAlbumCount">0</strong>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label" data-i18n="mobileImport.mediaCount">Media</span>
-              <strong id="iphoneMediaCount">0</strong>
-            </div>
-            <div class="summary-item summary-item-stacked">
-              <span class="summary-label" data-i18n="mobileImport.lastIndexedAt">Last Indexed</span>
-              <strong id="iphoneLastIndexedAt">-</strong>
-            </div>
+        <div class="iphone-device-grid">
+          <div>
+            <label for="iphoneDeviceSelect" data-i18n="mobileImport.deviceName">iPhone</label>
+            <select id="iphoneDeviceSelect">
+              <option value="" data-i18n="mobileImport.noDevice">No device loaded</option>
+            </select>
           </div>
-        </section>
-
-        <section class="panel tasks-summary-panel">
-          <h2 data-i18n="mobileImport.storage">Storage</h2>
-          <div class="muted" data-i18n="mobileImport.storageNote">Device hashes are cached locally by device id. Original photos stay on the phone unless you explicitly choose otherwise.</div>
-        </section>
-      </aside>
-    </main>
-
-    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
-      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
-        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
-        <div id="dialogMessage" class="dialog-message"></div>
-        <div class="dialog-actions">
-          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
-          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+          <div>
+            <label for="iphoneIndexLimitInput" data-i18n="mobileImport.indexLimit">Photos to index</label>
+            <input id="iphoneIndexLimitInput" type="number" min="1" max="10000" value="100" />
+          </div>
+          <div>
+            <label class="iphone-checkbox-spacer" aria-hidden="true">&nbsp;</label>
+            <label class="task-checkbox-label" for="iphoneCopyAllInput">
+              <input id="iphoneCopyAllInput" type="checkbox" />
+              <span data-i18n="mobileImport.copyAllPhotos">Copy all photos from iPhone</span>
+            </label>
+          </div>
         </div>
+        <div class="iphone-actions iphone-device-actions">
+          <button id="detectIphoneButton" type="button" data-i18n="mobileImport.detectDevice">Detect iPhone</button>
+          <button id="indexIphoneButton" type="button" class="primary-button" data-i18n="mobileImport.buildIndex" disabled>Build iPhone Index</button>
+          <button id="cancelIphoneIndexButton" type="button" data-i18n="mobileImport.cancelIndex" disabled>Cancel Indexing</button>
+        </div>
+      </section>
+
+      <section class="panel task-output-panel">
+        <header class="task-output-header">
+          <div>
+            <h2 data-i18n="mobileImport.liveOutput">iPhone Output</h2>
+          </div>
+          <strong id="iphoneStatus" class="task-output-status">idle</strong>
+        </header>
+        <div id="iphoneLog" class="log-box" data-i18n="mobileImport.logEmpty">No iPhone import operation started.</div>
+      </section>
+    </section>
+
+    <aside class="sidebar gallery-sidebar tasks-sidebar">
+      <header class="sidebar-header sidebar-header-minimal">
+        <div class="sidebar-header-actions">
+          <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="mobileImport.backToGallery">Back
+            To Gallery</a>
+        </div>
+      </header>
+
+      <section class="panel tasks-summary-panel">
+        <h2 data-i18n="mobileImport.deviceSummary">iPhone Summary</h2>
+        <div class="summary-list">
+          <div class="summary-item summary-item-stacked">
+            <span class="summary-label" data-i18n="mobileImport.deviceName">iPhone</span>
+            <strong id="iphoneDeviceName">-</strong>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label" data-i18n="mobileImport.albumCount">Albums</span>
+            <strong id="iphoneAlbumCount">0</strong>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label" data-i18n="mobileImport.mediaCount">Media</span>
+            <strong id="iphoneMediaCount">0</strong>
+          </div>
+          <div class="summary-item summary-item-stacked">
+            <span class="summary-label" data-i18n="mobileImport.lastIndexedAt">Last Indexed</span>
+            <strong id="iphoneLastIndexedAt">-</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel tasks-summary-panel">
+        <h2 data-i18n="mobileImport.storage">Storage</h2>
+        <div class="muted" data-i18n="mobileImport.storageNote">Device hashes are cached locally by device id. Original
+          photos stay on the iPhone unless you explicitly choose otherwise.</div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+    <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+      <div id="dialogMessage" class="dialog-message"></div>
+      <div class="dialog-actions">
+        <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+        <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
       </div>
     </div>
+  </div>
 
-    <script type="module" src="./js/app.js?v=20260522-mobile-import"></script>
-  </body>
+  <script type="module" src="./js/app.js?v=20260522-mobile-import"></script>
+</body>
+
 </html>

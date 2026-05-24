@@ -211,7 +211,7 @@ async function buildDeviceIndex(els) {
       const data = await response.json();
       lastData = data;
 
-      if (data.status === "failed") {
+      if (data.status === "failed" || data.status === "unsupported") {
         throw new Error(data.message || t("mobileImport.indexFailed"));
       }
 

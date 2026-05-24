@@ -87,6 +87,17 @@
 
 图片时间线使用后端生成的 `timeline_time` / `timeline_ts`，按统一的时间来源排序和分组，避免前端自行解析时间造成不一致。
 
+### iPhone 导入
+
+iPhone 导入页面可以将 iPhone 照片导入当前 active image root，同时保持源文件删除为显式、可控操作。
+
+当前支持路径：
+
+* Windows iPhone MTP 小批量手动导入
+* iPhone Shortcut 通过本地网络上传
+
+不支持 Android 导入。该功能有意限定为 iPhone，因为 Android MTP 存储结构在不同厂商和设备之间差异很大。
+
 ### 多语言支持
 
 * English
@@ -322,6 +333,7 @@ http://127.0.0.1:8000
 6. 在 Recycle 页面恢复或清理文件。
 7. 在 Tasks 页面生成 Hash DB / 重复图片结果。
 8. 在 Duplicates 页面人工检查并处理重复图片。
+9. 如有需要，可在 iPhone 导入页面导入 iPhone 照片。
 
 ---
 
