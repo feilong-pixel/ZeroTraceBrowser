@@ -94,6 +94,57 @@ class MobileDeleteRequest(BaseModel):
     target: str = Field(..., min_length=1)
 
 
+class MobilePairRequest(BaseModel):
+    pairing_token: str = Field(..., min_length=1)
+    device_type: str = Field(default="iphone", min_length=1)
+    device_id: str = Field(..., min_length=1)
+    device_name: str = Field(default="")
+    device_model: str = Field(default="")
+    platform: str = Field(default="")
+    app_id: str = Field(default="")
+    app_version: str = Field(default="")
+    owner_label: str = Field(default="")
+    capabilities: dict = Field(default_factory=dict)
+
+
+class MobileSyncStartRequest(BaseModel):
+    device_type: str = Field(default="iphone", min_length=1)
+    device_id: str = Field(..., min_length=1)
+    sync_token: str = Field(..., min_length=1)
+    last_client_cursor: str = Field(default="")
+    battery_state: str = Field(default="")
+    network_type: str = Field(default="")
+
+
+class MobileManifestItem(BaseModel):
+    item_id: str = Field(..., min_length=1)
+    filename: str = Field(..., min_length=1)
+    media_type: str = Field(default="")
+    mime_type: str = Field(default="")
+    size: int = Field(default=0, ge=0)
+    created_at: str = Field(default="")
+    modified_at: str = Field(default="")
+    timezone: str = Field(default="")
+    album: str = Field(default="")
+    relative_hint: str = Field(default="")
+    width: int = Field(default=0, ge=0)
+    height: int = Field(default=0, ge=0)
+    duration_ms: int = Field(default=0, ge=0)
+    sha256: str = Field(default="")
+    paired_item_id: str = Field(default="")
+    is_favorite: bool = Field(default=False)
+    is_screenshot: bool = Field(default=False)
+
+
+class MobileSyncManifestRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    server_id: str = Field(default="")
+    root_id: str = Field(default="")
+    device_type: str = Field(default="iphone", min_length=1)
+    device_id: str = Field(..., min_length=1)
+    items: list[MobileManifestItem] = Field(default_factory=list)
+
+
 class RestoreDeletedRequest(BaseModel):
     deleted_to: str = Field(..., min_length=1)
 

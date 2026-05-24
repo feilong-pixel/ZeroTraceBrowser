@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser Phone Sync</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="css/style.css?v=20260524-phone-sync-shell" />
+  </head>
+  <body>
+    <main class="tasks-page import-page phone-sync-page">
+      <section class="tasks-main">
+        <section class="tasks-page-header">
+          <div>
+            <h1 data-i18n="importPhotos.pageTitle">Phone Photo Sync</h1>
+            <p class="intro" data-i18n="importPhotos.pageIntro">Pair a phone once, then import new photos quietly over local Wi-Fi.</p>
+          </div>
+        </section>
+
+        <section class="panel task-config-panel task-focus-panel phone-sync-setup-panel">
+          <header class="task-panel-head">
+            <h2 data-i18n="importPhotos.pairingTitle">Pair Phone</h2>
+            <strong id="pairingStatus" class="task-output-status" data-i18n="importPhotos.notPaired">Not paired</strong>
+          </header>
+
+          <div class="phone-sync-grid">
+            <div class="phone-sync-qr" aria-label="Pairing QR placeholder">
+              <div class="phone-sync-qr-pattern" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <strong data-i18n="importPhotos.qrPlaceholder">QR code will appear here</strong>
+            </div>
+
+            <div class="phone-sync-setup-copy">
+              <p data-i18n="importPhotos.pairingIntro">Open the phone app and scan this code once. After pairing, the phone can find this computer again on the same Wi-Fi.</p>
+              <div class="phone-sync-url-box">
+                <span class="summary-label" data-i18n="importPhotos.localAddress">Local address</span>
+                <strong id="phoneSyncAddress">-</strong>
+              </div>
+              <div class="phone-sync-url-box">
+                <span class="summary-label" data-i18n="importPhotos.syncTarget">Sync target</span>
+                <strong id="phoneSyncTarget">-</strong>
+              </div>
+              <div class="import-action-row">
+                <button id="refreshPairingButton" type="button" data-i18n="importPhotos.refreshPairing">Refresh Pairing Code</button>
+                <a class="button-link subtle-link" href="/mobile-import.html" data-i18n="importPhotos.deviceFallbackLink">Open Device Fallback</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel phone-sync-status-panel">
+          <header class="task-output-header">
+            <div>
+              <h2 data-i18n="importPhotos.connectionStatus">Connection Status</h2>
+            </div>
+            <strong id="connectionStatus" class="task-output-status" data-i18n="importPhotos.waitingForPhone">Waiting</strong>
+          </header>
+          <div class="phone-sync-status-line" id="phoneSyncStatusLine" data-i18n="importPhotos.phoneSyncIdle">Phone sync idle</div>
+          <div class="phone-sync-metrics">
+            <div>
+              <span data-i18n="importPhotos.connectedDevices">Connected devices</span>
+              <strong id="connectedDeviceName">-</strong>
+            </div>
+            <div>
+              <span data-i18n="importPhotos.lastSeen">Last seen</span>
+              <strong id="phoneLastSeen">-</strong>
+            </div>
+            <div>
+              <span data-i18n="importPhotos.destinationRoot">Destination root</span>
+              <strong id="phoneDestinationRoot">-</strong>
+            </div>
+          </div>
+          <section class="phone-sync-device-list" aria-labelledby="pairedDevicesHeading">
+            <h3 id="pairedDevicesHeading" data-i18n="importPhotos.pairedDeviceList">Paired devices</h3>
+            <div id="pairedDeviceList" class="phone-sync-device-empty" data-i18n="importPhotos.noPairedDevices">No paired phones yet.</div>
+          </section>
+        </section>
+
+        <section class="panel task-output-panel">
+          <header class="task-output-header">
+            <div>
+              <h2 data-i18n="importPhotos.importStatus">Import Status</h2>
+            </div>
+            <strong id="importLiveStatus" class="task-output-status" data-i18n="tasks.idle">idle</strong>
+          </header>
+          <div class="phone-sync-progress">
+            <div>
+              <span data-i18n="importPhotos.processed">Processed</span>
+              <strong id="importProcessedCount">0</strong>
+            </div>
+            <div>
+              <span data-i18n="importPhotos.imported">Imported</span>
+              <strong id="importImportedCount">0</strong>
+            </div>
+            <div>
+              <span data-i18n="importPhotos.skipped">Skipped</span>
+              <strong id="importSkippedCount">0</strong>
+            </div>
+            <div>
+              <span data-i18n="importPhotos.failed">Failed</span>
+              <strong id="importFailedCount">0</strong>
+            </div>
+          </div>
+          <div id="importLog" class="log-box import-log-box" data-i18n="importPhotos.logEmpty">No phone sync activity yet.</div>
+        </section>
+      </section>
+
+      <aside class="sidebar gallery-sidebar tasks-sidebar import-sidebar">
+        <header class="sidebar-header sidebar-header-minimal">
+          <div class="sidebar-header-actions">
+            <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="mobileImport.backToGallery">Back to gallery</a>
+          </div>
+        </header>
+
+        <section class="panel tasks-summary-panel">
+          <h2 data-i18n="importPhotos.summary">Sync Summary</h2>
+          <div class="summary-list">
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="system.labels.status">Status</span>
+              <strong id="importSummaryStatus" data-i18n="tasks.idle">idle</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="importPhotos.pairedDevices">Paired devices</span>
+              <strong id="pairedDeviceCount">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="importPhotos.processed">Processed</span>
+              <strong id="sidebarProcessedCount">0</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="importPhotos.imported">Imported</span>
+              <strong id="sidebarImportedCount">0</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel tasks-summary-panel">
+          <h2 data-i18n="importPhotos.recentRuns">Recent Syncs</h2>
+          <div id="importRecentRuns" class="import-recent-runs" data-i18n="importPhotos.recentRunsEmpty">No phone sync runs yet.</div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+        <div id="dialogMessage" class="dialog-message"></div>
+        <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=20260524-phone-sync-shell"></script>
+  </body>
+</html>

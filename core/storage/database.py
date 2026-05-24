@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -343,6 +343,115 @@ def init_root_database(database_path: str | Path) -> Path:
 
             CREATE INDEX IF NOT EXISTS idx_mobile_import_records_phash
                 ON mobile_import_records(phash);
+
+            CREATE TABLE IF NOT EXISTS mobile_pairings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id TEXT NOT NULL,
+                root_id TEXT NOT NULL,
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL,
+                device_name TEXT NOT NULL DEFAULT '',
+                device_model TEXT NOT NULL DEFAULT '',
+                platform TEXT NOT NULL DEFAULT '',
+                app_id TEXT NOT NULL DEFAULT '',
+                app_version TEXT NOT NULL DEFAULT '',
+                owner_label TEXT NOT NULL DEFAULT '',
+                destination_root TEXT NOT NULL DEFAULT '',
+                pairing_status TEXT NOT NULL DEFAULT 'paired',
+                sync_token_hash TEXT NOT NULL DEFAULT '',
+                token_expires_at TEXT NOT NULL DEFAULT '',
+                paired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                capabilities_json TEXT NOT NULL DEFAULT '{}',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(server_id, root_id, device_type, device_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mobile_pairings_device
+                ON mobile_pairings(device_type, device_id);
+
+            CREATE TABLE IF NOT EXISTS mobile_sync_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL UNIQUE,
+                server_id TEXT NOT NULL,
+                root_id TEXT NOT NULL,
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL,
+                destination_root TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'ready',
+                sync_token_hash TEXT NOT NULL DEFAULT '',
+                token_expires_at TEXT NOT NULL DEFAULT '',
+                client_cursor TEXT NOT NULL DEFAULT '',
+                server_cursor TEXT NOT NULL DEFAULT '',
+                battery_state TEXT NOT NULL DEFAULT '',
+                network_type TEXT NOT NULL DEFAULT '',
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT NOT NULL DEFAULT '',
+                raw_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mobile_sync_sessions_device
+                ON mobile_sync_sessions(server_id, root_id, device_type, device_id);
+
+            CREATE TABLE IF NOT EXISTS import_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL UNIQUE,
+                channel TEXT NOT NULL DEFAULT 'phone_sync',
+                server_id TEXT NOT NULL DEFAULT '',
+                root_id TEXT NOT NULL DEFAULT '',
+                source_label TEXT NOT NULL DEFAULT '',
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL DEFAULT '',
+                destination_root TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'running',
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT NOT NULL DEFAULT '',
+                raw_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_import_runs_device
+                ON import_runs(server_id, root_id, device_type, device_id);
+
+            CREATE TABLE IF NOT EXISTS import_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL DEFAULT '',
+                session_id TEXT NOT NULL DEFAULT '',
+                upload_batch_id TEXT NOT NULL DEFAULT '',
+                source_ref TEXT NOT NULL DEFAULT '',
+                server_id TEXT NOT NULL DEFAULT '',
+                root_id TEXT NOT NULL DEFAULT '',
+                device_type TEXT NOT NULL DEFAULT 'iphone',
+                device_id TEXT NOT NULL DEFAULT '',
+                item_id TEXT NOT NULL DEFAULT '',
+                original_filename TEXT NOT NULL DEFAULT '',
+                media_type TEXT NOT NULL DEFAULT '',
+                mime_type TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT '',
+                modified_at TEXT NOT NULL DEFAULT '',
+                timezone TEXT NOT NULL DEFAULT '',
+                album TEXT NOT NULL DEFAULT '',
+                width INTEGER NOT NULL DEFAULT 0,
+                height INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                strict_hash TEXT NOT NULL DEFAULT '',
+                phash TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'manifested',
+                local_path TEXT NOT NULL DEFAULT '',
+                existing_local_path TEXT NOT NULL DEFAULT '',
+                error TEXT NOT NULL DEFAULT '',
+                manifest_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                imported_at TEXT NOT NULL DEFAULT '',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(server_id, root_id, device_type, device_id, item_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_import_items_session
+                ON import_items(session_id, upload_batch_id);
+
+            CREATE INDEX IF NOT EXISTS idx_import_items_hash
+                ON import_items(strict_hash);
 
             CREATE TABLE IF NOT EXISTS local_deleted_markers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

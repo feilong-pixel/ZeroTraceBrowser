@@ -227,22 +227,25 @@ button.danger:active {
 
 .gallery-main {
   min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  padding-bottom: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--panel-gap);
 }
 
 .view-panel {
   position: relative;
   min-height: 0;
-  height: calc(100vh - 118px);
+  height: auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
 }
 
 .gallery-page.is-date-filter-open .view-panel {
-  height: calc(100vh - 184px);
+  height: auto;
 }
 
 .sidebar-header {
@@ -671,9 +674,11 @@ button:disabled:hover {
    7. Gallery Page
    ========================================================= */
 .gallery-page {
+  height: 100vh;
   min-height: 100vh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
+  overflow: hidden;
 }
 
 .gallery-sidebar {
@@ -1478,6 +1483,240 @@ button:disabled:hover {
   height: 340px;
   min-height: 340px;
   max-height: 340px;
+}
+
+.import-placeholder-box,
+.import-soft-status,
+.import-recent-runs {
+  padding: var(--space-4);
+  border: 1px solid rgba(214, 207, 196, 0.72);
+  border-radius: var(--radius-md);
+  background: rgba(251, 248, 243, 0.55);
+}
+
+.import-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.import-action-row button {
+  min-width: 132px;
+}
+
+.import-empty-cell {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.import-log-box {
+  height: 220px;
+  min-height: 220px;
+  max-height: 220px;
+}
+
+.import-phone-panel.is-hidden,
+.import-panel.is-hidden {
+  display: none;
+}
+
+.phone-sync-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: stretch;
+}
+
+.phone-sync-qr {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-4);
+  min-height: 280px;
+  padding: var(--space-5);
+  border: 1px solid rgba(214, 207, 196, 0.72);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  text-align: center;
+}
+
+.phone-sync-qr-pattern {
+  display: grid;
+  grid-template-columns: repeat(4, 34px);
+  grid-auto-rows: 34px;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.phone-sync-qr-pattern.is-hidden,
+.phone-sync-qr-pattern[hidden] {
+  display: none !important;
+}
+
+.phone-sync-qr-pattern span {
+  border-radius: 5px;
+  background: rgba(32, 29, 24, 0.18);
+}
+
+.phone-sync-qr-pattern span:nth-child(1),
+.phone-sync-qr-pattern span:nth-child(2),
+.phone-sync-qr-pattern span:nth-child(5),
+.phone-sync-qr-pattern span:nth-child(6),
+.phone-sync-qr-pattern span:nth-child(11),
+.phone-sync-qr-pattern span:nth-child(13),
+.phone-sync-qr-pattern span:nth-child(14),
+.phone-sync-qr-pattern span:nth-child(16) {
+  background: var(--ink);
+}
+
+.phone-sync-qr-svg {
+  width: min(220px, 100%);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.phone-sync-qr-svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.phone-sync-setup-copy {
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.phone-sync-setup-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.phone-sync-url-box,
+.phone-sync-status-line,
+.phone-sync-metrics,
+.phone-sync-progress {
+  padding: var(--space-4);
+  border: 1px solid rgba(214, 207, 196, 0.72);
+  border-radius: var(--radius-md);
+  background: rgba(251, 248, 243, 0.55);
+}
+
+.phone-sync-url-box {
+  display: grid;
+  gap: 2px;
+  min-height: 0;
+  padding: 10px 12px;
+}
+
+.phone-sync-url-box strong,
+.phone-sync-metrics strong {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.phone-sync-url-box .summary-label,
+.phone-sync-url-box strong {
+  line-height: 1.25;
+}
+
+.phone-sync-url-box .summary-label {
+  min-height: 0;
+  align-items: start;
+}
+
+.phone-sync-url-box strong {
+  margin: 0;
+}
+
+.phone-sync-status-line {
+  margin-bottom: var(--space-4);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.phone-sync-metrics,
+.phone-sync-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.phone-sync-progress {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-4);
+}
+
+.phone-sync-metrics div,
+.phone-sync-progress div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.phone-sync-metrics span,
+.phone-sync-progress span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.phone-sync-device-list {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid rgba(214, 207, 196, 0.72);
+  border-radius: var(--radius-md);
+  background: rgba(251, 248, 243, 0.55);
+}
+
+.phone-sync-device-list h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+}
+
+.phone-sync-device-empty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.phone-sync-device-card {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-3);
+  border: 1px solid rgba(214, 207, 196, 0.72);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.phone-sync-device-card + .phone-sync-device-card {
+  margin-top: var(--space-2);
+}
+
+.phone-sync-device-card strong,
+.phone-sync-device-card span,
+.phone-sync-device-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.phone-sync-device-card span,
+.phone-sync-device-card small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .tasks-sidebar .panel {
@@ -2922,6 +3161,21 @@ button:disabled:hover {
     min-width: 0;
   }
 
+  .import-action-row {
+    flex-direction: column;
+  }
+
+  .import-action-row button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .phone-sync-grid,
+  .phone-sync-metrics,
+  .phone-sync-progress {
+    grid-template-columns: 1fr;
+  }
+
   .iphone-date-filter,
   .iphone-result-actions {
     grid-template-columns: 1fr;
@@ -3194,6 +3448,6 @@ button:disabled:hover {
 
 @media (min-width: 1600px) {
   .view-panel {
-    height: calc(100vh - 168px);
+    height: auto;
   }
 }
