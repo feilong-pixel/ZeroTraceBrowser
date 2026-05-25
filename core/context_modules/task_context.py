@@ -4,6 +4,7 @@ from .root_workspace import ensure_root_workspace, root_task_log_dir, root_datab
 from .artifact_context import get_hash_db_path
 from .image_context import iter_image_files, clear_image_list_cache
 from core.domain.root_context import RootContext
+from core.services.timestamp_repair_service import repair_timestamps_from_exif
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.database import init_root_database
 from core.storage.hash_db_repository import HashDbRepository
@@ -56,6 +57,83 @@ def run_organizer_task(task_id: str, command: list[str], workdir: Path, env: dic
         summarize_task_root(task)
 
 
+def run_timestamp_repair_task(task_id: str) -> None:
+    task = TASK_REGISTRY.get(task_id)
+    if not task:
+        return
+
+    params = task.get("params", {})
+    if not isinstance(params, dict):
+        params = {}
+    outputs = task.get("outputs", {})
+    if not isinstance(outputs, dict):
+        outputs = {}
+
+    output_lines: list[str] = []
+
+    def append_output(line: str) -> None:
+        output_lines.append(line)
+        with TASK_REGISTRY.lock:
+            task["output_lines"] = output_lines[-200:]
+
+    try:
+        root = Path(str(params.get("root", ""))).expanduser().resolve()
+        log_path = Path(str(outputs.get("duplicate_report_path") or outputs.get("log_path")))
+        threshold_days = int(params.get("threshold_days", 7) or 7)
+        sync_modified_time = params.get("sync_modified_time", True) is not False
+        rename_from_exif = params.get("rename_from_exif", False) is True
+        include_videos = params.get("include_videos", False) is True
+
+        append_output(f"EXIF timestamp repair started: {root}")
+        append_output(f"Threshold days: {threshold_days}")
+        append_output(f"Sync modified time: {sync_modified_time}")
+        append_output(f"Rename date-formatted files: {rename_from_exif}")
+        append_output(f"Include videos with embedded creation time: {include_videos}")
+
+        def progress(stats: dict[str, int | str]) -> None:
+            append_output(
+                "Scanned {scanned} | fixed {modified_fixed} | renamed {renamed} | no EXIF {no_exif} | no media time {no_timestamp} | failed {failed}".format(
+                    scanned=stats.get("scanned", 0),
+                    modified_fixed=stats.get("modified_fixed", 0),
+                    renamed=stats.get("renamed", 0),
+                    no_exif=stats.get("no_exif", 0),
+                    no_timestamp=stats.get("no_timestamp", 0),
+                    failed=stats.get("failed", 0),
+                )
+            )
+
+        stats = repair_timestamps_from_exif(
+            root,
+            supported_extensions=SUPPORTED_EXTENSIONS,
+            excluded_scan_dirs=SKIP_SCAN_DIR_NAMES,
+            threshold_days=threshold_days,
+            sync_modified_time=sync_modified_time,
+            rename_from_exif=rename_from_exif,
+            include_videos=include_videos,
+            log_path=log_path,
+            progress_callback=progress,
+        )
+        append_output(
+            "Done. Scanned {scanned} | modified fixed {modified_fixed} | renamed {renamed} | within threshold {within_threshold} | no EXIF {no_exif} | no media time {no_timestamp} | failed {failed}".format(
+                **stats
+            )
+        )
+        with TASK_REGISTRY.lock:
+            task["status"] = "completed"
+            task["return_code"] = 0
+            task["finished_at"] = datetime.now().isoformat()
+        clear_image_list_cache(root)
+        summarize_task_root(task)
+    except Exception as exc:
+        append_output(f"Timestamp repair failed: {exc}")
+        with TASK_REGISTRY.lock:
+            task["status"] = "failed"
+            task["return_code"] = 1
+            task["finished_at"] = datetime.now().isoformat()
+            task["error"] = str(exc)
+        persist_task_run_completion(task)
+
+
 def has_running_task() -> bool:
     return TASK_REGISTRY.has_running_task()
 
@@ -73,6 +151,8 @@ def summarize_task_root(task: dict[str, Any]) -> None:
     if task.get("task_type") == "organizer":
         root_value = str(params.get("dst", "")).strip()
     elif task.get("task_type") == "rebuild_hash_db":
+        root_value = str(params.get("root", "")).strip()
+    elif task.get("task_type") == "timestamp_repair":
         root_value = str(params.get("root", "")).strip()
 
     if not root_value:

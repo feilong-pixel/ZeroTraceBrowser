@@ -41,6 +41,7 @@ function createDuplicatesState() {
     methodFilter: "phash",
     selectedByGroup: {},
     isBusy: false,
+    allowNavigation: false,
   };
 }
 
@@ -690,7 +691,7 @@ async function confirmLeaveWhileBusy() {
 
 function bindLeaveGuard(els, state) {
   on(window, "beforeunload", (event) => {
-    if (!state.isBusy) {
+    if (!state.isBusy || state.allowNavigation) {
       return;
     }
 
@@ -707,6 +708,7 @@ function bindLeaveGuard(els, state) {
       event.preventDefault();
       const confirmed = await confirmLeaveWhileBusy();
       if (confirmed) {
+        state.allowNavigation = true;
         window.location.href = link.href;
       }
     });

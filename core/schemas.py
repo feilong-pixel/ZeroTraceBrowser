@@ -42,7 +42,7 @@ class OrganizerTaskRequest(BaseModel):
     src: str = Field(..., min_length=1)
     dst: str = Field(..., min_length=1)
     mode: str = Field(default="copy")
-    duplicate_detection: str = Field(default="phash")
+    duplicate_detection: str = Field(default="strict")
     phash_threshold: int = Field(default=4, ge=0)
     skip_existing_exact: bool = Field(default=True)
     lang: str = Field(default="en")
@@ -51,8 +51,17 @@ class OrganizerTaskRequest(BaseModel):
 class RebuildHashDbTaskRequest(BaseModel):
     root: str = Field(..., min_length=1)
     rebuild_mode: str = Field(default="replace")
-    hash_method: str = Field(default="both")
+    hash_method: str = Field(default="strict")
     phash_threshold: int = Field(default=4, ge=0)
+    lang: str = Field(default="en")
+
+
+class TimestampRepairTaskRequest(BaseModel):
+    root: str = Field(..., min_length=1)
+    threshold_days: int = Field(default=7, ge=1)
+    sync_modified_time: bool = Field(default=True)
+    rename_from_exif: bool = Field(default=False)
+    include_videos: bool = Field(default=False)
     lang: str = Field(default="en")
 
 

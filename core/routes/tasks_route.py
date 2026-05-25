@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from core.schemas import OrganizerTaskRequest, RebuildHashDbTaskRequest
+from core.schemas import OrganizerTaskRequest, RebuildHashDbTaskRequest, TimestampRepairTaskRequest
 from core.app.security import require_existing_directory, require_not_same_or_child, resolve_path
 from core.services.settings_service import normalize_task_lang
 
@@ -162,6 +162,43 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         thread = threading.Thread(
             target=ctx.run_organizer_task,
             args=(task_id, command, ctx.ORGANIZER_DIR, task_env),
+            daemon=True,
+        )
+        thread.start()
+        return ctx.serialize_task(task)
+
+    # POST /api/tasks/repair-timestamps
+    @router.post("/api/tasks/repair-timestamps")
+    def repair_timestamps_task(payload: TimestampRepairTaskRequest) -> dict[str, Any]:
+        if not payload.sync_modified_time and not payload.rename_from_exif:
+            raise HTTPException(status_code=400, detail="Select at least one timestamp repair action")
+
+        root = str(require_existing_directory(resolve_path(payload.root), "Repair root"))
+        task_id = uuid.uuid4().hex[:12]
+        log_path = ctx.build_task_log_path(task_id, root).with_name("timestamp_repair.log")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        outputs = ctx.build_task_outputs(log_path, root, publish_duplicates=False)
+        outputs["duplicate_report_path"] = str(log_path.with_name("timestamp_fix_log.csv"))
+
+        task = {
+            "task_id": task_id,
+            "task_type": "timestamp_repair",
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+            "params": payload.model_dump(),
+            "outputs": outputs,
+            "output_lines": [],
+            "error": None,
+            "return_code": None,
+        }
+        task["params"]["root"] = root
+        if not ctx.TASK_REGISTRY.add_if_idle(task):
+            raise HTTPException(status_code=409, detail="Another organizer task is already running")
+        ctx.persist_task_run_started(task)
+
+        thread = threading.Thread(
+            target=ctx.run_timestamp_repair_task,
+            args=(task_id,),
             daemon=True,
         )
         thread.start()

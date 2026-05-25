@@ -51,6 +51,17 @@ def rebuild_payload(root: Path) -> dict[str, object]:
     }
 
 
+def timestamp_repair_payload(root: Path) -> dict[str, object]:
+    return {
+        "root": str(root),
+        "threshold_days": 7,
+        "sync_modified_time": True,
+        "rename_from_exif": True,
+        "include_videos": True,
+        "lang": "en",
+    }
+
+
 def mark_task_completed(
     task_id: str,
     command: list[str],
@@ -240,6 +251,54 @@ def test_rebuild_hash_db_task_starts_and_can_be_queried(api_client, monkeypatch)
     query_response = client.get(f"/api/tasks/{task['task_id']}")
     assert query_response.status_code == 200
     assert query_response.json()["output_lines"] == ["fake rebuild finished"]
+
+
+def test_timestamp_repair_task_starts_and_can_be_queried(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+
+    def mark_timestamp_repair_completed(task_id: str) -> None:
+        task = ztb_app.TASK_REGISTRY.tasks[task_id]
+        task["output_lines"] = ["fake timestamp repair finished"]
+        task["return_code"] = 0
+        task["status"] = "completed"
+        task["finished_at"] = datetime.now().isoformat()
+        assert task["params"]["root"] == str(image_root)
+        assert task["params"]["threshold_days"] == 7
+        assert task["params"]["sync_modified_time"] is True
+        assert task["params"]["rename_from_exif"] is True
+        assert task["params"]["include_videos"] is True
+
+    monkeypatch.setattr(ztb_app, "run_timestamp_repair_task", mark_timestamp_repair_completed)
+
+    response = client.post("/api/tasks/repair-timestamps", json=timestamp_repair_payload(image_root))
+
+    assert response.status_code == 200
+    task = response.json()
+    assert task["task_type"] == "timestamp_repair"
+    assert task["status"] == "completed"
+    assert task["outputs"]["database_path"].endswith("workspace.sqlite3")
+    assert task["outputs"]["duplicate_report_path"].endswith("timestamp_fix_log.csv")
+    saved_run = TaskRunRepository(task["outputs"]["database_path"]).load_task(task["task_id"])
+    assert saved_run is not None
+    assert saved_run["task_type"] == "timestamp_repair"
+    assert saved_run["destination_root"] == str(image_root)
+
+    query_response = client.get(f"/api/tasks/{task['task_id']}")
+    assert query_response.status_code == 200
+    assert query_response.json()["output_lines"] == ["fake timestamp repair finished"]
+
+
+def test_timestamp_repair_rejects_empty_action_selection(api_client) -> None:
+    client, _, image_root, _ = api_client
+    payload = timestamp_repair_payload(image_root)
+    payload["sync_modified_time"] = False
+    payload["rename_from_exif"] = False
+
+    response = client.post("/api/tasks/repair-timestamps", json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Select at least one timestamp repair action"
 
 
 def test_rebuild_hash_db_uses_requested_phash_threshold(api_client, monkeypatch) -> None:

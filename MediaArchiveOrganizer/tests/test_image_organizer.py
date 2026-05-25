@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from MediaArchiveOrganizer.core.hash_db import connect_sqlite_hash_db, load_hash_db
+from MediaArchiveOrganizer.core.hash_db import add_hash_record, connect_sqlite_hash_db, load_hash_db
 from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
 from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
 from MediaArchiveOrganizer.locales import get_texts
@@ -22,6 +22,7 @@ import MediaArchiveOrganizer.services.organizer as organizer_mod
 from MediaArchiveOrganizer.services.organizer import (
     apply_windows_file_times,
     organize_images,
+    rebuild_duplicate_results_from_hash_db,
     read_windows_file_times,
     rebuild_duplicate_results_json,
     rebuild_hash_db,
@@ -77,6 +78,41 @@ def assert_windows_creation_time(path: Path, expected: float) -> None:
     if not sys.platform.startswith("win"):
         return
     assert abs(path.stat().st_ctime - expected) < 2
+
+
+def test_add_hash_record_does_not_reinsert_existing_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    inserted: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        "MediaArchiveOrganizer.core.hash_db.insert_hash_record",
+        lambda method, hash_value, path: inserted.append((method, hash_value, path)),
+    )
+    db = {"strict": {"abc": ["existing.jpg"]}, "phash": {}}
+
+    add_hash_record(db, "strict", "abc", "existing.jpg")
+
+    assert inserted == []
+
+
+def test_get_or_compute_hash_uses_memory_cache_before_sqlite(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_file = create_media_file(work_dir / "cached.jpg", content="cached-content")
+    signature = organizer_mod.get_file_signature(str(src_file))
+    cache = {
+        str(src_file.resolve()): {
+            **signature,
+            "strict": "cached-strict",
+        }
+    }
+
+    monkeypatch.setattr(
+        organizer_mod,
+        "load_file_hash_cache_entry",
+        lambda *_args, **_kwargs: pytest.fail("SQLite cache should not be read for an in-memory hit"),
+    )
+
+    assert organizer_mod.get_or_compute_hash(cache, "strict", str(src_file)) == "cached-strict"
 
 
 @pytest.fixture
@@ -331,6 +367,94 @@ def test_organize_images_can_write_duplicates_directly_to_sqlite(
     assert hash_record_count == 2
     assert (target_dir / "same_name.jpg").exists()
     assert (target_dir / "same_name_dup1.jpg").exists()
+
+
+def test_organize_images_strict_result_rebuild_does_not_compute_phash(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_image_file(src_dir / "camera1" / "same.png", color=(255, 0, 0))
+    create_image_file(src_dir / "camera2" / "same.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    def fail_compute_phash(path: str) -> str:
+        raise AssertionError("strict organizer runs should not compute pHash")
+
+    monkeypatch.setattr(organizer_mod, "compute_phash", fail_compute_phash)
+
+    stats = organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+        duplicates_db_path=str(sqlite_path),
+    )
+
+    assert stats["similar_group_count"] == 1
+    with sqlite3.connect(sqlite_path) as connection:
+        methods = [
+            row[0]
+            for row in connection.execute(
+                "SELECT DISTINCT method FROM hash_db_records ORDER BY method"
+            ).fetchall()
+        ]
+        reasons = [
+            row[0]
+            for row in connection.execute(
+                "SELECT DISTINCT reason FROM duplicate_groups ORDER BY reason"
+            ).fetchall()
+        ]
+
+    assert methods == ["strict"]
+    assert reasons == ["strict"]
+
+
+def test_organize_images_both_result_rebuild_reuses_current_hash_db(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "both.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_image_file(src_dir / "camera1" / "same.png", color=(255, 0, 0))
+    create_image_file(src_dir / "camera2" / "same.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    def fail_rebuild_duplicate_results_json(*args, **kwargs):
+        raise AssertionError("organizer result publishing should reuse the current hash DB")
+
+    monkeypatch.setattr(
+        organizer_mod,
+        "rebuild_duplicate_results_json",
+        fail_rebuild_duplicate_results_json,
+    )
+
+    stats = organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="both",
+        phash_threshold=0,
+        duplicates_db_path=str(sqlite_path),
+    )
+
+    assert stats["similar_group_count"] == 2
+    with sqlite3.connect(sqlite_path) as connection:
+        reasons = [
+            row[0]
+            for row in connection.execute(
+                "SELECT reason FROM duplicate_groups ORDER BY reason"
+            ).fetchall()
+        ]
+
+    assert reasons == ["phash", "strict"]
 
 
 def test_organize_images_writes_file_hash_cache_to_sqlite(
@@ -764,13 +888,335 @@ def test_rebuild_hash_db_reuses_sqlite_file_hash_cache_for_unchanged_files(
     monkeypatch.setattr(organizer_mod, "compute_file_hash", fake_compute_file_hash)
 
     rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
-    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
 
     with sqlite3.connect(sqlite_path) as connection:
         cache_count = connection.execute("SELECT COUNT(*) FROM file_hash_cache").fetchone()[0]
 
     assert calls["strict"] == 1
+    assert stats["reused_records"] == 1
+    assert stats["recomputed_hashes"] == 0
     assert cache_count == 1
+
+
+def test_rebuild_hash_db_sqlite_reconciles_existing_records_without_reinserting(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_media_file(root / "a.jpg", content="same-content")
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    with sqlite3.connect(sqlite_path) as connection:
+        first_id = connection.execute("SELECT id FROM hash_db_records").fetchone()[0]
+
+    def fail_compute_file_hash(path: str) -> str:
+        raise AssertionError("existing hash_db_records should be reused during rebuild")
+
+    monkeypatch.setattr(organizer_mod, "compute_file_hash", fail_compute_file_hash)
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    with sqlite3.connect(sqlite_path) as connection:
+        rows = connection.execute("SELECT id, method, path FROM hash_db_records").fetchall()
+
+    assert rows == [(first_id, "strict", str(root / "a.jpg"))]
+
+
+def test_rebuild_hash_db_sqlite_recomputes_when_cache_signature_changed(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    target = create_media_file(root / "a.jpg", content="old-content")
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    target.write_text("new-content-with-different-size", encoding="utf-8")
+
+    computed_paths: list[str] = []
+    original_compute_file_hash = organizer_mod.compute_file_hash
+
+    def tracked_compute_file_hash(path: str) -> str:
+        computed_paths.append(path)
+        return original_compute_file_hash(path)
+
+    monkeypatch.setattr(organizer_mod, "compute_file_hash", tracked_compute_file_hash)
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+
+    assert computed_paths == [str(target)]
+    assert stats["corrected_records"] == 1
+    assert stats["recomputed_hashes"] == 1
+    assert stats["inserted_records"] == 1
+
+
+def test_rebuild_hash_db_sqlite_recomputes_phash_when_cache_signature_changed(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    target = create_image_file(root / "a.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="phash")
+    target.write_text("not-an-image-anymore", encoding="utf-8")
+
+    computed_paths: list[str] = []
+
+    def tracked_compute_phash(path: str) -> None:
+        computed_paths.append(path)
+        return None
+
+    monkeypatch.setattr(organizer_mod, "compute_phash", tracked_compute_phash)
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="phash")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        phash_count = connection.execute(
+            "SELECT COUNT(*) FROM hash_db_records WHERE method = 'phash'"
+        ).fetchone()[0]
+
+    assert computed_paths == [str(target)]
+    assert stats["corrected_records"] == 1
+    assert stats["recomputed_hashes"] == 0
+    assert stats["phash_indexed"] == 0
+    assert phash_count == 0
+
+
+def test_rebuild_hash_db_sqlite_prunes_stale_phash_records(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    target = create_image_file(root / "a.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="phash")
+    target.unlink()
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="phash")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        phash_count = connection.execute(
+            "SELECT COUNT(*) FROM hash_db_records WHERE method = 'phash'"
+        ).fetchone()[0]
+
+    assert stats["stale_pruned"] == 1
+    assert stats["phash_indexed"] == 0
+    assert phash_count == 0
+
+
+def test_rebuild_hash_db_both_reuses_organizer_cache_for_unchanged_files(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    root = work_dir / "organized"
+    log_path = work_dir / "both.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_image_file(src_dir / "camera1" / "same.png", color=(255, 0, 0))
+    create_image_file(src_dir / "camera2" / "same.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    organize_images(
+        str(src_dir),
+        str(root),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="both",
+        phash_threshold=0,
+        duplicates_db_path=str(sqlite_path),
+    )
+
+    def fail_compute_file_hash(path: str) -> str:
+        raise AssertionError("unchanged strict hashes should be reused during rebuild")
+
+    def fail_compute_phash(path: str) -> str:
+        raise AssertionError("unchanged pHashes should be reused during rebuild")
+
+    monkeypatch.setattr(organizer_mod, "compute_file_hash", fail_compute_file_hash)
+    monkeypatch.setattr(organizer_mod, "compute_phash", fail_compute_phash)
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="both")
+
+    assert stats["scanned_files"] == 2
+    assert stats["strict_indexed"] == 2
+    assert stats["phash_indexed"] == 2
+
+
+def test_rebuild_hash_db_strict_preserves_existing_phash_records(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    create_image_file(root / "a.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="both")
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        strict_count = connection.execute(
+            "SELECT COUNT(*) FROM hash_db_records WHERE method = 'strict'"
+        ).fetchone()[0]
+        phash_count = connection.execute(
+            "SELECT COUNT(*) FROM hash_db_records WHERE method = 'phash'"
+        ).fetchone()[0]
+
+    assert strict_count == 1
+    assert phash_count == 1
+
+
+def test_rebuild_hash_db_json_strict_preserves_existing_phash_records(
+    work_dir: Path,
+) -> None:
+    root = work_dir / "organized"
+    create_image_file(root / "a.png", color=(255, 0, 0))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="both")
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+
+    db = load_hash_db()
+
+    assert sum(len(paths) for paths in db["strict"].values()) == 1
+    assert sum(len(paths) for paths in db["phash"].values()) == 1
+
+
+def test_rebuild_duplicate_results_from_hash_db_can_publish_preserved_phash_after_strict_rebuild(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first = create_image_file(root / "a.png", color=(255, 0, 0))
+    second = create_image_file(root / "b.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="both")
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    stats = rebuild_duplicate_results_from_hash_db(
+        str(root),
+        "",
+        load_hash_db(),
+        "both",
+        phash_threshold=0,
+        sqlite_db_path=str(sqlite_path),
+    )
+
+    assert stats["duplicate_group_count"] >= 1
+    with sqlite3.connect(sqlite_path) as connection:
+        reasons = {
+            row[0]
+            for row in connection.execute("SELECT reason FROM duplicate_groups").fetchall()
+        }
+
+    assert "phash" in reasons
+    assert first.exists()
+    assert second.exists()
+
+
+def test_strict_duplicate_publish_preserves_existing_phash_groups(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first = create_image_file(root / "a.png", color=(255, 0, 0))
+    second = create_image_file(root / "b.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="both")
+    rebuild_duplicate_results_from_hash_db(
+        str(root),
+        "",
+        load_hash_db(),
+        "both",
+        phash_threshold=0,
+        sqlite_db_path=str(sqlite_path),
+    )
+    with sqlite3.connect(sqlite_path) as connection:
+        connection.execute("DELETE FROM hash_db_records WHERE method = 'phash'")
+        connection.commit()
+
+    rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+    rebuild_duplicate_results_from_hash_db(
+        str(root),
+        "",
+        load_hash_db(),
+        "strict",
+        phash_threshold=0,
+        sqlite_db_path=str(sqlite_path),
+        merge_existing_methods={"strict"},
+    )
+
+    with sqlite3.connect(sqlite_path) as connection:
+        reasons = {
+            row[0]
+            for row in connection.execute("SELECT reason FROM duplicate_groups").fetchall()
+        }
+
+    assert "phash" in reasons
+    assert first.exists()
+    assert second.exists()
+
+
+def test_rebuild_hash_db_does_not_trust_sqlite_records_without_matching_cache_signature(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    first = create_image_file(root / "2026" / "04" / "16" / "same.png", color=(255, 0, 0))
+    second = create_image_file(root / "2026" / "04" / "16" / "same_dup1.png", color=(255, 0, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    with connect_sqlite_hash_db() as connection:
+        for position, path in enumerate((first, second)):
+            connection.execute(
+                "INSERT INTO hash_db_records (method, hash, path, position) VALUES ('strict', 'strict-old', ?, ?)",
+                (str(path), position),
+            )
+            connection.execute(
+                "INSERT INTO hash_db_records (method, hash, path, position) VALUES ('phash', '0000000000000000', ?, ?)",
+                (str(path), position),
+            )
+        connection.commit()
+
+    computed = {"strict": 0, "phash": 0}
+    original_compute_file_hash = organizer_mod.compute_file_hash
+    original_compute_phash = organizer_mod.compute_phash
+
+    def tracked_compute_file_hash(path: str) -> str:
+        computed["strict"] += 1
+        return original_compute_file_hash(path)
+
+    def tracked_compute_phash(path: str) -> str:
+        computed["phash"] += 1
+        return original_compute_phash(path)
+
+    monkeypatch.setattr(organizer_mod, "compute_file_hash", tracked_compute_file_hash)
+    monkeypatch.setattr(organizer_mod, "compute_phash", tracked_compute_phash)
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="both")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        cache_count = connection.execute("SELECT COUNT(*) FROM file_hash_cache").fetchone()[0]
+        record_count = connection.execute("SELECT COUNT(*) FROM hash_db_records").fetchone()[0]
+
+    assert stats["cache_backfilled"] == 0
+    assert stats["strict_indexed"] == 2
+    assert stats["phash_indexed"] == 2
+    assert stats["recomputed_hashes"] == 4
+    assert stats["inserted_records"] == 4
+    assert computed == {"strict": 2, "phash": 2}
+    assert cache_count == 2
+    assert record_count == 4
 
 
 def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) -> None:

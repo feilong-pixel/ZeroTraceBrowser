@@ -8,11 +8,13 @@ from datetime import datetime
 try:
     from .locales import get_texts
     from .services.organizer import format_bytes
-    from .services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
+    from .core.hash_db import load_hash_db
+    from .services.organizer import organize_images, rebuild_duplicate_results_from_hash_db, rebuild_hash_db
 except ImportError:
+    from core.hash_db import load_hash_db
     from locales import get_texts
     from services.organizer import format_bytes
-    from services.organizer import organize_images, rebuild_duplicate_results_json, rebuild_hash_db
+    from services.organizer import organize_images, rebuild_duplicate_results_from_hash_db, rebuild_hash_db
 
 
 def configure_console_encoding() -> None:
@@ -144,22 +146,15 @@ def main():
         )
         duplicate_stats = None
         if args.duplicates_json_path or args.duplicates_db_path:
-            merge_existing_methods = (
-                {"strict", "phash"}
-                if args.rebuild_hash_method == "both"
-                else {args.rebuild_hash_method}
-            )
-            duplicate_stats = rebuild_duplicate_results_json(
+            merge_existing_methods = None
+            if args.rebuild_hash_method in {"strict", "phash"}:
+                merge_existing_methods = {args.rebuild_hash_method}
+            duplicate_stats = rebuild_duplicate_results_from_hash_db(
                 root_dir,
                 os.path.abspath(args.duplicates_json_path) if args.duplicates_json_path else "",
+                load_hash_db(),
                 args.rebuild_hash_method,
                 args.phash_threshold,
-                scan_progress_callback=lambda count: emit_progress(
-                    texts["rebuild_duplicates_scan_progress"].format(count=count)
-                ),
-                group_progress_callback=lambda count: emit_progress(
-                    texts["rebuild_duplicates_group_progress"].format(count=count)
-                ),
                 merge_existing_methods=merge_existing_methods,
                 sqlite_db_path=os.path.abspath(args.duplicates_db_path) if args.duplicates_db_path else None,
             )
@@ -170,6 +165,13 @@ def main():
                 scanned=stats["scanned_files"],
                 strict=stats["strict_indexed"],
                 phash=stats["phash_indexed"],
+                cache_backfilled=stats["cache_backfilled"],
+                reused=stats["reused_records"],
+                cache_hits=stats["cache_hits"],
+                recomputed=stats["recomputed_hashes"],
+                corrected=stats["corrected_records"],
+                inserted=stats["inserted_records"],
+                stale_pruned=stats["stale_pruned"],
             )
         )
         if duplicate_stats:

@@ -44,6 +44,7 @@ function createRecycleState() {
     logFilter: "all",
     itemStatuses: {},
     isBusy: false,
+    allowNavigation: false,
     systemRecycleSupported: true,
   };
 }
@@ -687,7 +688,7 @@ async function confirmLeaveWhileBusy() {
 
 function bindLeaveGuard(els, state) {
   on(window, "beforeunload", (event) => {
-    if (!state.isBusy) return;
+    if (!state.isBusy || state.allowNavigation) return;
     event.preventDefault();
     event.returnValue = "";
   });
@@ -697,6 +698,7 @@ function bindLeaveGuard(els, state) {
     event.preventDefault();
     const confirmed = await confirmLeaveWhileBusy();
     if (confirmed) {
+      state.allowNavigation = true;
       window.location.href = els.backToGalleryLink.href;
     }
   });

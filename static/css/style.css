@@ -1425,6 +1425,35 @@ button:disabled:hover {
   gap: var(--space-2);
 }
 
+.maintenance-divider {
+  height: 1px;
+  background: var(--line);
+}
+
+.timestamp-repair-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.timestamp-repair-panel h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.timestamp-repair-help {
+  padding-left: 0;
+}
+
+.timestamp-repair-panel .task-checkbox-option {
+  padding: var(--space-3);
+}
+
+.timestamp-repair-panel .task-option-help {
+  padding-left: 28px;
+}
+
 .maintenance-panel.is-hidden {
   display: none;
 }
