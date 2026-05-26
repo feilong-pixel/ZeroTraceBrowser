@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -498,6 +499,46 @@ def test_iphone_file_time_restore_uses_created_and_modified(monkeypatch, tmp_pat
     created, accessed, written = applied[0]
     assert created != written
     assert accessed == (2, 0)
+
+
+def test_upload_file_time_uses_exif_when_modified_time_drift_is_large(monkeypatch, tmp_path):
+    target = tmp_path / "photo.jpg"
+    target.write_bytes(b"content")
+    exif_time = datetime(2020, 1, 2, 3, 4, 5)
+    created_at = datetime(2026, 5, 21, 20, 48, 2)
+    modified_at = datetime(2026, 5, 21, 20, 49, 9)
+
+    monkeypatch.setattr(iphone_context, "get_exif_datetime", lambda path: exif_time)
+    monkeypatch.setattr(iphone_context, "_apply_iphone_file_times", lambda *args, **kwargs: None)
+
+    adjusted_created, adjusted_modified = iphone_context._apply_portable_file_times(
+        target,
+        created_at,
+        modified_at,
+    )
+
+    assert adjusted_created == created_at
+    assert adjusted_modified == exif_time
+    assert int(target.stat().st_mtime) == int(exif_time.timestamp())
+
+
+def test_upload_file_time_keeps_modified_time_when_close_to_exif(monkeypatch, tmp_path):
+    target = tmp_path / "photo.jpg"
+    target.write_bytes(b"content")
+    exif_time = datetime(2026, 5, 21, 20, 48, 2)
+    modified_at = datetime(2026, 5, 22, 20, 49, 9)
+
+    monkeypatch.setattr(iphone_context, "get_exif_datetime", lambda path: exif_time)
+    monkeypatch.setattr(iphone_context, "_apply_iphone_file_times", lambda *args, **kwargs: None)
+
+    _adjusted_created, adjusted_modified = iphone_context._apply_portable_file_times(
+        target,
+        None,
+        modified_at,
+    )
+
+    assert adjusted_modified == modified_at
+    assert int(target.stat().st_mtime) == int(modified_at.timestamp())
 
 
 def test_iphone_import_invalidates_gallery_index_cache(api_client, monkeypatch):

@@ -197,7 +197,7 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
     with tempfile.TemporaryDirectory(prefix="ztb_phone_sync_upload_") as temp_name:
         staged_path = Path(temp_name) / filename
         staged_path.write_bytes(body)
-        _apply_portable_file_times(staged_path, created_at, modified_at)
+        created_at, modified_at = _apply_portable_file_times(staged_path, created_at, modified_at)
 
         strict_hash = _sha256_file(staged_path)
         phash = _compute_optional_phash(staged_path)
