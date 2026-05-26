@@ -46,6 +46,28 @@
                         </button>
                     </div>
                 </div>
+
+                <div class="gallery-top-info gallery-info-panel">
+                    <div class="gallery-meta">
+                        <div class="meta-card">
+                            <span data-i18n="browser.labels.currentRoot">Current Root</span>
+                            <strong id="imageRoot">-</strong>
+                        </div>
+
+                        <div class="meta-card">
+                            <span data-i18n="browser.labels.imageCount">Images</span>
+                            <div class="meta-card-inline-value">
+                                <strong id="imageCount">0</strong>
+                                <span id="imageCountUpdatedAt" class="meta-inline-note muted">-</span>
+                            </div>
+                        </div>
+
+                        <div class="meta-card">
+                            <span data-i18n="browser.labels.status">Status</span>
+                            <strong id="statusMessage" class="meta-status">Ready.</strong>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- Gallery -->
@@ -165,30 +187,6 @@
                 <h2 data-i18n="browser.labels.duplicates">Duplicates</h2>
                 <div id="duplicatesBox" class="muted" aria-live="polite" data-i18n="browser.duplicates.empty">
                     No available duplicate result was found.
-                </div>
-            </section>
-
-            <!-- Info -->
-            <section class="panel gallery-info-panel">
-                <h2 data-i18n="browser.labels.info">Info</h2>
-                <div class="gallery-meta">
-                    <div class="meta-card">
-                        <span data-i18n="browser.labels.currentRoot">Current Root</span>
-                        <strong id="imageRoot">-</strong>
-                    </div>
-
-                    <div class="meta-card">
-                        <span data-i18n="browser.labels.imageCount">Images</span>
-                        <div class="meta-card-inline-value">
-                            <strong id="imageCount">0</strong>
-                            <span id="imageCountUpdatedAt" class="meta-inline-note muted">-</span>
-                        </div>
-                    </div>
-
-                    <div class="meta-card">
-                        <span data-i18n="browser.labels.status">Status</span>
-                        <strong id="statusMessage" class="meta-status">Ready.</strong>
-                    </div>
                 </div>
             </section>
         </aside>

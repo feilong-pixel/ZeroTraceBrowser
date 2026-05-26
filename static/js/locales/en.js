@@ -271,11 +271,14 @@ export default {
     bulkConfirm: "Move to Recycle Bin",
     bulkDeleted: (count) => `Moved ${count} files from this page to the Recycle Bin.`,
     bulkDeleting: (count) => `Moving ${count} files from this page to the Recycle Bin...`,
-    bulkDisabledForPhash: "pHash similarity results require manual review and cannot be bulk deleted.",
+    bulkDisabledForPhash: "pHash can be bulk moved on the current page only; moving 100 groups is strict-only.",
     bulkMove100ToRecycle: "Move next 100 groups",
     bulkMoveToRecycle: "Move current page duplicates",
+    bulkCurrentPageTitle: (count, method) => `Move ${count} ${method} duplicate files from this page to the Recycle Bin`,
     bulkStrict100Title: "Move strict duplicate files from the next 100 groups to the Recycle Bin",
     bulkStrictTitle: (count) => `Move ${count} strict duplicate files from this page to the Recycle Bin`,
+    confirmBulkCurrentPageDelete: (count, method) =>
+            `This will move ${count} ${method} duplicate files from the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
     confirmBulkStrict100Delete: (count) =>
             `This will move ${count} strict duplicate files from up to 100 groups starting at the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
     confirmBulkStrictDelete: (count) =>
@@ -295,6 +298,7 @@ export default {
     noMethodResults: "No duplicate results for the selected detection method.",
     noResults: "No duplicate results yet.",
     noSelection: "Please select the image you want to delete.",
+    noDuplicatesToDelete: "No duplicate files on this page are available for bulk deletion.",
     noStrictDuplicatesToDelete: "No strict duplicate files on this page are available for bulk deletion.",
     openTasksTool: "Organizer",
     openedResultRoot: "Opened the results folder in File Explorer.",

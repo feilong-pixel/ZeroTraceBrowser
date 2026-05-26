@@ -21,6 +21,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
 from core.storage.phone_sync_repository import PhoneSyncRepository
@@ -258,6 +259,7 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
         hash_repository.add_hash_record("strict", strict_hash, str(imported))
         if phash:
             hash_repository.add_hash_record("phash", phash, str(imported))
+        DuplicateResultRepository(database_path).mark_dirty(active_root, "phone_sync_upload")
         repository.mark_uploaded_item(
             session_id=session_id,
             item_id=item_id,

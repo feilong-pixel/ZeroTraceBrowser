@@ -108,6 +108,54 @@ Current behavior:
 - skips photos with a matching local deleted marker
 - stores state in `mobile_import_records`
 
+### Task Page Hash and Duplicate Result Flows
+
+The task page and upload endpoints update the same root-scoped hash data, but
+they do not have identical duplicate-result publishing behavior.
+
+`Start Organizer Task` behavior:
+
+- `strict` without `skip_existing_exact`: computes the SHA-256 strict hash,
+  copies or moves the file, saves a `_dup...` file when an existing strict
+  duplicate is found in the destination gallery, appends the strict hash
+  record, then rebuilds duplicate group results from the hash DB.
+- `strict` with `skip_existing_exact`: computes the source file SHA-256 first.
+  If the destination gallery already has an exact match, the file is skipped
+  and recorded as `skipped_existing`; no `_dup...` file is saved. Files that do
+  not match still get copied or moved and append strict hash records. The run
+  still rebuilds duplicate group results from the hash DB.
+- `phash`: computes pHash values, appends `phash` records, and rebuilds pHash
+  duplicate group results. This is pHash mode appending pHash records, not
+  strict mode appending pHash records.
+- The current frontend only submits `skip_existing_exact` when
+  `duplicate_detection === "strict"`. The backend accepts it for `strict` and
+  `both`. If the UI keeps or restores `both`, the frontend rule should be
+  aligned with the backend rule.
+
+`Run Hash DB Rebuild` behavior:
+
+- `strict`: scans the selected root, removes records for missing files, reuses
+  unchanged file cache or existing records, recomputes SHA-256 for changed
+  files, and rebuilds strict duplicate group results.
+- `phash`: follows the same reconciliation flow, but maintains pHash records
+  and rebuilds pHash duplicate group results.
+- `both`: maintains both strict and pHash records in one rebuild run.
+
+Upload behavior:
+
+- Shortcut upload computes SHA-256 and pHash, but currently appends only the
+  `strict` hash record. It intentionally does not rebuild duplicate groups in
+  the upload request path so the upload path stays lightweight. Successful
+  imports mark duplicate results dirty for the active root.
+- Phone Sync upload appends `strict`, and appends `phash` when pHash
+  computation succeeds. It mainly imports, skips strict duplicates, records
+  import state, invalidates the gallery index, and marks duplicate results
+  dirty. It is not equivalent to the task page's final duplicate-result
+  rebuild.
+- When `/api/duplicates` sees a dirty result marker, it rebuilds duplicate
+  results from the current root hash DB and clears the marker. This keeps
+  upload responsive while allowing duplicates data to refresh lazily.
+
 ### Production Endpoint Direction
 
 Keep the existing Shortcut endpoint as compatibility, then add a generic mobile

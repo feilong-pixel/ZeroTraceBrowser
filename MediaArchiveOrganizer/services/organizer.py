@@ -409,6 +409,9 @@ def save_duplicate_payload_sqlite(db_path: str, payload: dict) -> None:
                 group_count INTEGER NOT NULL DEFAULT 0,
                 source_path TEXT NOT NULL DEFAULT '',
                 raw_json TEXT NOT NULL DEFAULT '{}',
+                dirty INTEGER NOT NULL DEFAULT 0,
+                dirty_reason TEXT NOT NULL DEFAULT '',
+                dirty_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -439,6 +442,16 @@ def save_duplicate_payload_sqlite(db_path: str, payload: dict) -> None:
             );
             """
         )
+        duplicate_result_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(duplicate_results)").fetchall()
+        }
+        if "dirty" not in duplicate_result_columns:
+            connection.execute("ALTER TABLE duplicate_results ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0")
+        if "dirty_reason" not in duplicate_result_columns:
+            connection.execute("ALTER TABLE duplicate_results ADD COLUMN dirty_reason TEXT NOT NULL DEFAULT ''")
+        if "dirty_at" not in duplicate_result_columns:
+            connection.execute("ALTER TABLE duplicate_results ADD COLUMN dirty_at TEXT")
         groups = payload.get("groups", [])
         if not isinstance(groups, list):
             groups = []
@@ -448,14 +461,17 @@ def save_duplicate_payload_sqlite(db_path: str, payload: dict) -> None:
         connection.execute(
             """
             INSERT INTO duplicate_results
-                (id, generated_at, destination_root, group_count, source_path, raw_json, updated_at)
-            VALUES (1, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (id, generated_at, destination_root, group_count, source_path, raw_json, dirty, dirty_reason, dirty_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, 0, '', NULL, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 generated_at = excluded.generated_at,
                 destination_root = excluded.destination_root,
                 group_count = excluded.group_count,
                 source_path = excluded.source_path,
                 raw_json = excluded.raw_json,
+                dirty = 0,
+                dirty_reason = '',
+                dirty_at = NULL,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (
@@ -1482,6 +1498,9 @@ def organize_images(
     save_hash_cache(hash_cache)
     append_duplicate_report_rows(build_duplicate_report_path(log_path), duplicate_rows)
     duplicate_result_method = duplicate_detection if duplicate_detection in {"strict", "phash", "both"} else "off"
+    merge_existing_methods = None
+    if duplicate_result_method in {"strict", "phash"}:
+        merge_existing_methods = {duplicate_result_method}
     duplicate_stats = rebuild_duplicate_results_from_hash_db(
         dst_dir,
         duplicates_json_path or ("" if duplicates_db_path else build_duplicate_json_path(log_path)),
@@ -1489,6 +1508,7 @@ def organize_images(
         duplicate_result_method,
         phash_threshold,
         sqlite_db_path=duplicates_db_path,
+        merge_existing_methods=merge_existing_methods,
     )
     update_task_run_counts(
         task_id or "",

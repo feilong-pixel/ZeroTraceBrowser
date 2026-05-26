@@ -9,7 +9,7 @@ from typing import Iterator
 
 from core.domain.root_context import RootContext
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -60,6 +60,9 @@ def init_root_database(database_path: str | Path) -> Path:
                 group_count INTEGER NOT NULL DEFAULT 0,
                 source_path TEXT NOT NULL DEFAULT '',
                 raw_json TEXT NOT NULL DEFAULT '{}',
+                dirty INTEGER NOT NULL DEFAULT 0,
+                dirty_reason TEXT NOT NULL DEFAULT '',
+                dirty_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -479,5 +482,15 @@ def init_root_database(database_path: str | Path) -> Path:
         }
         if "timeline_generated_at" not in existing_columns:
             connection.execute("ALTER TABLE image_indexes ADD COLUMN timeline_generated_at TEXT")
+        duplicate_result_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(duplicate_results)").fetchall()
+        }
+        if "dirty" not in duplicate_result_columns:
+            connection.execute("ALTER TABLE duplicate_results ADD COLUMN dirty INTEGER NOT NULL DEFAULT 0")
+        if "dirty_reason" not in duplicate_result_columns:
+            connection.execute("ALTER TABLE duplicate_results ADD COLUMN dirty_reason TEXT NOT NULL DEFAULT ''")
+        if "dirty_at" not in duplicate_result_columns:
+            connection.execute("ALTER TABLE duplicate_results ADD COLUMN dirty_at TEXT")
         connection.commit()
     return database

@@ -271,11 +271,14 @@ export default {
     bulkConfirm: "実行",
     bulkDeleted: (count) => `このページの${count}件をごみ箱へ移動しました`,
     bulkDeleting: (count) => `このページの${count}件を処理中...`,
-    bulkDisabledForPhash: "類似画像は手動確認が必要なため一括削除できません",
+    bulkDisabledForPhash: "pHash は現在ページのみ一括移動できます。100グループ移動は strict のみ対応です",
     bulkMove100ToRecycle: "次の100グループを移動",
     bulkMoveToRecycle: "現在ページの重複を移動",
+    bulkCurrentPageTitle: (count, method) => `このページの${count}件の${method}重複ファイルをごみ箱へ移動`,
     bulkStrict100Title: "現在ページから最大100グループの重複ファイルをごみ箱へ移動",
     bulkStrictTitle: (count) => `このページの${count}件を一括削除`,
+    confirmBulkCurrentPageDelete: (count, method) =>
+            `このページの${count}件の${method}重複ファイルをごみ箱へ移動します。保持ファイルは削除しません。続行しますか？`,
     confirmBulkStrict100Delete: (count) =>
             `現在ページから最大100グループ内の${count}件の重複ファイルをごみ箱へ移動します。保持ファイルは削除しません。続行しますか？`,
     confirmBulkStrictDelete: (count) =>
@@ -295,6 +298,7 @@ export default {
     noMethodResults: "結果がありません",
     noResults: "結果がありません",
     noSelection: "画像を選択してください",
+    noDuplicatesToDelete: "このページに一括削除できる重複ファイルはありません",
     noStrictDuplicatesToDelete: "このページに一括削除できる strict 重複ファイルはありません",
     openTasksTool: "整理ツール",
     openedResultRoot: "フォルダを開きました",

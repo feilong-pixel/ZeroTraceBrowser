@@ -271,11 +271,14 @@ export default {
     bulkConfirm: "确认移入",
     bulkDeleted: (count) => `已将当前页 ${count} 个文件移入回收区`,
     bulkDeleting: (count) => `正在移入当前页 ${count} 个文件`,
-    bulkDisabledForPhash: "pHash 相似检测需逐组人工确认，不能批量删除。",
+    bulkDisabledForPhash: "pHash 仅支持当前页批量移入；100 组批量移入仅限 strict。",
     bulkMove100ToRecycle: "移入后续 100 组",
     bulkMoveToRecycle: "移入当前页重复文件",
+    bulkCurrentPageTitle: (count, method) => `将当前页 ${count} 个 ${method} 重复文件移入回收区`,
     bulkStrict100Title: "将从当前页开始的 100 组 strict 重复文件移入回收区",
     bulkStrictTitle: (count) => `将当前页 ${count} 个 strict 重复文件移入回收区`,
+    confirmBulkCurrentPageDelete: (count, method) =>
+            `将把当前页 ${count} 个 ${method} 重复文件移入回收区。只会处理 duplicate 文件，不会删除 kept 保留文件。是否继续？`,
     confirmBulkStrict100Delete: (count) =>
             `将把从当前页开始最多 100 组中的 ${count} 个 strict 重复文件移入回收区。只会处理 duplicate 文件，不会删除 kept 保留文件。是否继续？`,
     confirmBulkStrictDelete: (count) =>
@@ -295,6 +298,7 @@ export default {
     noMethodResults: "当前检测方式下暂无重复结果。",
     noResults: "暂无重复结果。",
     noSelection: "请选中计划删除的图片。",
+    noDuplicatesToDelete: "当前页没有可批量移入的重复文件。",
     noStrictDuplicatesToDelete: "当前页没有可批量移入的 strict 重复文件。",
     openTasksTool: "整理工具",
     openedResultRoot: "已在资源管理器打开结果目录。",

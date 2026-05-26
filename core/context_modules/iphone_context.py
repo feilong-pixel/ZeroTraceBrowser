@@ -25,6 +25,7 @@ from core.services.image_index_service import (
     timeline_index_cache_path,
 )
 from core.services.image_scan_service import clear_image_list_cache
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.mobile_repository import MobileRepository
@@ -798,6 +799,7 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
             _local_time_text(modified_at),
         )
         hash_repository.add_hash_record("strict", strict_hash, str(imported))
+        DuplicateResultRepository(database_path).mark_dirty(active_root, "iphone_shortcut_upload")
         mobile_repository.mark_imported(
             device_type="iphone",
             device_id=device_id,
@@ -1202,6 +1204,7 @@ def build_iphone_photo_index(
                 )
                 imported_path = str(imported)
                 hash_repository.add_hash_record("strict", strict_hash, imported_path)
+                DuplicateResultRepository(database_path).mark_dirty(active_root, "iphone_import")
                 imported_items.append(
                     {
                         "album": album,

@@ -3,6 +3,8 @@ from .settings_context import load_settings
 from .image_context import resolve_under_root
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
+from core.storage.hash_db_repository import HashDbRepository
+from MediaArchiveOrganizer.services.organizer import rebuild_duplicate_results_from_hash_db
 
 
 def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
@@ -11,6 +13,34 @@ def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
     if result is None:
         return None
     return result
+
+
+def rebuild_dirty_duplicates_if_needed(active_root: str) -> None:
+    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+    repository = DuplicateResultRepository(database_path)
+    summary = repository.load_summary()
+    if not summary.get("dirty"):
+        return
+
+    settings = load_settings()
+    task_defaults = settings.get("task_defaults", {})
+    if not isinstance(task_defaults, dict):
+        task_defaults = {}
+    try:
+        phash_threshold = max(0, int(task_defaults.get("rebuild_phash_threshold", task_defaults.get("phash_threshold", 4))))
+    except (TypeError, ValueError):
+        phash_threshold = 4
+
+    rebuild_duplicate_results_from_hash_db(
+        active_root,
+        "",
+        HashDbRepository(database_path).load_hash_db(),
+        "both",
+        phash_threshold,
+        sqlite_db_path=str(database_path),
+    )
+    repository.clear_dirty()
+    clear_duplicates_path_cache()
 
 
 def clear_duplicates_path_cache() -> None:
@@ -62,6 +92,9 @@ def load_duplicates_payload(
     is_paged_request = offset != 0 or limit is not None or bool(method_filter)
 
     database_payload = load_database_duplicates_payload(active_root)
+    if database_payload is not None and database_payload.get("dirty"):
+        rebuild_dirty_duplicates_if_needed(active_root)
+        database_payload = load_database_duplicates_payload(active_root)
     if database_payload is None:
         result = {
             "available": False,
@@ -166,6 +199,9 @@ def load_duplicates_payload(
         "destination_root": destination_root,
         "active_root": active_root,
         "active_root_matches": destination_root == active_root,
+        "dirty": bool(payload.get("dirty")),
+        "dirty_reason": str(payload.get("dirty_reason", "")),
+        "dirty_at": payload.get("dirty_at"),
         "groups": groups,
         "group_count": group_count,
         "method_counts": method_counts,

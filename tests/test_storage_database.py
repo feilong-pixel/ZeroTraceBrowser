@@ -91,6 +91,9 @@ def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None
         "destination_root": str(tmp_path / "images"),
         "group_count": 1,
         "source_path": str(tmp_path / "workspace.sqlite3"),
+        "dirty": False,
+        "dirty_reason": "",
+        "dirty_at": None,
         "method_counts": {"strict": 1},
     }
     assert repository.load_result() == {
@@ -98,6 +101,9 @@ def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None
         "destination_root": str(tmp_path / "images"),
         "group_count": 1,
         "source_path": str(tmp_path / "workspace.sqlite3"),
+        "dirty": False,
+        "dirty_reason": "",
+        "dirty_at": None,
         "groups": [
             {
                 "group_id": "dup_0001",

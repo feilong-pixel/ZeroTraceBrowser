@@ -457,6 +457,54 @@ def test_organize_images_both_result_rebuild_reuses_current_hash_db(
     assert reasons == ["phash", "strict"]
 
 
+def test_organize_images_strict_skip_preserves_existing_phash_results(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src_dir = work_dir / "src"
+    dst_dir = work_dir / "dst"
+    log_path = work_dir / "strict.log"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    existing_a = create_image_file(dst_dir / "existing_a.jpg", color=(255, 0, 0))
+    existing_b = create_image_file(dst_dir / "existing_b.jpg", color=(254, 0, 0))
+    create_image_file(src_dir / "new_a.jpg", color=(0, 255, 0))
+    create_image_file(src_dir / "new_b.jpg", color=(0, 255, 0))
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    rebuild_duplicate_results_from_hash_db(
+        str(dst_dir),
+        "",
+        {
+            "phash": {"0000000000000000": [str(existing_a)], "0000000000000001": [str(existing_b)]},
+            "strict": {},
+        },
+        "phash",
+        phash_threshold=64,
+        sqlite_db_path=str(sqlite_path),
+    )
+
+    stats = organize_images(
+        str(src_dir),
+        str(dst_dir),
+        str(log_path),
+        mode="copy",
+        duplicate_detection="strict",
+        duplicates_db_path=str(sqlite_path),
+        skip_existing_exact=True,
+    )
+
+    assert stats["similar_group_count"] == 1
+    with sqlite3.connect(sqlite_path) as connection:
+        reasons = [
+            row[0]
+            for row in connection.execute(
+                "SELECT reason FROM duplicate_groups ORDER BY reason"
+            ).fetchall()
+        ]
+
+    assert reasons == ["phash"]
+
+
 def test_organize_images_writes_file_hash_cache_to_sqlite(
     work_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
