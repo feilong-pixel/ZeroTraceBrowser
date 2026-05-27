@@ -1,16 +1,34 @@
-# ZeroTraceBrowser
+# ZeroTraceBrowser - Local Photo Browser, Safe Delete Photo Organizer, and Duplicate Finder
 
-> Browse, review, and clean up your local photos without importing them into a cloud service or risking irreversible deletion.
+[中文](README_zh.md) | [日本語](README_ja.md)
+
+> A local-first photo browser and image organizer for Windows and desktop users.
+> Browse local folders, view EXIF metadata, find duplicate photos, import iPhone photos, and safely delete images into an app-level recycle area without cloud upload or automatic file operations.
 
 ---
 
 ## Overview
 
-**ZeroTraceBrowser** is a local image browsing tool designed for engineers and advanced users.
+**ZeroTraceBrowser** is a lightweight local photo management tool built with FastAPI and Vanilla JavaScript. It is designed for users who keep photos in local folders, external drives, or NAS folders and want explicit control over browsing, copying, deleting, restoring, and duplicate review.
 
 It does not try to be an all-in-one media manager, and it does not make decisions on your behalf. Instead, it provides:
 
 > **A predictable, controllable, and recoverable environment for local file operations.**
+
+---
+
+## Use Cases
+
+ZeroTraceBrowser is useful as a:
+
+* Local photo browser for large image folders
+* Offline image viewer for Windows
+* Safe photo cleanup tool with recoverable delete
+* Duplicate photo finder with manual review
+* EXIF metadata viewer
+* iPhone photo import helper for local archives
+* Lightweight self-hosted photo management tool
+* Local alternative to cloud photo managers
 
 ---
 
