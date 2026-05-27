@@ -22,7 +22,7 @@ Tracks applied schema versions.
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `version` | INTEGER PRIMARY KEY | Current schema version is `3`. |
+| `version` | INTEGER PRIMARY KEY | Current schema version is `11`. |
 | `applied_at` | TEXT | SQLite timestamp. |
 
 ## Duplicate Results
@@ -39,6 +39,9 @@ One current duplicate result per root database.
 | `group_count` | INTEGER | Stored top-level count or computed group count. |
 | `source_path` | TEXT | Source path or database path used by the migration/write job. |
 | `raw_json` | TEXT | Original top-level payload for compatibility/debugging. |
+| `dirty` | INTEGER | Boolean marker that hash DB changed after the last duplicate result publish. |
+| `dirty_reason` | TEXT | Last reason that marked the result stale, for example `phone_sync_upload`. |
+| `dirty_at` | TEXT | Timestamp when the result was marked stale. |
 | `updated_at` | TEXT | SQLite timestamp. |
 
 ### `duplicate_groups`

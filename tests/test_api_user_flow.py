@@ -479,6 +479,51 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
     )
 
 
+def test_async_scan_writes_timeline_index_in_batches(api_client, monkeypatch) -> None:
+    _, _, image_root, _ = api_client
+    monkeypatch.setattr(image_scan_service, "IMAGE_SCAN_CACHE", {})
+    index_dir = ztb_context.root_image_index_dir(image_root)
+    for index in range(5):
+        create_test_image(image_root / "2024" / "01" / f"{index + 1:02d}" / f"photo_{index}.jpg")
+
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+    timeline_batches: list[list[str]] = []
+    original_save_timeline = image_scan_service.save_timeline_index_cache
+
+    def record_timeline_batch(index_dir_arg, cache_key_arg, items, generated_at=None) -> None:
+        timeline_batches.append([str(item.get("relative_path", "")) for item in items])
+        original_save_timeline(index_dir_arg, cache_key_arg, items, generated_at)
+
+    monkeypatch.setattr(image_scan_service, "TIMELINE_INDEX_BATCH_SIZE", 2)
+    monkeypatch.setattr(image_scan_service, "save_timeline_index_cache", record_timeline_batch)
+    image_scan_service.IMAGE_SCAN_CACHE[cache_key] = {
+        "items": [],
+        "complete": False,
+        "scanning": True,
+        "from_cache": False,
+        "total": None,
+        "generated_at": None,
+        "error": "",
+    }
+
+    image_scan_service.scan_lightweight_image_metadata_into_cache(
+        cache_key,
+        index_dir,
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+
+    assert [len(batch) for batch in timeline_batches] == [2, 4]
+    repository = ImageIndexRepository(ztb_context.root_data_dir(image_root) / "workspace.sqlite3")
+    assert repository.load_timeline_entries(digest_for_cache_key(cache_key))
+    assert repository.load_summary(digest_for_cache_key(cache_key))["total"] == 5
+
+
 def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
     index_dir = ztb_context.root_image_index_dir(image_root)

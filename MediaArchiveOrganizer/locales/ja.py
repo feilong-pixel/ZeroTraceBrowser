@@ -28,7 +28,7 @@ TEXTS = {
     "rebuild_root_not_found": "再構築対象のディレクトリが存在しないか、有効なディレクトリではありません: {path}",
     "dst_inside_src": "保存先フォルダはソースフォルダと同一、またはその配下にできません: src={src}, dst={dst}",
     "done_message": "整理が完了しました。ログファイル: {log_path}",
-    "rebuild_hash_db_done": "hash_db の再構築が完了しました。対象: {root} | DB: {db_path} | 走査ファイル数: {scanned} | strict: {strict} | phash: {phash}",
+    "rebuild_hash_db_done": "hash_db の再構築が完了しました。対象: {root} | DB: {db_path} | 走査ファイル数: {scanned} | strict: {strict} | phash: {phash} | 再利用: {reused} | キャッシュ命中: {cache_hits} | 再計算: {recomputed} | 修正: {corrected} | 追加: {inserted} | 古い記録削除: {stale_pruned} | キャッシュ補完: {cache_backfilled}",
     "rebuild_duplicates_json_done": "重複グループ結果を再構築しました。JSON: {json_path} | グループ数: {groups}",
     "src_dst_required": "--rebuild-hash-db-root を使わない場合は、--src と --dst の両方が必要です。",
 }

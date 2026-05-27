@@ -167,6 +167,46 @@ function resultMethodLabel(item, data) {
   return base;
 }
 
+function createQueryCard(data) {
+  const queryPath = data.query || "";
+  const card = document.createElement("article");
+  card.className = "card similarity-result-card similarity-query-card";
+  card.setAttribute("role", "listitem");
+
+  const badge = document.createElement("div");
+  badge.className = "similarity-query-badge";
+  badge.textContent = t("similarity.queryCardLabel");
+
+  const image = document.createElement("img");
+  image.className = "thumb similarity-result-thumb similarity-query-thumb";
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.width = 320;
+  image.height = 320;
+  image.alt = queryPath || t("similarity.queryImage");
+  image.src = `/api/thumbnail?relative_path=${encodeURIComponent(queryPath)}`;
+
+  const body = document.createElement("div");
+  body.className = "card-body similarity-result-body";
+
+  const title = document.createElement("a");
+  title.className = "file-name similarity-result-path";
+  title.href = viewerUrl(queryPath);
+  title.textContent = queryPath.split("/").pop() || queryPath || "-";
+
+  const relative = document.createElement("span");
+  relative.className = "file-path";
+  relative.textContent = queryPath || "-";
+
+  const meta = document.createElement("div");
+  meta.className = "similarity-result-meta similarity-query-meta";
+  meta.textContent = t("similarity.queryCardMeta", data.method || "phash", data.threshold ?? "-");
+
+  body.append(title, relative, meta);
+  card.append(badge, image, body);
+  return card;
+}
+
 function renderResults(els, state, data) {
   const items = Array.isArray(data.items) ? data.items : [];
   if (!els.results) return;
@@ -182,7 +222,11 @@ function renderResults(els, state, data) {
     data.threshold ?? "-",
   );
 
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(createQueryCard(data));
+
   if (!items.length) {
+    els.results.appendChild(fragment);
     setState(els, t("similarity.noMatches"));
     updateResultSelection(els, state);
     return;
@@ -190,7 +234,6 @@ function renderResults(els, state, data) {
 
   setState(els, t("similarity.ready", items.length), false);
 
-  const fragment = document.createDocumentFragment();
   items.forEach((item) => {
     const card = document.createElement("article");
     card.className = "card similarity-result-card";

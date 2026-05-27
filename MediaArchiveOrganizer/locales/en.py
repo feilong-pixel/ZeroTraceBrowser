@@ -28,7 +28,7 @@ TEXTS = {
     "rebuild_root_not_found": "Rebuild root directory does not exist or is not a valid directory: {path}",
     "dst_inside_src": "Destination directory must not be the same as the source or be inside it: src={src}, dst={dst}",
     "done_message": "Organization complete. Log saved to: {log_path}",
-    "rebuild_hash_db_done": "Hash DB rebuild complete. Root: {root} | DB: {db_path} | scanned: {scanned} | strict: {strict} | phash: {phash}",
+    "rebuild_hash_db_done": "Hash DB rebuild complete. Root: {root} | DB: {db_path} | scanned: {scanned} | strict: {strict} | phash: {phash} | reused: {reused} | cache hits: {cache_hits} | recomputed: {recomputed} | corrected: {corrected} | inserted: {inserted} | stale pruned: {stale_pruned} | cache backfilled: {cache_backfilled}",
     "rebuild_duplicates_json_done": "Duplicate group results rebuilt. JSON: {json_path} | groups: {groups}",
     "src_dst_required": "Both --src and --dst are required unless --rebuild-hash-db-root is used.",
 }

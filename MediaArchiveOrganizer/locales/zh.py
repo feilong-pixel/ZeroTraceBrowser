@@ -28,7 +28,7 @@ TEXTS = {
     "rebuild_root_not_found": "用于重建的目录不存在或不是有效目录：{path}",
     "dst_inside_src": "目标目录不能与源目录相同，也不能位于源目录内部：src={src}, dst={dst}",
     "done_message": "整理完成，日志已生成：{log_path}",
-    "rebuild_hash_db_done": "hash_db 重建完成。目录：{root} | 数据库：{db_path} | 扫描文件：{scanned} | strict：{strict} | phash：{phash}",
+    "rebuild_hash_db_done": "hash_db 重建完成。目录：{root} | 数据库：{db_path} | 扫描文件：{scanned} | strict：{strict} | phash：{phash} | 复用记录：{reused} | 缓存命中：{cache_hits} | 重新计算：{recomputed} | 纠正记录：{corrected} | 新增记录：{inserted} | 清理死记录：{stale_pruned} | 缓存回填：{cache_backfilled}",
     "rebuild_duplicates_json_done": "重复组结果已重建。JSON：{json_path} | 组数：{groups}",
     "src_dst_required": "除非使用 --rebuild-hash-db-root，否则必须同时提供 --src 和 --dst。",
 }

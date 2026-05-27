@@ -25,11 +25,13 @@ from core.services.image_index_service import (
     timeline_index_cache_path,
 )
 from core.services.image_scan_service import clear_image_list_cache
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.mobile_repository import MobileRepository
 from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
+from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
 from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
 from MediaArchiveOrganizer.services.organizer import get_unique_path, transfer_file
 
@@ -56,6 +58,7 @@ IPHONE_SHORTCUT_TZINFOS = {
     "JST": timezone(timedelta(hours=9)),
     "UTC": timezone.utc,
 }
+UPLOAD_EXIF_MTIME_DRIFT_SECONDS = 7 * 24 * 60 * 60
 
 
 def _normalize_mobile_device_type(device_type: str = "iphone") -> str:
@@ -676,17 +679,49 @@ def _local_time_text(value: datetime | None) -> str:
     return value.astimezone().replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _apply_portable_file_times(path: Path, created_at: datetime | None, modified_at: datetime | None) -> None:
+def _local_naive_datetime(value: datetime) -> datetime:
+    if value.tzinfo is not None:
+        return value.astimezone().replace(tzinfo=None)
+    return value
+
+
+def _repair_upload_modified_time_from_exif(
+    path: Path,
+    created_at: datetime | None,
+    modified_at: datetime | None,
+) -> datetime | None:
+    exif_time = get_exif_datetime(str(path))
+    if exif_time is None:
+        return modified_at
+
+    normalized_exif = _local_naive_datetime(exif_time)
+    reference = modified_at or created_at
+    if reference is None:
+        return normalized_exif
+
+    drift_seconds = abs((_local_naive_datetime(reference) - normalized_exif).total_seconds())
+    if drift_seconds > UPLOAD_EXIF_MTIME_DRIFT_SECONDS:
+        return normalized_exif
+    return modified_at
+
+
+def _apply_portable_file_times(
+    path: Path,
+    created_at: datetime | None,
+    modified_at: datetime | None,
+) -> tuple[datetime | None, datetime | None]:
+    modified_at = _repair_upload_modified_time_from_exif(path, created_at, modified_at)
     timestamp_dt = modified_at or created_at
     if timestamp_dt is None:
-        return
+        return created_at, modified_at
     timestamp = timestamp_dt.timestamp()
     try:
         path.touch()
         os.utime(path, (timestamp, timestamp))
     except OSError:
-        return
+        return created_at, modified_at
     _apply_iphone_file_times(path, _local_time_text(created_at), _local_time_text(modified_at))
+    return created_at, modified_at
 
 
 def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
@@ -710,7 +745,7 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
         staging_dir = Path(temp_name)
         staged_path = staging_dir / filename
         staged_path.write_bytes(body)
-        _apply_portable_file_times(staged_path, created_at, modified_at)
+        created_at, modified_at = _apply_portable_file_times(staged_path, created_at, modified_at)
 
         strict_hash = _sha256_file(staged_path)
         phash = compute_phash(str(staged_path)) or ""
@@ -798,6 +833,7 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
             _local_time_text(modified_at),
         )
         hash_repository.add_hash_record("strict", strict_hash, str(imported))
+        DuplicateResultRepository(database_path).mark_dirty(active_root, "iphone_shortcut_upload")
         mobile_repository.mark_imported(
             device_type="iphone",
             device_id=device_id,
@@ -957,6 +993,10 @@ def _import_staged_iphone_media(
     created_at: str = "",
     modified_at: str = "",
 ) -> Path:
+    created_dt = _parse_iphone_local_time(created_at)
+    modified_dt = _parse_iphone_local_time(modified_at)
+    repaired_modified = _repair_upload_modified_time_from_exif(staged_path, created_dt, modified_dt)
+    modified_at = _local_time_text(repaired_modified) if repaired_modified else modified_at
     target_date = get_target_date(str(staged_path))
     target_dir = Path(build_date_path(str(gallery_root), target_date))
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -1202,6 +1242,7 @@ def build_iphone_photo_index(
                 )
                 imported_path = str(imported)
                 hash_repository.add_hash_record("strict", strict_hash, imported_path)
+                DuplicateResultRepository(database_path).mark_dirty(active_root, "iphone_import")
                 imported_items.append(
                     {
                         "album": album,

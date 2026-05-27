@@ -9,6 +9,7 @@ import { initViewerPage } from "./pages/viewer-page.js?v=20260513-viewer-media";
 import { initDuplicatesPage } from "./pages/duplicates-page.js?v=20260424-io10";
 import { initRecyclePage } from "./pages/recycle-page.js?v=20260424-io9";
 import { initTasksPage } from "./pages/tasks-page.js?v=20260513-db-cleanup";
+import { initImportPage } from "./pages/import-page.js?v=20260524-import-shell";
 import { initMobileImportPage } from "./pages/mobile-import-page.js?v=20260522-mobile-import";
 import { initSimilarityPage } from "./pages/similarity-page.js?v=20260522-similarity";
 
@@ -23,6 +24,7 @@ function initApp() {
   initDuplicatesPage();
   initRecyclePage();
   initTasksPage();
+  initImportPage();
   initMobileImportPage();
   initSimilarityPage();
 }

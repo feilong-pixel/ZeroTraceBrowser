@@ -54,6 +54,7 @@ IMAGE_LIST_CACHE: dict[tuple[str, tuple[str, ...], tuple[str, ...]], tuple[float
 IMAGE_SCAN_CACHE: dict[tuple[str, tuple[str, ...], tuple[str, ...]], dict[str, Any]] = {}
 IMAGE_SCAN_LOCK = threading.Lock()
 IMAGE_INDEX_REFRESH_DELAY_SECONDS = 0.0
+TIMELINE_INDEX_BATCH_SIZE = 500
 
 
 def clear_image_list_cache(root: Path | None = None) -> None:
@@ -337,11 +338,13 @@ def scan_lightweight_image_metadata_into_cache(
     refreshed_paths: set[str] = set()
     live_paths: set[str] | None = None
     wrote_preview_summary = False
+    last_timeline_count = 0
     try:
         for file_path in iter_image_files(root, supported_extensions, excluded_scan_dirs):
             item = image_metadata_from_path(root, file_path, include_exif=True)
             relative_path = str(item.get("relative_path", ""))
             preview_items: list[dict[str, Any]] = []
+            timeline_items: list[dict[str, Any]] = []
             with IMAGE_SCAN_LOCK:
                 state = IMAGE_SCAN_CACHE.get(cache_key)
                 if state is None:
@@ -361,9 +364,18 @@ def scan_lightweight_image_metadata_into_cache(
                     state["items"].append(item)
                     if len(state["items"]) >= IMAGE_INDEX_PREVIEW_LIMIT and not wrote_preview_summary:
                         preview_items = list(state["items"][:IMAGE_INDEX_PREVIEW_LIMIT])
+                current_count = len(state["items"])
+                if (
+                    TIMELINE_INDEX_BATCH_SIZE > 0
+                    and current_count - last_timeline_count >= TIMELINE_INDEX_BATCH_SIZE
+                ):
+                    timeline_items = list(state["items"])
+                    last_timeline_count = current_count
             if preview_items and not wrote_preview_summary:
                 save_image_index_summary(index_dir, cache_key, preview_items, None)
                 wrote_preview_summary = True
+            if timeline_items:
+                save_timeline_index_cache(index_dir, cache_key, timeline_items)
     except Exception as exc:
         with IMAGE_SCAN_LOCK:
             state = IMAGE_SCAN_CACHE.get(cache_key)

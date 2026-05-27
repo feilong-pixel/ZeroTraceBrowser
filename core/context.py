@@ -16,4 +16,5 @@ from core.context_modules.task_context import *
 from core.context_modules.cleanup_context import *
 from core.context_modules.similarity_context import *
 from core.context_modules.iphone_context import *
+from core.context_modules.phone_sync_context import *
 from core.context_modules.route_facade import *

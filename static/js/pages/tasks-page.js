@@ -27,6 +27,12 @@ function getTasksElements() {
     hashMethodSelect: $("#hashMethodSelect"),
     rebuildThresholdInput: $("#rebuild_thresholdInput"),
     runRebuildButton: $("#runRebuildButton"),
+    timestampRepairRootInput: $("#timestampRepairRootInput"),
+    timestampRepairThresholdInput: $("#timestampRepairThresholdInput"),
+    syncModifiedTimeCheckbox: $("#syncModifiedTimeCheckbox"),
+    renameFromExifCheckbox: $("#renameFromExifCheckbox"),
+    includeVideosCheckbox: $("#includeVideosCheckbox"),
+    runTimestampRepairButton: $("#runTimestampRepairButton"),
 
     taskLog: $("#taskLog"),
     liveOutputStatus: $("#liveOutputStatus"),
@@ -52,6 +58,7 @@ function createTasksState() {
     maintenanceOpen: false,
     activeRoot: "",
     isTaskRunning: false,
+    allowNavigation: false,
   };
 }
 
@@ -109,6 +116,10 @@ function setTaskRunning(els, state, isRunning) {
   if (els.runRebuildButton) {
     els.runRebuildButton.disabled = isRunning;
   }
+
+  if (els.runTimestampRepairButton) {
+    els.runTimestampRepairButton.disabled = isRunning;
+  }
 }
 
 async function confirmLeaveWhileRunning() {
@@ -124,7 +135,7 @@ async function confirmLeaveWhileRunning() {
 
 function bindLeaveGuard(els, state) {
   on(window, "beforeunload", (event) => {
-    if (!state.isTaskRunning) {
+    if (!state.isTaskRunning || state.allowNavigation) {
       return;
     }
 
@@ -140,6 +151,7 @@ function bindLeaveGuard(els, state) {
     event.preventDefault();
     const confirmed = await confirmLeaveWhileRunning();
     if (confirmed) {
+      state.allowNavigation = true;
       window.location.href = els.backToGalleryLink.href;
     }
   });
@@ -232,7 +244,7 @@ async function runTask(els, state) {
 
   try {
     const skipExistingExact =
-      ["strict", "both"].includes(els.duplicateSelect.value) && Boolean(els.skipExistingExactCheckbox.checked);
+      els.duplicateSelect.value === "strict" && Boolean(els.skipExistingExactCheckbox.checked);
     const task = await fetchJson("/api/tasks/run-organizer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -302,6 +314,53 @@ async function runRebuildTask(els, state) {
   }
 }
 
+async function runTimestampRepairTask(els, state) {
+  if (state.isTaskRunning) {
+    return;
+  }
+
+  const confirmed = await showConfirm(
+    t("tasks.confirmRunTimestampRepair"),
+    {
+      title: t("dialog.title.warning"),
+      confirmText: t("tasks.runTimestampRepairTask"),
+      cancelText: t("dialog.buttons.cancel"),
+    },
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  if (state.pollHandle) {
+    window.clearTimeout(state.pollHandle);
+  }
+
+  setTaskRunning(els, state, true);
+
+  try {
+    const task = await fetchJson("/api/tasks/repair-timestamps", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        root: els.timestampRepairRootInput.value.trim(),
+        threshold_days: Number(els.timestampRepairThresholdInput.value || 7),
+        sync_modified_time: Boolean(els.syncModifiedTimeCheckbox.checked),
+        rename_from_exif: Boolean(els.renameFromExifCheckbox.checked),
+        include_videos: Boolean(els.includeVideosCheckbox.checked),
+        lang: state.currentLang,
+      }),
+    });
+
+    state.currentTaskId = task.task_id;
+    updateSummary(els, task);
+    pollTask(els, state, state.currentTaskId);
+  } catch (error) {
+    setTaskLog(els, error.message);
+    setTaskRunning(els, state, false);
+  }
+}
+
 function syncMaintenanceState(els, state) {
   if (els.maintenancePanel) {
     els.maintenancePanel.classList.toggle("is-hidden", !state.maintenanceOpen);
@@ -316,12 +375,12 @@ function syncMaintenanceState(els, state) {
 
 function toggleThreshold(els) {
   if (!els.thresholdInput || !els.duplicateSelect) return;
-  els.thresholdInput.disabled = !["phash", "both"].includes(els.duplicateSelect.value);
+  els.thresholdInput.disabled = els.duplicateSelect.value !== "phash";
 }
 
 function toggleSkipExistingExact(els) {
   if (!els.skipExistingExactCheckbox || !els.duplicateSelect) return;
-  const canSkipExistingExact = ["strict", "both"].includes(els.duplicateSelect.value);
+  const canSkipExistingExact = els.duplicateSelect.value === "strict";
   els.skipExistingExactCheckbox.disabled = !canSkipExistingExact;
   if (!canSkipExistingExact) {
     els.skipExistingExactCheckbox.checked = false;
@@ -395,8 +454,24 @@ async function initializeTasksPage(els, state) {
     els.srcInput.value = sourceRoot;
     els.dstInput.value = destinationRoot;
     els.rebuildRootInput.value = rebuildRoot;
+    if (els.timestampRepairRootInput) {
+      els.timestampRepairRootInput.value = config.active_root || rebuildRoot || destinationRoot;
+    }
+    if (els.timestampRepairThresholdInput) {
+      els.timestampRepairThresholdInput.value = "7";
+    }
+    if (els.syncModifiedTimeCheckbox) {
+      els.syncModifiedTimeCheckbox.checked = true;
+    }
+    if (els.renameFromExifCheckbox) {
+      els.renameFromExifCheckbox.checked = false;
+    }
+    if (els.includeVideosCheckbox) {
+      els.includeVideosCheckbox.checked = false;
+    }
     setSelectValue(els.modeSelect, taskDefaults.mode, "copy");
-    setSelectValue(els.duplicateSelect, taskDefaults.duplicate_detection, "phash");
+    setSelectValue(els.duplicateSelect, taskDefaults.duplicate_detection, "strict");
+    setSelectValue(els.hashMethodSelect, taskDefaults.rebuild_hash_method, "strict");
     els.thresholdInput.value = String(normalizeThreshold(taskDefaults.phash_threshold));
     els.skipExistingExactCheckbox.checked = taskDefaults.skip_existing_exact !== false;
     els.rebuildThresholdInput.value = String(
@@ -482,6 +557,10 @@ function bindTasksEvents(els, state) {
 
   on(els.runRebuildButton, "click", () => {
     runRebuildTask(els, state);
+  });
+
+  on(els.runTimestampRepairButton, "click", () => {
+    runTimestampRepairTask(els, state);
   });
 
   on(els.toggleMaintenanceButton, "click", () => {

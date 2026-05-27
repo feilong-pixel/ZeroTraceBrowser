@@ -25,14 +25,17 @@ class DuplicateResultRepository:
             connection.execute(
                 """
                 INSERT INTO duplicate_results
-                    (id, generated_at, destination_root, group_count, source_path, raw_json, updated_at)
-                VALUES (1, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    (id, generated_at, destination_root, group_count, source_path, raw_json, dirty, dirty_reason, dirty_at, updated_at)
+                VALUES (1, ?, ?, ?, ?, ?, 0, '', NULL, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                     generated_at = excluded.generated_at,
                     destination_root = excluded.destination_root,
                     group_count = excluded.group_count,
                     source_path = excluded.source_path,
                     raw_json = excluded.raw_json,
+                    dirty = 0,
+                    dirty_reason = '',
+                    dirty_at = NULL,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (
@@ -132,16 +135,19 @@ class DuplicateResultRepository:
                 "destination_root": result["destination_root"],
                 "group_count": result["group_count"],
                 "source_path": result["source_path"],
+                "dirty": bool(result["dirty"]),
+                "dirty_reason": result["dirty_reason"],
+                "dirty_at": result["dirty_at"],
                 "groups": groups,
             }
 
     def load_summary(self) -> dict[str, Any]:
         with connect(self.database_path) as connection:
             result = connection.execute(
-                "SELECT generated_at, destination_root, group_count, source_path FROM duplicate_results WHERE id = 1"
+                "SELECT generated_at, destination_root, group_count, source_path, dirty, dirty_reason, dirty_at FROM duplicate_results WHERE id = 1"
             ).fetchone()
             if result is None:
-                return {"available": False, "group_count": 0}
+                return {"available": False, "group_count": 0, "dirty": False}
             method_counts = {
                 row["reason"]: row["count"]
                 for row in connection.execute(
@@ -159,10 +165,45 @@ class DuplicateResultRepository:
                 "destination_root": result["destination_root"],
                 "group_count": result["group_count"],
                 "source_path": result["source_path"],
+                "dirty": bool(result["dirty"]),
+                "dirty_reason": result["dirty_reason"],
+                "dirty_at": result["dirty_at"],
                 "method_counts": method_counts,
             }
 
     def clear_result(self) -> None:
         with connect(self.database_path) as connection:
             connection.execute("DELETE FROM duplicate_results WHERE id = 1")
+            connection.commit()
+
+    def mark_dirty(self, destination_root: str | Path, reason: str = "hash_db_changed") -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO duplicate_results
+                    (id, generated_at, destination_root, group_count, source_path, raw_json, dirty, dirty_reason, dirty_at, updated_at)
+                VALUES (1, NULL, ?, 0, ?, '{}', 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    destination_root = excluded.destination_root,
+                    dirty = 1,
+                    dirty_reason = excluded.dirty_reason,
+                    dirty_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (str(destination_root), str(self.database_path), reason),
+            )
+            connection.commit()
+
+    def clear_dirty(self) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE duplicate_results
+                SET dirty = 0,
+                    dirty_reason = '',
+                    dirty_at = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+                """
+            )
             connection.commit()

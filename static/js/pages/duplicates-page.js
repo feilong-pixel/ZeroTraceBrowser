@@ -41,6 +41,7 @@ function createDuplicatesState() {
     methodFilter: "phash",
     selectedByGroup: {},
     isBusy: false,
+    allowNavigation: false,
   };
 }
 
@@ -256,9 +257,7 @@ function chooseInitialMethod(payload, currentMethod) {
   return currentMethod;
 }
 
-function strictDuplicateItems(state) {
-  if (state.methodFilter !== "strict") return [];
-
+function currentPageDuplicateItems(state) {
   // Server pagination means this intentionally returns only the current page.
   return filteredGroups(state).flatMap((group) =>
     (group.items || [])
@@ -268,6 +267,11 @@ function strictDuplicateItems(state) {
         path: item.path,
       })),
   );
+}
+
+function strictDuplicateItems(state) {
+  if (state.methodFilter !== "strict") return [];
+  return currentPageDuplicateItems(state);
 }
 
 function totalPages(state) {
@@ -360,13 +364,10 @@ function renderDuplicatesPage(els, state) {
   els.nextPageButton.disabled = state.page >= total;
   els.openResultRootButton.disabled = !payload.destination_root;
 
-  const bulkItems = strictDuplicateItems(state);
+  const bulkItems = currentPageDuplicateItems(state);
   if (els.bulkDeleteDuplicatesButton) {
-    els.bulkDeleteDuplicatesButton.disabled = state.methodFilter !== "strict" || bulkItems.length === 0;
-    els.bulkDeleteDuplicatesButton.title =
-      state.methodFilter === "strict"
-        ? t("duplicates.bulkStrictTitle", bulkItems.length)
-        : t("duplicates.bulkDisabledForPhash");
+    els.bulkDeleteDuplicatesButton.disabled = bulkItems.length === 0;
+    els.bulkDeleteDuplicatesButton.title = t("duplicates.bulkCurrentPageTitle", bulkItems.length, state.methodFilter);
   }
   if (els.bulkDelete100DuplicatesButton) {
     els.bulkDelete100DuplicatesButton.disabled = state.methodFilter !== "strict" || bulkItems.length === 0;
@@ -559,24 +560,14 @@ async function deleteSelected(els, state, groupId) {
   }
 }
 
-async function bulkDeleteStrictDuplicates(els, state) {
+async function bulkDeleteCurrentPageDuplicates(els, state) {
   if (state.isBusy) {
     return;
   }
 
-  if (state.methodFilter !== "strict") {
-    const message = t("duplicates.bulkDisabledForPhash");
-    setSummaryStatus(els, message);
-    await showAlert(message, {
-      title: t("dialog.title.warning"),
-      confirmText: t("dialog.buttons.ok"),
-    });
-    return;
-  }
-
-  const items = strictDuplicateItems(state);
+  const items = currentPageDuplicateItems(state);
   if (!items.length) {
-    const message = t("duplicates.noStrictDuplicatesToDelete");
+    const message = t("duplicates.noDuplicatesToDelete");
     setSummaryStatus(els, message);
     await showAlert(message, {
       title: t("dialog.title.warning"),
@@ -587,7 +578,7 @@ async function bulkDeleteStrictDuplicates(els, state) {
 
   if (
     !(await showConfirm(
-      t("duplicates.confirmBulkStrictDelete", items.length),
+      t("duplicates.confirmBulkCurrentPageDelete", items.length, state.methodFilter),
       {
         title: t("duplicates.bulkMoveToRecycle"),
         confirmText: t("duplicates.bulkConfirm"),
@@ -690,7 +681,7 @@ async function confirmLeaveWhileBusy() {
 
 function bindLeaveGuard(els, state) {
   on(window, "beforeunload", (event) => {
-    if (!state.isBusy) {
+    if (!state.isBusy || state.allowNavigation) {
       return;
     }
 
@@ -707,6 +698,7 @@ function bindLeaveGuard(els, state) {
       event.preventDefault();
       const confirmed = await confirmLeaveWhileBusy();
       if (confirmed) {
+        state.allowNavigation = true;
         window.location.href = link.href;
       }
     });
@@ -737,7 +729,7 @@ function bindDuplicatesEvents(els, state) {
   });
 
   on(els.bulkDeleteDuplicatesButton, "click", () => {
-    bulkDeleteStrictDuplicates(els, state).catch((error) => {
+    bulkDeleteCurrentPageDuplicates(els, state).catch((error) => {
       setSummaryStatus(els, error.message);
       renderDuplicatesPage(els, state);
     });
@@ -803,7 +795,7 @@ function renderDuplicatesInitialState(els) {
   els.openResultRootButton.disabled = true;
   if (els.bulkDeleteDuplicatesButton) {
     els.bulkDeleteDuplicatesButton.disabled = true;
-    els.bulkDeleteDuplicatesButton.title = t("duplicates.bulkDisabledForPhash");
+    els.bulkDeleteDuplicatesButton.title = t("duplicates.bulkCurrentPageTitle", 0, "phash");
   }
   if (els.bulkDelete100DuplicatesButton) {
     els.bulkDelete100DuplicatesButton.disabled = true;

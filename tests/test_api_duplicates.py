@@ -10,6 +10,7 @@ import app as ztb_app
 import core.context as ztb_context
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
+from core.storage.hash_db_repository import HashDbRepository
 
 
 def save_duplicates_db(root: Path, groups: list[dict], destination_root: Path | None = None) -> Path:
@@ -206,6 +207,34 @@ def test_duplicates_api_reports_unavailable_when_no_result_exists(api_client) ->
         "groups": [],
         "group_count": 0,
     }
+
+
+def test_duplicates_api_rebuilds_dirty_results_from_hash_db(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    kept = create_test_image(archive_root / "same.jpg")
+    duplicate = create_test_image(archive_root / "same_copy.jpg", color=(160, 96, 32))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+
+    database_path = RootContext.from_root(archive_root, ztb_app.ROOT_DATA_DIR).database_path
+    HashDbRepository(database_path).save_hash_db(
+        {"phash": {}, "strict": {"strict-hash": [str(kept), str(duplicate)]}},
+        source_path=database_path,
+    )
+    repository = DuplicateResultRepository(database_path)
+    repository.mark_dirty(archive_root, "phone_sync_upload")
+
+    response = client.get("/api/duplicates")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["dirty"] is False
+    assert payload["destination_root"] == str(archive_root)
+    assert payload["group_count"] == 1
+    assert payload["groups"][0]["reason"] == "strict"
+    assert payload["groups"][0]["preview_paths"] == ["same.jpg", "same_copy.jpg"]
+    assert DuplicateResultRepository(database_path).load_summary()["dirty"] is False
 
 
 def test_duplicates_api_prefers_result_matching_active_root(api_client) -> None:

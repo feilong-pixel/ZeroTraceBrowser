@@ -12,6 +12,7 @@ from core.storage.exif_repository import ExifRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.mobile_repository import MobileRepository
+from core.storage.phone_sync_repository import PhoneSyncRepository
 from core.storage.recycle_repository import RecycleRepository
 from core.storage.similarity_repository import SimilarityRepository
 from core.storage.task_repository import TaskRunRepository
@@ -54,6 +55,10 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "mobile_devices",
         "mobile_photo_index",
         "mobile_import_records",
+        "mobile_pairings",
+        "mobile_sync_sessions",
+        "import_runs",
+        "import_items",
     }.issubset(tables)
 
 
@@ -86,6 +91,9 @@ def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None
         "destination_root": str(tmp_path / "images"),
         "group_count": 1,
         "source_path": str(tmp_path / "workspace.sqlite3"),
+        "dirty": False,
+        "dirty_reason": "",
+        "dirty_at": None,
         "method_counts": {"strict": 1},
     }
     assert repository.load_result() == {
@@ -93,6 +101,9 @@ def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None
         "destination_root": str(tmp_path / "images"),
         "group_count": 1,
         "source_path": str(tmp_path / "workspace.sqlite3"),
+        "dirty": False,
+        "dirty_reason": "",
+        "dirty_at": None,
         "groups": [
             {
                 "group_id": "dup_0001",
@@ -240,6 +251,79 @@ def test_mobile_repository_records_device_index_and_import_state(tmp_path: Path)
             "imported_at": "2026-05-18T10:01:00+00:00",
         }
     ]
+
+
+def test_phone_sync_repository_records_pair_session_and_manifest(tmp_path: Path) -> None:
+    repository = PhoneSyncRepository(tmp_path / "workspace.sqlite3")
+
+    pairing = repository.pair_device(
+        server_id="server-1",
+        root_id="root-1",
+        destination_root=str(tmp_path / "images"),
+        sync_token="sync-token",
+        token_expires_at="2026-05-24T10:30:00+00:00",
+        payload={
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "device_name": "Phone 1",
+            "device_model": "iPhone",
+            "platform": "ios",
+            "app_id": "zerotrace-mobile",
+            "app_version": "0.1.0",
+            "owner_label": "User",
+            "capabilities": {"asset_id": True},
+        },
+    )
+    assert pairing["server_id"] == "server-1"
+    assert pairing["root_id"] == "root-1"
+    assert pairing["device_id"] == "phone-1"
+
+    session = repository.start_session(
+        session_id="session-1",
+        server_id="server-1",
+        root_id="root-1",
+        destination_root=str(tmp_path / "images"),
+        sync_token="sync-token",
+        token_expires_at="2026-05-24T10:30:00+00:00",
+        payload={
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "last_client_cursor": "client-cursor",
+            "battery_state": "charging",
+            "network_type": "wifi",
+        },
+    )
+    assert session["session_id"] == "session-1"
+    assert session["status"] == "ready"
+
+    manifest = repository.save_manifest(
+        upload_batch_id="batch-1",
+        payload={
+            "session_id": "session-1",
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "items": [
+                {
+                    "item_id": "asset-1",
+                    "filename": "IMG_0001.JPG",
+                    "media_type": "image",
+                    "mime_type": "image/jpeg",
+                    "size": 123,
+                    "created_at": "2026-05-24T10:00:00+00:00",
+                    "modified_at": "2026-05-24T10:01:00+00:00",
+                }
+            ],
+        },
+    )
+    assert manifest["status"] == "accepted"
+    assert manifest["upload"] == [
+        {
+            "item_id": "asset-1",
+            "upload_url": "/api/mobile/sync/upload",
+            "status": "upload_required",
+        }
+    ]
+    assert repository.status(destination_root=str(tmp_path / "images"))["paired_devices"] == 1
 
 
 def test_similarity_repository_round_trips_file_and_features(tmp_path: Path) -> None:

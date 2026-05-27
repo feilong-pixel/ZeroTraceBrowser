@@ -6,6 +6,10 @@ This document captures the first implementation plan for three related features:
 - iPhone photo import
 - iPhone imported-photo similarity review
 
+For the current production import design, use `docs/photo-import-design.md`.
+This roadmap keeps the similarity and earlier iPhone import direction for
+historical context.
+
 The goal is to keep ZeroTraceBrowser local-first, explicit, and safe while adding stronger visual similarity workflows.
 
 ---
