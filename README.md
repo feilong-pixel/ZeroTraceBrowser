@@ -418,6 +418,17 @@ This data improves browsing speed, preserves operation history, and keeps state 
 
 ---
 
+## Related Projects
+
+### ZeroTraceMobile
+
+ZeroTraceMobile is a companion Android and PC sync app for local-first photo workflows.
+
+Repository: [feilong-pixel/ZeroTraceMobile](https://github.com/feilong-pixel/ZeroTraceMobile)  
+Clone URL: `https://github.com/feilong-pixel/ZeroTraceMobile.git`
+
+---
+
 ## Positioning
 
 ZeroTraceBrowser is not:

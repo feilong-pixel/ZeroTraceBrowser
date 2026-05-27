@@ -418,6 +418,17 @@ ZeroTraceBrowser 会在 `data/roots/<root_id>/` 下保存每个图片根目录�
 
 ---
 
+## 相关项目
+
+### ZeroTraceMobile
+
+ZeroTraceMobile 是配套的 Android 手机与 PC 同步应用，用于 local-first 的本地照片工作流。
+
+仓库：[feilong-pixel/ZeroTraceMobile](https://github.com/feilong-pixel/ZeroTraceMobile)  
+克隆地址：`https://github.com/feilong-pixel/ZeroTraceMobile.git`
+
+---
+
 ## 项目定位
 
 ZeroTraceBrowser 不是：

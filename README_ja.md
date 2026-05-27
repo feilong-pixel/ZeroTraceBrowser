@@ -418,6 +418,17 @@ ZeroTraceBrowser は、各画像ルートに対応する実行時データを `d
 
 ---
 
+## 関連プロジェクト
+
+### ZeroTraceMobile
+
+ZeroTraceMobile は、local-first な写真ワークフロー向けの Android スマートフォンと PC の同期アプリです。
+
+リポジトリ: [feilong-pixel/ZeroTraceMobile](https://github.com/feilong-pixel/ZeroTraceMobile)  
+Clone URL: `https://github.com/feilong-pixel/ZeroTraceMobile.git`
+
+---
+
 ## 位置づけ
 
 ZeroTraceBrowser は次のようなものではありません。
