@@ -159,7 +159,7 @@ def start_mobile_sync(payload: Any) -> dict[str, Any]:
 
 def save_mobile_sync_manifest(payload: Any) -> dict[str, Any]:
     _, active_root, _, _, repository = _phone_sync_context()
-    payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else dict(payload)
+    payload_dict = payload.model_dump(exclude_none=True) if hasattr(payload, "model_dump") else dict(payload)
     upload_batch_id = f"batch-{uuid.uuid4().hex}"
     try:
         result = repository.save_manifest(upload_batch_id=upload_batch_id, payload=payload_dict)

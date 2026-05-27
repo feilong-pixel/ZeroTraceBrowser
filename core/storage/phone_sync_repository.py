@@ -254,8 +254,32 @@ class PhoneSyncRepository:
                 ),
             )
             connection.execute(
-                "UPDATE mobile_sync_sessions SET status = 'syncing', last_seen_at = ? WHERE session_id = ?",
-                (now, session_id),
+                """
+                UPDATE mobile_sync_sessions
+                SET status = CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM import_items
+                            WHERE session_id = ?
+                              AND status = 'manifested'
+                        )
+                        THEN 'syncing'
+                        ELSE 'complete'
+                    END,
+                    last_seen_at = ?,
+                    finished_at = CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM import_items
+                            WHERE session_id = ?
+                              AND status = 'manifested'
+                        )
+                        THEN finished_at
+                        ELSE ?
+                    END
+                WHERE session_id = ?
+                """,
+                (session_id, now, session_id, now, session_id),
             )
             connection.commit()
 
@@ -369,9 +393,16 @@ class PhoneSyncRepository:
                         "status": "upload_required",
                     }
                 )
+            session_status = "syncing" if upload else "complete"
             connection.execute(
-                "UPDATE mobile_sync_sessions SET status = 'syncing', last_seen_at = ? WHERE session_id = ?",
-                (now, session["session_id"]),
+                """
+                UPDATE mobile_sync_sessions
+                SET status = ?,
+                    last_seen_at = ?,
+                    finished_at = CASE WHEN ? = 'complete' THEN ? ELSE finished_at END
+                WHERE session_id = ?
+                """,
+                (session_status, now, session_status, now, session["session_id"]),
             )
             connection.commit()
         return {
@@ -386,9 +417,9 @@ class PhoneSyncRepository:
     def status(self, *, destination_root: str = "") -> dict[str, Any]:
         with connect(self.database_path) as connection:
             paired_devices = connection.execute(
-                "SELECT COUNT(*) AS count FROM mobile_pairings WHERE pairing_status = 'paired'"
+                "SELECT COUNT(DISTINCT device_id) AS count FROM mobile_pairings WHERE pairing_status = 'paired'"
             ).fetchone()["count"]
-            sessions = [
+            session_rows = [
                 dict(row)
                 for row in connection.execute(
                     """
@@ -413,6 +444,15 @@ class PhoneSyncRepository:
                     """
                 ).fetchone()
             )
+        sessions: list[dict[str, Any]] = []
+        seen_devices: set[str] = set()
+        for session in session_rows:
+            key = str(session.get("device_id") or "")
+            if key in seen_devices:
+                continue
+            seen_devices.add(key)
+            sessions.append(session)
+
         normalized_summary = {
             "processed": int(summary.get("processed") or 0),
             "imported": int(summary.get("imported") or 0),

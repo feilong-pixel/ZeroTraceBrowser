@@ -459,7 +459,7 @@ If this project is useful to you, contributions are welcome:
 
 ## Status
 
-Current version: v0.4.0
+Current version: v0.4.1
 
 This is an early local-first release for technical users.
 A packaged desktop release may be considered later.

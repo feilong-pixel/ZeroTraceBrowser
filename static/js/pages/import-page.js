@@ -75,7 +75,16 @@ function formatTime(value) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Tokyo",
+    timeZoneName: "short",
+  }).format(date);
 }
 
 function normalizeSummary(summary = {}) {

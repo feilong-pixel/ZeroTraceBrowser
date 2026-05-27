@@ -250,6 +250,132 @@ def test_mobile_pair_start_manifest_and_status_flow(api_client):
     assert status_data["connected_devices"][0]["device_id"] == "phone-1"
 
 
+def test_mobile_sync_status_deduplicates_repeated_sessions_for_same_device(api_client):
+    client, *_ = api_client
+
+    pair_response = client.post(
+        "/api/mobile/pair",
+        json={
+            "pairing_token": "pair-token",
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "device_name": "Phone 1",
+            "device_model": "iPhone",
+            "platform": "ios",
+            "app_id": "zerotrace-mobile",
+            "app_version": "0.1.0",
+            "owner_label": "User",
+            "capabilities": {"asset_id": True},
+        },
+    )
+    assert pair_response.status_code == 200
+    sync_token = pair_response.json()["sync_token"]
+
+    for _ in range(3):
+        response = client.post(
+            "/api/mobile/sync/start",
+            json={
+                "device_type": "iphone",
+                "device_id": "phone-1",
+                "sync_token": sync_token,
+                "last_client_cursor": "",
+                "battery_state": "charging",
+                "network_type": "wifi",
+            },
+        )
+        assert response.status_code == 200
+
+    status_response = client.get("/api/mobile/sync/status")
+    assert status_response.status_code == 200
+    status_data = status_response.json()
+    assert status_data["paired_devices"] == 1
+    assert [device["device_id"] for device in status_data["connected_devices"]] == ["phone-1"]
+
+
+def test_mobile_sync_status_deduplicates_same_device_across_reported_types(api_client):
+    client, *_ = api_client
+
+    sync_tokens = []
+    for device_type in ("iphone", "android"):
+        pair_response = client.post(
+            "/api/mobile/pair",
+            json={
+                "pairing_token": f"pair-token-{device_type}",
+                "device_type": device_type,
+                "device_id": "phone-1",
+                "device_name": "Phone 1",
+                "device_model": "Phone",
+                "platform": device_type,
+                "app_id": "zerotrace-mobile",
+                "app_version": "0.1.0",
+                "owner_label": "User",
+                "capabilities": {"asset_id": True},
+            },
+        )
+        assert pair_response.status_code == 200
+        sync_tokens.append((device_type, pair_response.json()["sync_token"]))
+
+    for device_type, sync_token in sync_tokens:
+        response = client.post(
+            "/api/mobile/sync/start",
+            json={
+                "device_type": device_type,
+                "device_id": "phone-1",
+                "sync_token": sync_token,
+                "last_client_cursor": "",
+                "battery_state": "charging",
+                "network_type": "wifi",
+            },
+        )
+        assert response.status_code == 200
+
+    status_response = client.get("/api/mobile/sync/status")
+    assert status_response.status_code == 200
+    status_data = status_response.json()
+    assert status_data["paired_devices"] == 1
+    assert [device["device_id"] for device in status_data["connected_devices"]] == ["phone-1"]
+
+
+def test_mobile_sync_manifest_accepts_null_optional_asset_metadata(api_client):
+    client, *_ = api_client
+
+    session_id, _ = start_sync_with_manifest(client, item_id="asset-existing")
+
+    response = client.post(
+        "/api/mobile/sync/manifest",
+        json={
+            "session_id": session_id,
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "items": [
+                {
+                    "item_id": "asset-null-metadata",
+                    "filename": "IMG_NULL.JPG",
+                    "media_type": "image",
+                    "mime_type": "image/jpeg",
+                    "size": 123,
+                    "created_at": None,
+                    "modified_at": None,
+                    "timezone": None,
+                    "album": None,
+                    "width": None,
+                    "height": None,
+                    "duration_ms": None,
+                    "sha256": None,
+                    "paired_item_id": None,
+                    "is_favorite": None,
+                    "is_screenshot": None,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "accepted"
+    assert data["upload"][0]["item_id"] == "asset-null-metadata"
+
+
 def test_mobile_sync_pairing_code_uses_lan_address(api_client, monkeypatch):
     client, _, image_root, _ = api_client
     monkeypatch.setattr(phone_sync_context, "_local_lan_ip", lambda: "192.168.1.25")
@@ -398,3 +524,154 @@ def test_mobile_sync_upload_skips_deleted_local_marker(api_client):
     summary = status_response.json()["summary"]
     assert summary["imported"] == 0
     assert summary["skipped_deleted_locally"] == 1
+
+
+def test_mobile_sync_mixed_batch_counts_and_session_status_stay_stable(api_client):
+    client, _, image_root, _ = api_client
+
+    pair_response = client.post(
+        "/api/mobile/pair",
+        json={
+            "pairing_token": "pair-token",
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "device_name": "Phone 1",
+            "device_model": "iPhone",
+            "platform": "ios",
+            "app_id": "zerotrace-mobile",
+            "app_version": "0.1.0",
+            "owner_label": "User",
+            "capabilities": {"asset_id": True},
+        },
+    )
+    assert pair_response.status_code == 200
+    sync_token = pair_response.json()["sync_token"]
+    start_response = client.post(
+        "/api/mobile/sync/start",
+        json={
+            "device_type": "iphone",
+            "device_id": "phone-1",
+            "sync_token": sync_token,
+            "last_client_cursor": "",
+            "battery_state": "charging",
+            "network_type": "wifi",
+        },
+    )
+    assert start_response.status_code == 200
+    session_id = start_response.json()["session_id"]
+
+    new_body = make_jpeg_bytes(color=(24, 70, 160))
+    duplicate_body = make_jpeg_bytes(color=(220, 40, 80))
+    deleted_body = make_jpeg_bytes(color=(12, 180, 90))
+    existing = image_root / "existing.jpg"
+    existing.write_bytes(duplicate_body)
+    HashDbRepository(root_database_path(image_root)).add_hash_record(
+        "strict",
+        hashlib.sha256(duplicate_body).hexdigest(),
+        existing,
+    )
+    MobileRepository(root_database_path(image_root)).mark_deleted_locally(
+        strict_hash=hashlib.sha256(deleted_body).hexdigest(),
+        relative_path="2026/05/24/DELETED.JPG",
+        original_path=image_root / "2026" / "05" / "24" / "DELETED.JPG",
+        deleted_to=image_root / ".ztb-deleted" / "DELETED.JPG",
+        deleted_at="2026-05-24T10:02:00+00:00",
+    )
+
+    manifest_payload = {
+        "session_id": session_id,
+        "device_type": "iphone",
+        "device_id": "phone-1",
+        "items": [
+            {
+                "item_id": "asset-new",
+                "filename": "NEW.JPG",
+                "media_type": "image",
+                "mime_type": "image/jpeg",
+                "size": len(new_body),
+            },
+            {
+                "item_id": "asset-duplicate",
+                "filename": "DUP.JPG",
+                "media_type": "image",
+                "mime_type": "image/jpeg",
+                "size": len(duplicate_body),
+            },
+            {
+                "item_id": "asset-deleted",
+                "filename": "DELETED.JPG",
+                "media_type": "image",
+                "mime_type": "image/jpeg",
+                "size": len(deleted_body),
+            },
+        ],
+    }
+    manifest_response = client.post("/api/mobile/sync/manifest", json=manifest_payload)
+    assert manifest_response.status_code == 200
+    assert {item["item_id"] for item in manifest_response.json()["upload"]} == {
+        "asset-new",
+        "asset-duplicate",
+        "asset-deleted",
+    }
+
+    bodies = {
+        "asset-new": new_body,
+        "asset-duplicate": duplicate_body,
+        "asset-deleted": deleted_body,
+    }
+    filenames = {
+        "asset-new": "NEW.JPG",
+        "asset-duplicate": "DUP.JPG",
+        "asset-deleted": "DELETED.JPG",
+    }
+    statuses = {}
+    for item_id, body in bodies.items():
+        response = client.post(
+            "/api/mobile/sync/upload",
+            headers={
+                "X-ZTB-Mobile-Metadata": json.dumps(
+                    {
+                        "session_id": session_id,
+                        "device_type": "iphone",
+                        "device_id": "phone-1",
+                        "item_id": item_id,
+                        "filename": filenames[item_id],
+                    }
+                )
+            },
+            content=body,
+        )
+        assert response.status_code == 200
+        statuses[item_id] = response.json()
+
+    imported_path = Path(statuses["asset-new"]["local_path"])
+    assert statuses["asset-new"]["status"] == "success"
+    assert imported_path.is_file()
+    assert imported_path.resolve().is_relative_to(image_root.resolve())
+    assert statuses["asset-duplicate"]["status"] == "skipped_duplicate"
+    assert statuses["asset-duplicate"]["existing_local_path"] == str(existing)
+    assert statuses["asset-deleted"]["status"] == "skipped_deleted_locally"
+
+    status_response = client.get("/api/mobile/sync/status")
+    assert status_response.status_code == 200
+    status_data = status_response.json()
+    assert status_data["status"] == "idle"
+    assert status_data["connected_devices"][0]["status"] == "complete"
+    assert status_data["summary"] == {
+        "processed": 3,
+        "imported": 1,
+        "skipped_duplicate": 1,
+        "skipped_deleted_locally": 1,
+        "failed": 0,
+    }
+
+    repeat_manifest_response = client.post("/api/mobile/sync/manifest", json=manifest_payload)
+    assert repeat_manifest_response.status_code == 200
+    repeat_data = repeat_manifest_response.json()
+    assert repeat_data["upload"] == []
+    assert {item["item_id"] for item in repeat_data["skip"]} == {
+        "asset-new",
+        "asset-duplicate",
+        "asset-deleted",
+    }
+    assert client.get("/api/mobile/sync/status").json()["summary"] == status_data["summary"]
