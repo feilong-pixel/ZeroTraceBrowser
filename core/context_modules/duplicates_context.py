@@ -83,11 +83,8 @@ def get_latest_duplicates_result_root() -> Path | None:
         if cached_root is None or cached_root.exists():
             return cached_root
 
-    payload = load_database_duplicates_payload(active_root)
-    if payload is not None:
-        destination_root = str(payload.get("destination_root", ""))
-    else:
-        destination_root = ""
+    summary = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_duplicate_summary()
+    destination_root = str(summary.get("destination_root", "")) if summary.get("available") else ""
     if not destination_root:
         DUPLICATES_ROOT_CACHE = (now, active_root, None)
         return None
@@ -98,6 +95,48 @@ def get_latest_duplicates_result_root() -> Path | None:
 
 def compatible_strict_duplicate_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(largest_strict_compatible_item_dicts(items))
+
+
+def visible_duplicate_group(group: dict[str, Any], destination_root_path: Path | None) -> dict[str, Any] | None:
+    group_method = str(group.get("reason", "-")).strip().lower()
+    items = []
+    for item in group.get("items", []):
+        if not isinstance(item, dict) or not item.get("path"):
+            continue
+        path_value = str(item["path"])
+        exists = False
+        if destination_root_path is not None:
+            try:
+                candidate = resolve_under_root(destination_root_path, path_value)
+                exists = candidate.exists() and candidate.is_file()
+            except HTTPException:
+                exists = False
+        items.append(
+            {
+                "role": str(item.get("role", "")),
+                "path": path_value,
+                "exists": exists,
+            }
+        )
+
+    available_items = [item for item in items if item["exists"]]
+    if group_method == "strict":
+        available_items = compatible_strict_duplicate_items(available_items)
+        available_paths = {item["path"] for item in available_items}
+        items = [item for item in items if item["path"] in available_paths]
+    if len(available_items) < 2:
+        return None
+
+    return {
+        "group_id": str(group.get("group_id", "")),
+        "reason": str(group.get("reason", "-")),
+        "hash": str(group.get("hash", "")),
+        "kept_path": str(group.get("kept_path", "")),
+        "item_count": len(items),
+        "available_count": len(available_items),
+        "items": items,
+        "preview_paths": [item["path"] for item in available_items],
+    }
 
 
 def load_duplicates_payload(
@@ -117,11 +156,13 @@ def load_duplicates_payload(
     if database_summary.get("available") and database_summary.get("dirty"):
         rebuild_dirty_duplicates_if_needed(active_root)
         database_summary = root_reader.load_duplicate_summary()
+    scan_from_start = method_filter == "phash"
+    initial_offset = 0 if scan_from_start else offset
     database_payload = (
         load_database_duplicates_page(
             active_root,
-            offset=offset,
-            limit=limit + 1,
+            offset=initial_offset,
+            limit=max(limit + 1, 100) if method_filter else limit + 1,
             method=method_filter,
         )
         if is_paged_request and limit is not None
@@ -171,63 +212,46 @@ def load_duplicates_payload(
             if group_method in method_counts:
                 method_counts[group_method] += 1
 
-    matched_group_count = 0
+    matched_group_count = 0 if scan_from_start else initial_offset
     has_more = False
-    for group in raw_groups:
-        group_method = str(group.get("reason", "-")).strip().lower()
-        if method_filter and group_method != method_filter:
-            continue
-
-        items = []
-        for item in group.get("items", []):
-            if not isinstance(item, dict) or not item.get("path"):
+    raw_offset = initial_offset
+    batch_limit = max(limit + 1, 100) if limit is not None else 0
+    while True:
+        for group in raw_groups:
+            group_method = str(group.get("reason", "-")).strip().lower()
+            if method_filter and group_method != method_filter:
                 continue
-            path_value = str(item["path"])
-            exists = False
-            if destination_root_path is not None:
-                try:
-                    candidate = resolve_under_root(destination_root_path, path_value)
-                    exists = candidate.exists() and candidate.is_file()
-                except HTTPException:
-                    exists = False
-            items.append(
-                {
-                    "role": str(item.get("role", "")),
-                    "path": path_value,
-                    "exists": exists,
-                }
-            )
 
-        available_items = [item for item in items if item["exists"]]
-        if group_method == "strict":
-            available_items = compatible_strict_duplicate_items(available_items)
-            available_paths = {item["path"] for item in available_items}
-            items = [item for item in items if item["path"] in available_paths]
-        if len(available_items) < 2:
-            continue
+            visible_group = visible_duplicate_group(group, destination_root_path)
+            if visible_group is None:
+                continue
 
-        if limit is not None and not is_paged_request and matched_group_count < offset:
+            if limit is not None and matched_group_count < offset:
+                matched_group_count += 1
+                continue
+
+            if limit is not None and len(groups) >= limit:
+                has_more = True
+                break
+
             matched_group_count += 1
-            continue
+            groups.append(visible_group)
 
-        if limit is not None and len(groups) >= limit:
-            has_more = True
+        if has_more or limit is None or not method_filter:
+            break
+        if len(raw_groups) < batch_limit:
             break
 
-        matched_group_count += 1
-        preview_paths = [item["path"] for item in available_items]
-        groups.append(
-            {
-                "group_id": str(group.get("group_id", "")),
-                "reason": str(group.get("reason", "-")),
-                "hash": str(group.get("hash", "")),
-                "kept_path": str(group.get("kept_path", "")),
-                "item_count": len(items),
-                "available_count": len(available_items),
-                "items": items,
-                "preview_paths": preview_paths,
-            }
+        raw_offset += len(raw_groups)
+        database_payload = load_database_duplicates_page(
+            active_root,
+            offset=raw_offset,
+            limit=batch_limit,
+            method=method_filter,
         )
+        raw_groups = database_payload.get("groups", []) if database_payload else []
+        if not isinstance(raw_groups, list) or not raw_groups:
+            break
 
     if limit is None:
         group_count = len(groups)

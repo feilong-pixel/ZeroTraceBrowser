@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse
 
 from core.services.file_operations import resolve_under_root
 
+DUPLICATES_THUMBNAIL_SIZE = (192, 192)
+
 
 def create_duplicates_router(ctx: Any) -> APIRouter:
     router = APIRouter()
@@ -50,6 +52,6 @@ def create_duplicates_router(ctx: Any) -> APIRouter:
             raise HTTPException(status_code=404, detail="Image not found")
 
         thumb_path = ctx.thumbnail_path_for(root, relative_path)
-        return ctx.image_file_response(image_path, thumb_path, ctx.THUMBNAIL_SIZE, ctx.Image, ctx.ImageOps)
+        return ctx.image_file_response(image_path, thumb_path, DUPLICATES_THUMBNAIL_SIZE, ctx.Image, ctx.ImageOps)
 
     return router

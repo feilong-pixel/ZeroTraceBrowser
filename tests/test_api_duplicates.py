@@ -129,6 +129,39 @@ def test_duplicates_thumbnail_and_open_result_root(api_client, monkeypatch) -> N
     assert opened == [archive_root]
 
 
+def test_duplicates_thumbnail_uses_summary_without_loading_all_groups(api_client, monkeypatch) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "same.jpg")
+    create_test_image(archive_root / "same_dup1.jpg", color=(90, 120, 45))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "dup_0001",
+                "reason": "strict",
+                "hash": "abc123",
+                "kept_path": "same.jpg",
+                "items": [
+                    {"role": "kept", "path": "same.jpg"},
+                    {"role": "duplicate", "path": "same_dup1.jpg"},
+                ],
+            },
+        ],
+    )
+    duplicates_context.clear_duplicates_path_cache()
+
+    def fail_full_load(active_root: str) -> dict | None:
+        raise AssertionError(f"thumbnail root lookup should not load all groups: {active_root}")
+
+    monkeypatch.setattr(duplicates_context, "load_database_duplicates_payload", fail_full_load)
+
+    thumbnail_response = client.get("/api/duplicates/thumbnail", params={"relative_path": "same.jpg"})
+
+    assert thumbnail_response.status_code == 200
+
+
 def test_duplicates_thumbnail_returns_placeholder_for_video(api_client) -> None:
     client, workspace, *_ = api_client
     archive_root = workspace / "archive"
@@ -190,6 +223,55 @@ def test_duplicates_api_can_return_only_requested_page(api_client) -> None:
     assert payload["has_more"] is True
     assert payload["method_counts"] == {"phash": 0, "strict": 3}
     assert [group["group_id"] for group in payload["groups"]] == ["dup_0000"]
+
+
+def test_duplicates_api_phash_page_skips_unavailable_leading_groups(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "visible_a.jpg")
+    create_test_image(archive_root / "visible_b.jpg", color=(80, 90, 100))
+    create_test_image(archive_root / "visible_c.jpg", color=(90, 100, 110))
+    create_test_image(archive_root / "visible_d.jpg", color=(100, 110, 120))
+    groups = [
+        {
+            "group_id": "missing_0000",
+            "reason": "phash",
+            "hash": "missing",
+            "items": [
+                {"role": "kept", "path": "missing_a.jpg"},
+                {"role": "duplicate", "path": "missing_b.jpg"},
+            ],
+        },
+        {
+            "group_id": "visible_0001",
+            "reason": "phash",
+            "hash": "visible-1",
+            "items": [
+                {"role": "kept", "path": "visible_a.jpg"},
+                {"role": "duplicate", "path": "visible_b.jpg"},
+            ],
+        },
+        {
+            "group_id": "visible_0002",
+            "reason": "phash",
+            "hash": "visible-2",
+            "items": [
+                {"role": "kept", "path": "visible_c.jpg"},
+                {"role": "duplicate", "path": "visible_d.jpg"},
+            ],
+        },
+    ]
+
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(archive_root, groups)
+
+    response = client.get("/api/duplicates", params={"offset": 0, "limit": 1, "method": "phash"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 3
+    assert payload["has_more"] is True
+    assert [group["group_id"] for group in payload["groups"]] == ["visible_0001"]
 
 
 def test_duplicates_api_does_not_check_skipped_pages(api_client, monkeypatch) -> None:

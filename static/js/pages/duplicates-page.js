@@ -5,6 +5,8 @@ import { formatDisplayTime } from "../core/format.js";
 import { t, getLang, markI18nReady, setLang } from "../locales/i18n.js";
 import { ensureDialog, setDialogLanguage, showAlert, showConfirm } from "../core/dialog.js";
 
+const DUPLICATE_THUMBNAIL_CONCURRENCY = 6;
+
 function getDuplicatesElements() {
   return {
     duplicatesPage: $(".duplicates-page"),
@@ -42,6 +44,7 @@ function createDuplicatesState() {
     selectedByGroup: {},
     isBusy: false,
     allowNavigation: false,
+    thumbnailLoadToken: 0,
   };
 }
 
@@ -294,8 +297,57 @@ function markDuplicateThumbnailError(event) {
   event.currentTarget?.classList.add("is-error");
 }
 
+function markDuplicateThumbnailLoaded(event) {
+  event.currentTarget?.classList.remove("is-loading");
+}
+
+function queueDuplicateThumbnails(els, state) {
+  const images = Array.from(els.duplicatesList?.querySelectorAll("img.duplicate-thumb[data-src]") || []);
+  const loadToken = state.thumbnailLoadToken + 1;
+  state.thumbnailLoadToken = loadToken;
+
+  let nextIndex = 0;
+  let activeCount = 0;
+
+  const loadNext = () => {
+    if (loadToken !== state.thumbnailLoadToken) return;
+
+    while (activeCount < DUPLICATE_THUMBNAIL_CONCURRENCY && nextIndex < images.length) {
+      const image = images[nextIndex];
+      nextIndex += 1;
+
+      if (!image?.isConnected || !image.dataset.src) {
+        continue;
+      }
+
+      activeCount += 1;
+      const finish = (event) => {
+        markDuplicateThumbnailLoaded(event);
+        activeCount -= 1;
+        loadNext();
+      };
+
+      on(image, "load", finish, { once: true });
+      on(image, "error", (event) => {
+        markDuplicateThumbnailError(event);
+        finish(event);
+      }, { once: true });
+
+      if ("fetchPriority" in image) {
+        image.fetchPriority = nextIndex <= DUPLICATE_THUMBNAIL_CONCURRENCY ? "high" : "auto";
+      }
+      image.classList.add("is-loading");
+      image.src = image.dataset.src;
+      image.removeAttribute("data-src");
+    }
+  };
+
+  loadNext();
+}
+
 function renderDuplicatesPage(els, state) {
   const payload = state.payload;
+  state.thumbnailLoadToken += 1;
 
   if (!payload?.available) {
     setText(els.duplicatesSummary, t("duplicates.noResults"));
@@ -445,14 +497,16 @@ function renderDuplicatesPage(els, state) {
                   <span class="duplicate-thumb-radio" aria-hidden="true"></span>
                   ${
                     isDeleted
-                      ? `<span class="duplicate-thumb duplicate-thumb-placeholder">${escapeHtml(t("duplicates.statusDeleted"))}</span>`
-                      : `<img
-                          class="duplicate-thumb"
-                          src="/api/duplicates/thumbnail?relative_path=${encodeURIComponent(path)}"
-                          alt="${escapeHtml(path)}"
-                          loading="eager"
-                          decoding="async"
-                        />`
+                      ? `<span class="duplicate-thumb-frame duplicate-thumb-placeholder">${escapeHtml(t("duplicates.statusDeleted"))}</span>`
+                      : `<span class="duplicate-thumb-frame">
+                          <img
+                            class="duplicate-thumb"
+                            data-src="/api/duplicates/thumbnail?relative_path=${encodeURIComponent(path)}"
+                            alt="${escapeHtml(path)}"
+                            loading="eager"
+                            decoding="async"
+                          />
+                        </span>`
                   }
                   <span class="duplicate-file-name">${escapeHtml(duplicateFileName(path))}</span>
                   <span class="duplicate-path">${escapeHtml(duplicateDirectory(path))}</span>
@@ -473,11 +527,7 @@ function renderDuplicatesPage(els, state) {
     )
     .join("");
 
-  els.duplicatesList
-    ?.querySelectorAll("img.duplicate-thumb")
-    .forEach((image) => {
-      on(image, "error", markDuplicateThumbnailError, { once: true });
-    });
+  queueDuplicateThumbnails(els, state);
 }
 
 async function loadDuplicates(els, state) {

@@ -2423,12 +2423,33 @@ button:disabled:hover {
   box-shadow: 0 0 0 1px rgba(15, 109, 97, 0.22);
 }
 
-.duplicate-thumb {
+.duplicate-thumb-frame {
+  display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
   border-radius: var(--radius-md);
   background: #e7e0d6;
+  overflow: hidden;
+}
+
+.duplicate-thumb-frame:has(.duplicate-thumb[data-src]),
+.duplicate-thumb-frame:has(.duplicate-thumb.is-loading) {
+  opacity: 0.68;
+  background:
+    linear-gradient(90deg, rgba(231, 224, 214, 0.72), rgba(255, 253, 249, 0.82), rgba(231, 224, 214, 0.72)),
+    #e7e0d6;
+  background-size: 220% 100%;
+  animation: thumb-loading 1.1s linear infinite;
+}
+
+.duplicate-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.duplicate-thumb[data-src] {
+  visibility: hidden;
 }
 
 .duplicate-thumb.is-error {
