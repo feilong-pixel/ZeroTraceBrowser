@@ -15,6 +15,24 @@ def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
     return result
 
 
+def load_database_duplicates_page(
+    active_root: str,
+    *,
+    offset: int,
+    limit: int,
+    method: str,
+) -> dict[str, Any] | None:
+    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+    result = DuplicateResultRepository(database_path).load_result_page(
+        offset=offset,
+        limit=limit,
+        method=method,
+    )
+    if result is None:
+        return None
+    return result
+
+
 def rebuild_dirty_duplicates_if_needed(active_root: str) -> None:
     database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
     repository = DuplicateResultRepository(database_path)
@@ -79,6 +97,24 @@ def get_latest_duplicates_result_root() -> Path | None:
     return root
 
 
+def strict_duplicate_extension_key(path: str) -> str:
+    suffix = Path(str(path or "")).suffix.lower()
+    return ".jpg" if suffix == ".jpeg" else suffix
+
+
+def compatible_strict_duplicate_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    paths_by_extension: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        extension_key = strict_duplicate_extension_key(str(item.get("path", "")))
+        if extension_key not in SUPPORTED_EXTENSIONS:
+            continue
+        paths_by_extension.setdefault(extension_key, []).append(item)
+    compatible_groups = [group for group in paths_by_extension.values() if len(group) >= 2]
+    if not compatible_groups:
+        return []
+    return max(compatible_groups, key=len)
+
+
 def load_duplicates_payload(
     offset: int = 0,
     limit: int | None = None,
@@ -91,10 +127,24 @@ def load_duplicates_payload(
     method_filter = str(method or "").strip().lower()
     is_paged_request = offset != 0 or limit is not None or bool(method_filter)
 
-    database_payload = load_database_duplicates_payload(active_root)
-    if database_payload is not None and database_payload.get("dirty"):
+    database_summary = DuplicateResultRepository(
+        RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+    ).load_summary()
+    if database_summary.get("available") and database_summary.get("dirty"):
         rebuild_dirty_duplicates_if_needed(active_root)
-        database_payload = load_database_duplicates_payload(active_root)
+        database_summary = DuplicateResultRepository(
+            RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
+        ).load_summary()
+    database_payload = (
+        load_database_duplicates_page(
+            active_root,
+            offset=offset,
+            limit=limit + 1,
+            method=method_filter,
+        )
+        if is_paged_request and limit is not None
+        else load_database_duplicates_payload(active_root)
+    )
     if database_payload is None:
         result = {
             "available": False,
@@ -122,13 +172,22 @@ def load_duplicates_payload(
     destination_root = str(destination_root_path) if destination_root_path else ""
     groups = []
     method_counts = {"phash": 0, "strict": 0}
+    if isinstance(database_payload.get("method_counts"), dict):
+        method_counts.update(
+            {
+                str(key).strip().lower(): int(value)
+                for key, value in database_payload["method_counts"].items()
+                if str(key).strip().lower() in method_counts
+            }
+        )
     raw_groups = payload.get("groups", [])
     if not isinstance(raw_groups, list):
         raw_groups = []
-    for group in raw_groups:
-        group_method = str(group.get("reason", "-")).strip().lower()
-        if group_method in method_counts:
-            method_counts[group_method] += 1
+    if "method_counts" not in database_payload:
+        for group in raw_groups:
+            group_method = str(group.get("reason", "-")).strip().lower()
+            if group_method in method_counts:
+                method_counts[group_method] += 1
 
     matched_group_count = 0
     has_more = False
@@ -158,10 +217,14 @@ def load_duplicates_payload(
             )
 
         available_items = [item for item in items if item["exists"]]
+        if group_method == "strict":
+            available_items = compatible_strict_duplicate_items(available_items)
+            available_paths = {item["path"] for item in available_items}
+            items = [item for item in items if item["path"] in available_paths]
         if len(available_items) < 2:
             continue
 
-        if limit is not None and matched_group_count < offset:
+        if limit is not None and not is_paged_request and matched_group_count < offset:
             matched_group_count += 1
             continue
 

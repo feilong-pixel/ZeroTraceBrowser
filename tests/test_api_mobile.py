@@ -484,6 +484,40 @@ def test_mobile_sync_upload_skips_existing_strict_duplicate(api_client):
     assert summary["skipped_duplicate"] == 1
 
 
+def test_mobile_sync_upload_does_not_skip_when_strict_hash_suffix_differs(api_client):
+    client, _, image_root, _ = api_client
+    session_id, item_id = start_sync_with_manifest(client, item_id="asset-movie", filename="MOVIE.MOV")
+    body = b"same-content"
+    existing = image_root / "existing.jpg"
+    existing.write_bytes(body)
+    strict_hash = hashlib.sha256(body).hexdigest()
+    HashDbRepository(root_database_path(image_root)).add_hash_record("strict", strict_hash, existing)
+
+    response = client.post(
+        "/api/mobile/sync/upload",
+        headers={
+            "X-ZTB-Mobile-Metadata": json.dumps(
+                {
+                    "session_id": session_id,
+                    "device_type": "iphone",
+                    "device_id": "phone-1",
+                    "item_id": item_id,
+                    "filename": "MOVIE.MOV",
+                }
+            )
+        },
+        content=body,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert Path(data["local_path"]).suffix.lower() == ".mov"
+    records = HashDbRepository(root_database_path(image_root)).load_hash_db()["strict"][strict_hash]
+    assert str(existing) in records
+    assert data["local_path"] in records
+
+
 def test_mobile_sync_upload_skips_deleted_local_marker(api_client):
     client, _, image_root, _ = api_client
     session_id, item_id = start_sync_with_manifest(client, item_id="asset-deleted", filename="DELETED.JPG")

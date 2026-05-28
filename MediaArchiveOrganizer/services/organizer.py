@@ -63,6 +63,9 @@ except ImportError:
     from core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
 
 SUPPORTED_EXT = (".jpg", ".jpeg", ".png", ".mp4", ".mov")
+STRICT_DUPLICATE_EXTENSION_ALIASES = {
+    ".jpeg": ".jpg",
+}
 ProgressCallback = Callable[[int], None]
 PROGRESS_INTERVAL = 25
 REBUILD_FLUSH_INTERVAL = 500
@@ -707,8 +710,15 @@ def rebuild_duplicate_results_from_hash_db(
     if hash_method in ("strict", "both"):
         for hash_value, paths in sorted(hash_db.get("strict", {}).items()):
             valid_paths = [path for path in paths if is_result_path(path)]
-            if len(valid_paths) >= 2:
-                groups.append({"reason": "strict", "hash": hash_value, "paths": valid_paths})
+            paths_by_extension: dict[str, list[str]] = {}
+            for path in valid_paths:
+                extension_key = strict_duplicate_extension_key(path)
+                if extension_key not in SUPPORTED_EXT:
+                    continue
+                paths_by_extension.setdefault(extension_key, []).append(path)
+            for compatible_paths in paths_by_extension.values():
+                if len(compatible_paths) >= 2:
+                    groups.append({"reason": "strict", "hash": hash_value, "paths": compatible_paths})
 
     if hash_method in ("phash", "both"):
         phash_records = []
@@ -952,6 +962,11 @@ def iter_supported_media_files(root_dir: str):
         for name in files:
             if name.lower().endswith(SUPPORTED_EXT):
                 yield os.path.join(walk_root, name)
+
+
+def strict_duplicate_extension_key(path: str) -> str:
+    suffix = os.path.splitext(path)[1].lower()
+    return STRICT_DUPLICATE_EXTENSION_ALIASES.get(suffix, suffix)
 
 
 def build_existing_hash_lookup(

@@ -452,10 +452,13 @@ if ($SkipRefsPath.Trim() -and (Test-Path -LiteralPath $SkipRefsPath)) {
     foreach ($skipRef in $rawSkipRefs) { $skipRefs[[string]$skipRef] = $true }
 }
 $records = @()
+$allowedExtensions = @(".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv")
 :albumLoop foreach ($album in Get-ShellFolderItems -Folder $albumRoot) {
     if (-not $album.IsFolder) { continue }
     foreach ($media in Get-ShellFolderItems -Folder $album.GetFolder) {
         if ($media.IsFolder) { continue }
+        $extension = [System.IO.Path]::GetExtension($media.Name).ToLowerInvariant()
+        if ($allowedExtensions -notcontains $extension) { continue }
         $mediaRef = "$($album.Name)/$($media.Name)"
         if ($skipRefs.ContainsKey($mediaRef)) { continue }
         $mediaModifiedAt = Get-MtpItemModifiedAt -Item $media
@@ -581,6 +584,10 @@ def _safe_upload_filename(value: str) -> str:
     if suffix not in SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported upload file type: {suffix or filename}")
     return filename
+
+
+def _is_supported_media_filename(value: str) -> bool:
+    return Path(str(value or "")).suffix.lower() in SUPPORTED_EXTENSIONS
 
 
 def _safe_identity_part(value: str, fallback: str) -> str:
@@ -1203,7 +1210,10 @@ def build_iphone_photo_index(
             temp_path = Path(str(record.get("temp_path", "")))
             if not temp_path.exists() or not temp_path.is_file():
                 continue
-            if temp_path.name.lower() != str(record.get("filename", "")).strip().lower():
+            filename = str(record.get("filename", "")).strip()
+            if not _is_supported_media_filename(filename):
+                continue
+            if temp_path.name.lower() != filename.lower():
                 continue
             strict_hash = _sha256_file(temp_path)
             phash = compute_phash(str(temp_path)) or ""

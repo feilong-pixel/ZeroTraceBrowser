@@ -491,10 +491,13 @@ async function loadDuplicates(els, state) {
 
     applyTranslations(els, state);
 
-    state.payload = await fetchJson("/api/duplicates?offset=0&limit=1");
-    state.methodFilter = chooseInitialMethod(state.payload, state.methodFilter);
     state.page = 1;
     state.payload = await fetchJson(pagedDuplicatesUrl(state));
+    const initialMethod = chooseInitialMethod(state.payload, state.methodFilter);
+    if (initialMethod !== state.methodFilter) {
+      state.methodFilter = initialMethod;
+      state.payload = await fetchJson(pagedDuplicatesUrl(state));
+    }
   } finally {
     setBusyState(els, state, false);
     renderDuplicatesPage(els, state);

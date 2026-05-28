@@ -600,6 +600,49 @@ def test_timeline_grouping_uses_timeline_time_month(api_client, monkeypatch) -> 
     assert group_payload["items"][0]["relative_path"] == "edge.jpg"
 
 
+def test_delete_does_not_prune_timeline_index_entries(api_client) -> None:
+    client, _, image_root, _ = api_client
+    index_dir = ztb_context.root_image_index_dir(image_root)
+    first_path = create_test_image(image_root / "2024" / "01" / "photo.jpg")
+    create_test_image(image_root / "2024" / "02" / "photo.jpg")
+
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+    indexed_items = [
+        indexed_image("2024/02/photo.jpg", "2024-02-02T12:00:00"),
+        indexed_image("2024/01/photo.jpg", "2024-01-01T12:00:00"),
+    ]
+    save_image_index_cache(index_dir, cache_key, indexed_items)
+
+    initial_timeline_response = client.get("/api/timeline-index")
+    assert initial_timeline_response.status_code == 200
+    assert initial_timeline_response.json()["entries"] == [
+        {"key": "2024-02", "label": "2024-02", "index_label": "202402"},
+        {"key": "2024-01", "label": "2024-01", "index_label": "202401"},
+    ]
+
+    delete_response = client.post("/api/delete", json={"relative_path": "2024/01/photo.jpg"})
+    assert delete_response.status_code == 200
+    assert not first_path.exists()
+
+    timeline_after_delete_response = client.get("/api/timeline-index")
+    assert timeline_after_delete_response.status_code == 200
+    assert timeline_after_delete_response.json()["entries"] == initial_timeline_response.json()["entries"]
+
+    deleted_group_response = client.get("/api/images/by-group", params={"group_key": "2024-01"})
+    assert deleted_group_response.status_code == 200
+    assert deleted_group_response.json()["items"] == []
+
+    remaining_group_response = client.get("/api/images/by-group", params={"group_key": "2024-02"})
+    assert remaining_group_response.status_code == 200
+    assert [item["relative_path"] for item in remaining_group_response.json()["items"]] == [
+        "2024/02/photo.jpg"
+    ]
+
+
 def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     client, workspace, image_root, copy_target = api_client
     added_root = workspace / "added_root"

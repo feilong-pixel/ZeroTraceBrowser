@@ -1035,3 +1035,36 @@ def test_iphone_index_ignores_mtp_copy_name_mismatch(api_client, monkeypatch):
     assert result["imported"] == 0
     assert result["skipped_duplicate"] == 0
     assert MobileRepository(database_path).list_import_records("iphone", "Apple iPhone") == []
+
+
+def test_iphone_index_ignores_unsupported_mtp_sidecar_files(api_client, monkeypatch):
+    _, _, image_root, _ = api_client
+    database_path = root_database_path(image_root)
+
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-demo")
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        temp_path = temp_dir / "IMG_5552.AAE"
+        temp_path.write_text("sidecar-content", encoding="utf-8")
+        return [
+            {
+                "device_id": device_id,
+                "device_name": "Apple iPhone",
+                "album": "202308_a",
+                "filename": "IMG_5552.AAE",
+                "temp_path": str(temp_path),
+                "size": temp_path.stat().st_size,
+                "modified_at": "2023-08-26 10:00:00",
+            }
+        ]
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone")
+
+    assert result["status"] == "indexed"
+    assert result["indexed"] == 0
+    assert result["imported"] == 0
+    assert MobileRepository(database_path).list_import_records("iphone", "Apple iPhone") == []
+    assert HashDbRepository(database_path).load_hash_db()["strict"] == {}

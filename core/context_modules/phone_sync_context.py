@@ -3,6 +3,7 @@ from .settings_context import load_settings, save_settings
 from .root_workspace import root_data_id, root_database_path
 from .iphone_context import (
     _apply_portable_file_times,
+    _deleted_marker_matches_suffix,
     _find_existing_strict_duplicate,
     _invalidate_gallery_index,
     _import_staged_iphone_media,
@@ -204,8 +205,9 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
         size = staged_path.stat().st_size
 
         mobile_repository = MobileRepository(database_path)
+        expected_suffix = staged_path.suffix.lower()
         deleted_marker = mobile_repository.find_deleted_local_marker(strict_hash)
-        if deleted_marker:
+        if _deleted_marker_matches_suffix(deleted_marker, expected_suffix):
             repository.mark_uploaded_item(
                 session_id=session_id,
                 item_id=item_id,
@@ -228,7 +230,12 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
             }
 
         hash_repository = HashDbRepository(database_path)
-        existing_local_path = _find_existing_strict_duplicate(hash_repository.load_hash_db(), strict_hash, active_root)
+        existing_local_path = _find_existing_strict_duplicate(
+            hash_repository.load_hash_db(),
+            strict_hash,
+            active_root,
+            expected_suffix,
+        )
         if existing_local_path:
             repository.mark_uploaded_item(
                 session_id=session_id,

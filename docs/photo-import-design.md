@@ -141,6 +141,30 @@ they do not have identical duplicate-result publishing behavior.
   and rebuilds pHash duplicate group results.
 - `both`: maintains both strict and pHash records in one rebuild run.
 
+Scheduled maintenance direction:
+
+- A scheduled maintenance job should use the same full rebuild semantics as the
+  manual `Run Hash DB Rebuild` path: verify existing records, reuse unchanged
+  hash/cache data, recompute only when needed, prune stale records, and rebuild
+  duplicate results from the reconciled root hash DB.
+- The goal is to move expensive health checks out of the user's interactive
+  browsing path. When maintenance has recently completed, `index.html`,
+  `duplicates.html`, timeline navigation, summaries, and thumbnails should read
+  mostly complete root-scoped data instead of triggering broad refresh work when
+  the user opens a page.
+- Maintenance should run as a background task in a user-configured quiet time
+  window. It must respect the existing one-task-at-a-time rule, write task logs
+  under the root workspace, and fail by recording diagnostics rather than
+  blocking normal browsing.
+- The scheduled job must stay conservative: it may update derived state such as
+  hash DB records, duplicate results, image/timeline indexes, summaries, and
+  generated thumbnails, but it must not delete, move, rename, or reorganize user
+  originals.
+- The first implementation can target the active root or registered roots with a
+  simple time window. More advanced scheduling can come later, but the core
+  invariant is that page loads should prefer prebuilt data while maintenance
+  keeps that data complete over time.
+
 Upload behavior:
 
 - Shortcut upload computes SHA-256 and pHash, but currently appends only the

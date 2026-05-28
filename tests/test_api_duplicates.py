@@ -8,9 +8,11 @@ from tests.test_api_user_flow import create_test_image
 
 import app as ztb_app
 import core.context as ztb_context
+import core.context_modules.duplicates_context as duplicates_context
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
+from MediaArchiveOrganizer.services.organizer import rebuild_duplicate_results_from_hash_db
 
 
 def save_duplicates_db(root: Path, groups: list[dict], destination_root: Path | None = None) -> Path:
@@ -78,7 +80,7 @@ def test_duplicates_api_loads_latest_result_and_filters_unavailable_groups(api_c
     assert group["group_id"] == "dup_0001"
     assert group["reason"] == "strict"
     assert group["hash"] == "abc123"
-    assert group["item_count"] == 4
+    assert group["item_count"] == 2
     assert group["available_count"] == 2
     assert group["preview_paths"] == [
         "2026/04/23/kept.jpg",
@@ -87,8 +89,6 @@ def test_duplicates_api_loads_latest_result_and_filters_unavailable_groups(api_c
     assert group["items"] == [
         {"role": "kept", "path": "2026/04/23/kept.jpg", "exists": True},
         {"role": "duplicate", "path": "2026/04/23/kept_dup1.jpg", "exists": True},
-        {"role": "duplicate", "path": "2026/04/23/missing.jpg", "exists": False},
-        {"role": "duplicate", "path": "../outside.jpg", "exists": False},
     ]
     assert kept.exists()
     assert duplicate.exists()
@@ -190,6 +190,135 @@ def test_duplicates_api_can_return_only_requested_page(api_client) -> None:
     assert payload["has_more"] is True
     assert payload["method_counts"] == {"phash": 0, "strict": 3}
     assert [group["group_id"] for group in payload["groups"]] == ["dup_0000"]
+
+
+def test_duplicates_api_does_not_check_skipped_pages(api_client, monkeypatch) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    groups = []
+    for index in range(6):
+        kept_name = f"kept_{index}.jpg"
+        duplicate_name = f"kept_{index}_dup1.jpg"
+        create_test_image(archive_root / kept_name)
+        create_test_image(archive_root / duplicate_name, color=(80 + index, 90, 100))
+        groups.append(
+            {
+                "group_id": f"dup_{index:04d}",
+                "reason": "strict",
+                "hash": f"hash_{index}",
+                "kept_path": kept_name,
+                "items": [
+                    {"role": "kept", "path": kept_name},
+                    {"role": "duplicate", "path": duplicate_name},
+                ],
+            }
+        )
+
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(archive_root, groups)
+    resolved_paths: list[str] = []
+    original_resolve_under_root = duplicates_context.resolve_under_root
+
+    def record_resolved_path(root: Path, candidate: str) -> Path:
+        resolved_paths.append(candidate)
+        return original_resolve_under_root(root, candidate)
+
+    monkeypatch.setattr(duplicates_context, "resolve_under_root", record_resolved_path)
+
+    response = client.get("/api/duplicates", params={"offset": 3, "limit": 1, "method": "strict"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [group["group_id"] for group in payload["groups"]] == ["dup_0003"]
+    assert resolved_paths == [
+        "kept_3.jpg",
+        "kept_3_dup1.jpg",
+        "kept_4.jpg",
+        "kept_4_dup1.jpg",
+    ]
+
+
+def test_duplicates_api_filters_strict_cross_type_groups(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "same.jpg")
+    create_test_image(archive_root / "same.jpeg", color=(32, 96, 160))
+    create_test_image(archive_root / "sidecar.aae")
+    create_test_image(archive_root / "sidecar.jpg", color=(90, 120, 45))
+    create_test_image(archive_root / "clip.mov")
+    create_test_image(archive_root / "clip.jpg", color=(80, 90, 100))
+
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "jpg-jpeg",
+                "reason": "strict",
+                "hash": "same-image",
+                "items": [
+                    {"role": "kept", "path": "same.jpg"},
+                    {"role": "duplicate", "path": "same.jpeg"},
+                ],
+            },
+            {
+                "group_id": "aae-jpg",
+                "reason": "strict",
+                "hash": "sidecar",
+                "items": [
+                    {"role": "kept", "path": "sidecar.aae"},
+                    {"role": "duplicate", "path": "sidecar.jpg"},
+                ],
+            },
+            {
+                "group_id": "mov-jpg",
+                "reason": "strict",
+                "hash": "movie",
+                "items": [
+                    {"role": "kept", "path": "clip.mov"},
+                    {"role": "duplicate", "path": "clip.jpg"},
+                ],
+            },
+        ],
+    )
+
+    response = client.get("/api/duplicates", params={"method": "strict"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [group["group_id"] for group in payload["groups"]] == ["jpg-jpeg"]
+    assert payload["groups"][0]["preview_paths"] == ["same.jpg", "same.jpeg"]
+
+
+def test_rebuild_duplicates_ignores_strict_cross_type_hashes(api_client) -> None:
+    _, workspace, image_root, _ = api_client
+    jpg = create_test_image(image_root / "same.jpg")
+    jpeg = create_test_image(image_root / "same.jpeg")
+    aae = create_test_image(image_root / "sidecar.aae")
+    sidecar_jpg = create_test_image(image_root / "sidecar.jpg")
+    mov = create_test_image(image_root / "clip.mov")
+    clip_jpg = create_test_image(image_root / "clip.jpg")
+    database_path = RootContext.from_root(image_root, ztb_app.ROOT_DATA_DIR).database_path
+
+    stats = rebuild_duplicate_results_from_hash_db(
+        str(image_root),
+        "",
+        {
+            "phash": {},
+            "strict": {
+                "same-image": [str(jpg), str(jpeg)],
+                "sidecar": [str(aae), str(sidecar_jpg)],
+                "movie": [str(mov), str(clip_jpg)],
+            },
+        },
+        "strict",
+        sqlite_db_path=str(database_path),
+    )
+
+    assert stats["duplicate_group_count"] == 1
+    payload = DuplicateResultRepository(database_path).load_result()
+    assert payload is not None
+    assert [group["hash"] for group in payload["groups"]] == ["same-image"]
 
 
 def test_duplicates_api_reports_unavailable_when_no_result_exists(api_client) -> None:
