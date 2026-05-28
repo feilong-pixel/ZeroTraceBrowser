@@ -85,7 +85,7 @@
 请先进入项目根目录，再执行命令：
 
 ```powershell
-cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
+cd D:\01_wk\16_person\ZeroTraceBrowser\media_engine
 ```
 
 推荐执行方式：

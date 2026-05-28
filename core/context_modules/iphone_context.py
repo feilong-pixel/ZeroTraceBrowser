@@ -27,11 +27,11 @@ from core.services.import_write_service import (
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
-from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
-from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
-from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
-from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
-from MediaArchiveOrganizer.services.organizer import get_unique_path, transfer_file
+from media_engine.core.date_classifier import build_date_path, get_target_date
+from media_engine.core.duplicate_detector import compute_phash
+from media_engine.core.exif_reader import get_exif_datetime
+from media_engine.core.file_transfer import apply_windows_file_times, read_windows_file_times
+from media_engine.services.organizer import get_unique_path, transfer_file
 
 
 IPHONE_DEVICE_PROBE_TIMEOUT_SECONDS = 20

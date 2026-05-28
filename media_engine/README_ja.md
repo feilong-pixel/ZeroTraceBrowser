@@ -87,7 +87,7 @@ EXIF 時刻が取得できない場合は、ファイルの更新日時を使用
 まずプロジェクトルートへ移動してから実行してください。
 
 ```powershell
-cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
+cd D:\01_wk\16_person\ZeroTraceBrowser\media_engine
 ```
 
 推奨コマンド:

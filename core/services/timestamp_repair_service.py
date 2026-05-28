@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable
 
-from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
+from media_engine.core.exif_reader import get_exif_datetime
 
 
 ProgressCallback = Callable[[dict[str, int | str]], None]

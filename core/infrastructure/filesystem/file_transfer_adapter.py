@@ -1,4 +1,4 @@
-from MediaArchiveOrganizer.core.file_transfer import transfer_file
+from media_engine.core.file_transfer import transfer_file
 from pathlib import Path
 
 class FileTransferAdapter:

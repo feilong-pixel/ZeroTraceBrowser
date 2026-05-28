@@ -10,7 +10,7 @@ DATA_DIR = BASE_DIR / "data"
 ROOT_DATA_DIR = DATA_DIR / "roots"
 
 SETTINGS_PATH = BASE_DIR / "settings.json"
-ORGANIZER_DIR = BASE_DIR / "MediaArchiveOrganizer"
+ORGANIZER_DIR = BASE_DIR / "media_engine"
 ORGANIZER_MAIN = ORGANIZER_DIR / "main.py"
 
 DEFAULT_IMAGE_ROOT = str(Path(os.getenv("ZTB_IMAGE_ROOT", BASE_DIR)).resolve())

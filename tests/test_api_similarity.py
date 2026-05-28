@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
+from media_engine.core.duplicate_detector import compute_phash
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository

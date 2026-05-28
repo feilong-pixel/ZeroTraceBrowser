@@ -20,7 +20,7 @@ import io
 import json
 from datetime import datetime, timedelta, timezone
 
-from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
+from media_engine.core.duplicate_detector import compute_phash
 from core.media_policy import phash_eligible
 from core.services.import_write_service import analyze_staged_media, import_staged_media
 from core.storage.hash_db_repository import HashDbRepository

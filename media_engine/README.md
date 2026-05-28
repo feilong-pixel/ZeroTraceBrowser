@@ -86,7 +86,7 @@ Notes:
 Enter the project root first, then run the command:
 
 ```powershell
-cd D:\01_wk\16_person\ZeroTraceBrowser\MediaArchiveOrganizer
+cd D:\01_wk\16_person\ZeroTraceBrowser\media_engine
 ```
 
 Recommended command:

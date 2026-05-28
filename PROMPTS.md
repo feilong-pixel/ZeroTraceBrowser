@@ -82,7 +82,7 @@
 ## 6. 任务系统 / 重复检测
 
 ```text
-请阅读 AGENTS.md、TASKS.md 的“任务系统 / MediaArchiveOrganizer 集成”。
+请阅读 AGENTS.md、TASKS.md 的“任务系统 / media_engine 集成”。
 目标：<目标>
 
 请保护：

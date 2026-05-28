@@ -9,7 +9,7 @@ from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
 from core.storage.similarity_repository import SimilarityRepository
-from MediaArchiveOrganizer.core.duplicate_detector import (
+from media_engine.core.duplicate_detector import (
     compute_document_hash,
     compute_phash,
     document_hash_distance,

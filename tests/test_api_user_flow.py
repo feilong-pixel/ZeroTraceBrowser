@@ -11,7 +11,7 @@ from PIL import Image
 import app as ztb_app
 import core.context as ztb_context
 import core.services.image_scan_service as image_scan_service
-from MediaArchiveOrganizer.core.file_transfer import apply_windows_file_times, read_windows_file_times
+from media_engine.core.file_transfer import apply_windows_file_times, read_windows_file_times
 from core.services.image_index_service import (
     build_timeline_index_entries,
     digest_for_cache_key,

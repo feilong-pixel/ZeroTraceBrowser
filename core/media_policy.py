@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from MediaArchiveOrganizer.core.media_policy import (
+from media_engine.core.media_policy import (
     IMAGE_EXTENSIONS,
     SIDECAR_EXTENSIONS,
     STRICT_DUPLICATE_EXTENSION_ALIASES,

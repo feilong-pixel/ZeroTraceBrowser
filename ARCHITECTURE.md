@@ -191,7 +191,7 @@ POST /api/recycle-bin/restore
 POST /api/tasks/run-organizer
  -> validate src/dst/mode/duplicate_detection
  -> build task_id/log_path/outputs
- -> call MediaArchiveOrganizer/main.py in background thread
+ -> call media_engine/main.py in background thread
  -> task status available from /api/tasks/{task_id}
 ```
 

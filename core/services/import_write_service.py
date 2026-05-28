@@ -24,9 +24,9 @@ from core.services.image_scan_service import clear_image_list_cache
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
-from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
-from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
-from MediaArchiveOrganizer.services.organizer import get_unique_path, transfer_file
+from media_engine.core.date_classifier import build_date_path, get_target_date
+from media_engine.core.duplicate_detector import compute_phash
+from media_engine.services.organizer import get_unique_path, transfer_file
 
 
 ApplyFileTimes = Callable[[Path, str, str], None]

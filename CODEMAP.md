@@ -91,18 +91,18 @@
 
 ---
 
-## MediaArchiveOrganizer
+## media_engine
 
 | 文件 | 作用 |
 |---|---|
-| `MediaArchiveOrganizer/main.py` | 整理任务 CLI 入口 |
-| `MediaArchiveOrganizer/services/organizer.py` | 整理流程 |
-| `MediaArchiveOrganizer/core/hash_db.py` | hash DB |
-| `MediaArchiveOrganizer/core/duplicate_detector.py` | 重复检测 |
-| `MediaArchiveOrganizer/core/exif_reader.py` | EXIF 读取 |
-| `MediaArchiveOrganizer/core/file_transfer.py` | copy/move 文件 |
-| `MediaArchiveOrganizer/core/date_classifier.py` | 日期分类 |
-| `MediaArchiveOrganizer/locales/*.py` | CLI 多语言输出 |
+| `media_engine/main.py` | 整理任务 CLI 入口 |
+| `media_engine/services/organizer.py` | 整理流程 |
+| `media_engine/core/hash_db.py` | hash DB |
+| `media_engine/core/duplicate_detector.py` | 重复检测 |
+| `media_engine/core/exif_reader.py` | EXIF 读取 |
+| `media_engine/core/file_transfer.py` | copy/move 文件 |
+| `media_engine/core/date_classifier.py` | 日期分类 |
+| `media_engine/locales/*.py` | CLI 多语言输出 |
 
 ---
 

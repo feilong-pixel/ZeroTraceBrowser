@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from fastapi import HTTPException
-from MediaArchiveOrganizer.core.date_classifier import get_target_date_with_source
+from media_engine.core.date_classifier import get_target_date_with_source
 from core.config.app_config import VIDEO_EXTENSIONS
 from core.services.file_operations import (
     copy_file_preserve_times,

@@ -1110,6 +1110,28 @@ async function loadTimelineIndex(state) {
   }
 }
 
+function loadDeferredIndexData(els, state) {
+  loadTimelineIndex(state)
+    .then(() => {
+      renderTimelineIndex(els, state);
+    })
+    .catch(() => {
+      state.timelineIndexEntries = [];
+      renderTimelineIndex(els, state);
+    });
+
+  if (!state.activeDuplicateGroupId) return;
+
+  loadDuplicates(state)
+    .then(() => {
+      applyFilter(els, state, { resetScroll: false });
+    })
+    .catch(() => {
+      state.duplicates = state.config?.duplicate_results || null;
+      renderDuplicates(els, state);
+    });
+}
+
 async function fetchImagesPage(offset, options = {}) {
   const { refreshScan = offset > 0, includeTotal = offset === 0 } = options;
   const params = new URLSearchParams({
@@ -1234,10 +1256,12 @@ async function loadImages(els, state) {
   state.lastLoadMoreOffset = null;
   clearImageRefreshTimers(state);
   state.items = [];
-  state.totalImageCount = null;
-  state.totalImageCountUpdatedAt = "";
+  state.totalImageCount = Number.isInteger(state.config?.root_summary?.image_count)
+    ? state.config.root_summary.image_count
+    : null;
+  state.totalImageCountUpdatedAt = state.config?.root_summary?.updated_at || "";
 
-  const data = await fetchImagesPage(0, { refreshScan: false, includeTotal: true });
+  const data = await fetchImagesPage(0, { refreshScan: false, includeTotal: false });
   if (loadToken !== state.imagesLoadToken) return;
 
   mergeImageItems(state, data.items || []);
@@ -1393,8 +1417,12 @@ function scheduleBackgroundImageRefresh(els, state) {
       }
 
       if (state.imageScanComplete) {
-        await loadTimelineIndex(state);
-        renderGallery(els, state);
+        loadTimelineIndex(state)
+          .then(() => renderTimelineIndex(els, state))
+          .catch(() => {
+            state.timelineIndexEntries = [];
+            renderTimelineIndex(els, state);
+          });
         return;
       }
     } catch (_error) {
@@ -1771,11 +1799,6 @@ async function initializeIndexPage(els, state) {
   await loadConfig(els, state);
   state.activeDuplicateGroupId = duplicateGroupId;
 
-  if (state.activeDuplicateGroupId) {
-    await loadDuplicates(state);
-  }
-  await loadTimelineIndex(state);
-
   if (query && els.searchInput) {
     els.searchInput.value = query;
   }
@@ -1805,6 +1828,7 @@ async function initializeIndexPage(els, state) {
 
   translatePage(els, state);
   await loadImages(els, state);
+  loadDeferredIndexData(els, state);
   restoreGalleryScrollPosition(els, state);
 
   if (

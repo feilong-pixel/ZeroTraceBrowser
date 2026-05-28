@@ -13,13 +13,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from MediaArchiveOrganizer.core.hash_db import add_hash_record, connect_sqlite_hash_db, load_hash_db
-from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
-from MediaArchiveOrganizer.core.exif_reader import get_exif_datetime
-from MediaArchiveOrganizer.locales import get_texts
-from MediaArchiveOrganizer.main import format_organize_summary, validate_paths
-import MediaArchiveOrganizer.services.organizer as organizer_mod
-from MediaArchiveOrganizer.services.organizer import (
+from media_engine.core.hash_db import add_hash_record, connect_sqlite_hash_db, load_hash_db
+from media_engine.core.date_classifier import build_date_path, get_target_date
+from media_engine.core.exif_reader import get_exif_datetime
+from media_engine.locales import get_texts
+from media_engine.main import format_organize_summary, validate_paths
+import media_engine.services.organizer as organizer_mod
+from media_engine.services.organizer import (
     apply_windows_file_times,
     organize_images,
     rebuild_duplicate_results_from_hash_db,
@@ -83,7 +83,7 @@ def assert_windows_creation_time(path: Path, expected: float) -> None:
 def test_add_hash_record_does_not_reinsert_existing_path(monkeypatch: pytest.MonkeyPatch) -> None:
     inserted: list[tuple[str, str, str]] = []
     monkeypatch.setattr(
-        "MediaArchiveOrganizer.core.hash_db.insert_hash_record",
+        "media_engine.core.hash_db.insert_hash_record",
         lambda method, hash_value, path: inserted.append((method, hash_value, path)),
     )
     db = {"strict": {"abc": ["existing.jpg"]}, "phash": {}}

@@ -129,7 +129,7 @@ The project is organized into clear layers:
 * Frontend: Vanilla JS (no framework)
 * Backend: FastAPI + use-case pattern
 * Data layer: isolated by image root (root_id)
-* Analysis engine: MediaArchiveOrganizer (hash DB, duplicate detection)
+* Analysis engine: media_engine (hash DB, duplicate detection)
 * Every image root has its own workspace: `data/roots/<root_id>/`
 
 ---
@@ -206,7 +206,7 @@ ZeroTraceBrowser/
 │       ├── workspace.sqlite3    # Per-root SQLite workspace
 │       └── duplicates.json     # Duplicate detection results
 
-├── MediaArchiveOrganizer/      # Image analysis and organization engine
+├── media_engine/      # Image analysis and organization engine
 └── tests/                      # Tests
 ```
 

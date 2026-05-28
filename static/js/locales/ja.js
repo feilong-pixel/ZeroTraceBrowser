@@ -546,7 +546,7 @@ export default {
     openedDirectory: (path) => `ディレクトリを開きました：${path}`,
     outputs: "出力ファイル",
     pageIntro: "整理タスクを実行し、結果をルートデータベースへ書き込みます。",
-    pageTitle: "MediaArchiveOrganizer タスク",
+    pageTitle: "Media Engine タスク",
     phashThreshold: "pHash しきい値",
     runImageIndexRebuildTask: "ギャラリー索引を再構築",
     runRebuildTask: "再構築",

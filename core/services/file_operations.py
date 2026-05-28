@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from fastapi import HTTPException
-from MediaArchiveOrganizer.core.file_transfer import transfer_file
+from media_engine.core.file_transfer import transfer_file
 
 
 def replace_with_retry(source: Path, target: Path, attempts: int = 3) -> None:

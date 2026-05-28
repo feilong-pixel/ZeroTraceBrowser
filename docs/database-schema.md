@@ -176,7 +176,7 @@ Stores the current hash database source and raw payload for compatibility.
 | `id` | INTEGER PRIMARY KEY | Internal row id. |
 | `method` | TEXT | `phash` or `strict`. |
 | `hash` | TEXT | Hash value. |
-| `path` | TEXT | Absolute image path recorded by MediaArchiveOrganizer. |
+| `path` | TEXT | Absolute image path recorded by media_engine. |
 | `position` | INTEGER | Original path order for a hash bucket. |
 
 Unique key: `(method, hash, path)`.

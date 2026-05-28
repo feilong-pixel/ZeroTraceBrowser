@@ -27,7 +27,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         if payload.duplicate_detection not in {"off", "phash", "strict", "both"}:
             raise HTTPException(status_code=400, detail="Unsupported duplicate detection mode")
         if not ctx.ORGANIZER_MAIN.exists():
-            raise HTTPException(status_code=404, detail="MediaArchiveOrganizer not found")
+            raise HTTPException(status_code=404, detail="media_engine not found")
 
         lang = normalize_task_lang(payload.lang)
         src_path = require_existing_directory(resolve_path(payload.src), "Source")
@@ -110,7 +110,7 @@ def create_tasks_router(ctx: Any) -> APIRouter:
         if payload.hash_method not in {"strict", "phash", "both"}:
             raise HTTPException(status_code=400, detail="Unsupported hash method")
         if not ctx.ORGANIZER_MAIN.exists():
-            raise HTTPException(status_code=404, detail="MediaArchiveOrganizer not found")
+            raise HTTPException(status_code=404, detail="media_engine not found")
 
         root = str(require_existing_directory(resolve_path(payload.root), "Rebuild root"))
         lang = normalize_task_lang(payload.lang)

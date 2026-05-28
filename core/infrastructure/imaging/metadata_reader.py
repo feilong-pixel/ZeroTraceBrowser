@@ -1,7 +1,7 @@
 from pathlib import Path
 from PIL import Image
 from typing import Dict
-from MediaArchiveOrganizer.core.date_classifier import get_target_date
+from media_engine.core.date_classifier import get_target_date
 
 
 class MetadataReader:

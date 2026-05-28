@@ -129,7 +129,7 @@ Android 取り込みには対応していません。この機能は意図的に
 * フロントエンド: Vanilla JS（フレームワークなし）
 * バックエンド: FastAPI + use-case パターン
 * データ層: 画像ルートごとに分離（各ルートに独立した workspace）
-* 解析エンジン: MediaArchiveOrganizer（Hash DB / 重複検出）
+* 解析エンジン: media_engine（Hash DB / 重複検出）
 * 各画像ルートが独立した作業領域: `data/roots/<root_id>/`
 
 ---
@@ -206,7 +206,7 @@ ZeroTraceBrowser/
 │       ├── hash_db.sqlite3     # コンテンツハッシュデータベース
 │       └── duplicates.json     # 重複画像検出結果
 
-├── MediaArchiveOrganizer/      # 画像解析・整理エンジン
+├── media_engine/      # 画像解析・整理エンジン
 └── tests/                      # テスト
 ```
 

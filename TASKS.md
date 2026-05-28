@@ -184,17 +184,17 @@
 
 ---
 
-## 7. 任务系统 / MediaArchiveOrganizer 集成
+## 7. 任务系统 / media_engine 集成
 
 必须读取：
 
 - `core/routes/tasks_route.py`
 - `core/services/task_service.py`
 - `core/context.py` 中 task/duplicates/hash 相关函数
-- `MediaArchiveOrganizer/main.py`
-- `MediaArchiveOrganizer/services/organizer.py`
-- `MediaArchiveOrganizer/core/hash_db.py`
-- `MediaArchiveOrganizer/core/duplicate_detector.py`
+- `media_engine/main.py`
+- `media_engine/services/organizer.py`
+- `media_engine/core/hash_db.py`
+- `media_engine/core/duplicate_detector.py`
 - `tests/test_api_tasks.py`
 
 重点检查：

@@ -12,7 +12,7 @@ import core.context_modules.duplicates_context as duplicates_context
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
-from MediaArchiveOrganizer.services.organizer import rebuild_duplicate_results_from_hash_db
+from media_engine.services.organizer import rebuild_duplicate_results_from_hash_db
 
 
 def save_duplicates_db(root: Path, groups: list[dict], destination_root: Path | None = None) -> Path:

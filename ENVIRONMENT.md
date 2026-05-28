@@ -222,7 +222,7 @@ ZeroTraceBrowser/
 │   ├── routes/                 # API route handlers
 │   ├── services/               # Business services
 │   └── use_cases/              # Use-case layer (copy, delete, restore, etc.)
-├── MediaArchiveOrganizer/      # Image analysis and organization modules
+├── media_engine/      # Image analysis and organization modules
 ├── tests/                      # Automated tests
 ├── data/                       # Runtime data (isolated by image root)
 │   └── roots/<root_id>/

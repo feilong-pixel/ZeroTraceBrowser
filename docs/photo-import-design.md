@@ -240,7 +240,7 @@ Current implementation status:
 
 - Step 1 is captured in `docs/write-path-inventory.md`.
 - Step 2 is implemented by shared media policy helpers in
-  `MediaArchiveOrganizer/core/media_policy.py` and `core/media_policy.py`.
+  `media_engine/core/media_policy.py` and `core/media_policy.py`.
 - Step 3 is started through `core/services/import_write_service.py`, currently
   used by Shortcut upload and Phone Sync upload for the successful import/write
   path.

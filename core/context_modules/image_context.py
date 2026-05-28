@@ -1,7 +1,7 @@
 from .base import *
 from .root_workspace import ensure_root_workspace, root_image_index_dir, image_index_dir_for_read, root_thumbnail_dir
 import exifread
-from MediaArchiveOrganizer.core.date_classifier import get_target_date
+from media_engine.core.date_classifier import get_target_date
 
 
 def resolve_under_root(root: Path, candidate: str) -> Path:

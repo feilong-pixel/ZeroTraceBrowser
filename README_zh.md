@@ -129,7 +129,7 @@ iPhone 导入页面可以将 iPhone 照片导入当前 active image root，同�
 * 前端（Vanilla JS，无框架）
 * 后端（FastAPI + use-case 模式）
 * 数据层（按图片根目录隔离，每个根有独立 workspace）
-* 分析引擎（MediaArchiveOrganizer，哈希 DB / 重复检测）
+* 分析引擎（media_engine，哈希 DB / 重复检测）
 * 每个图片根目录独立工作区：`data/roots/<root_id>/`
 
 ---
@@ -206,7 +206,7 @@ ZeroTraceBrowser/
 │       ├── hash_db.sqlite3     # 内容哈希数据库
 │       └── duplicates.json     # 重复图片检测结果
 
-├── MediaArchiveOrganizer/      # 图片分析与整理引擎
+├── media_engine/      # 图片分析与整理引擎
 └── tests/                      # 测试
 ```
 
