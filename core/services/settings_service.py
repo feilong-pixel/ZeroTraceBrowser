@@ -73,7 +73,6 @@ class SettingsStore:
             "task_defaults": {
                 "src": "",
                 "dst": "",
-                "rebuild_root": "",
                 "mode": "copy",
                 "duplicate_detection": "phash",
                 "phash_threshold": 4,
@@ -131,7 +130,6 @@ class SettingsStore:
         settings["task_defaults"] = {
             "src": str(task_defaults.get("src", "")).strip(),
             "dst": str(task_defaults.get("dst", "")).strip(),
-            "rebuild_root": str(task_defaults.get("rebuild_root", "")).strip(),
             "mode": normalize_task_mode(str(task_defaults.get("mode", "copy")).strip()),
             "duplicate_detection": normalize_duplicate_detection(
                 str(task_defaults.get("duplicate_detection", "phash")).strip(),
@@ -188,7 +186,6 @@ class SettingsStore:
         settings["task_defaults"] = {
             "src": str(Path(src).expanduser().resolve()),
             "dst": str(Path(dst).expanduser().resolve()),
-            "rebuild_root": str(existing_defaults.get("rebuild_root", "")).strip(),
             "mode": normalize_task_mode(mode),
             "duplicate_detection": normalize_duplicate_detection(duplicate_detection),
             "phash_threshold": normalize_phash_threshold(phash_threshold),
@@ -222,17 +219,15 @@ class SettingsStore:
         settings["root_summaries"] = root_summaries
         self.save(settings)
 
-    def remember_rebuild_root(self, rebuild_root: str, phash_threshold: Any = 4) -> None:
+    def remember_rebuild_defaults(self, phash_threshold: Any = 4) -> None:
         settings = self.load()
         task_defaults = settings.get("task_defaults", {})
         if not isinstance(task_defaults, dict):
             task_defaults = {}
-        task_defaults["rebuild_root"] = str(Path(rebuild_root).expanduser().resolve())
         task_defaults["rebuild_phash_threshold"] = normalize_phash_threshold(phash_threshold)
         settings["task_defaults"] = {
             "src": str(task_defaults.get("src", "")).strip(),
             "dst": str(task_defaults.get("dst", "")).strip(),
-            "rebuild_root": str(task_defaults.get("rebuild_root", "")).strip(),
             "mode": normalize_task_mode(str(task_defaults.get("mode", "copy")).strip()),
             "duplicate_detection": normalize_duplicate_detection(
                 str(task_defaults.get("duplicate_detection", "phash")).strip(),

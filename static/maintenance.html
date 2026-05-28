@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" class="i18n-pending">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTraceBrowser Maintenance</title>
+    <style>html.i18n-pending body{visibility:hidden}</style>
+    <link rel="stylesheet" href="css/style.css?v=20260424-io9" />
+  </head>
+  <body>
+    <main class="tasks-page maintenance-page">
+      <section class="tasks-main">
+        <section class="tasks-page-header">
+          <div>
+            <h1 data-i18n="maintenance.pageTitle">Maintenance</h1>
+            <p class="intro" data-i18n="maintenance.pageIntro">Rebuild indexes and repair long-running gallery metadata.</p>
+          </div>
+        </section>
+
+        <section class="maintenance-tools-grid" aria-label="Maintenance tools">
+          <section class="panel task-config-panel maintenance-tool-card">
+            <header class="task-panel-head">
+              <h2 data-i18n="maintenance.hashMaintenanceTitle">Hash DB and Duplicate Results</h2>
+            </header>
+            <div class="task-config-groups maintenance-panel">
+              <div class="task-grid compact-grid maintenance-root-grid">
+                <div class="full maintenance-inline-field">
+                  <label for="rebuildRootInput" data-i18n="maintenance.galleryIndexRoot">Gallery Root</label>
+                  <input id="rebuildRootInput" type="text" readonly />
+                </div>
+                <div>
+                  <label for="hashMethodSelect" data-i18n="tasks.hashMethod">Hash Method</label>
+                  <select id="hashMethodSelect">
+                    <option value="strict">strict</option>
+                    <option value="phash">phash</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="rebuild_thresholdInput" data-i18n="tasks.phashThreshold">pHash Threshold</label>
+                  <input id="rebuild_thresholdInput" type="number" min="0" value="4" />
+                </div>
+              </div>
+              <p class="task-option-help" data-i18n="maintenance.hashMaintenanceHelp">
+                Rebuilds file hashes and duplicate detection results for this root. This can take longer than the gallery index rebuild.
+              </p>
+              <div class="action-stack">
+                <button id="runRebuildButton" type="button" class="primary-button" data-i18n="tasks.runRebuildTask">Run Hash DB Rebuild</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel task-config-panel maintenance-tool-card">
+            <header class="task-panel-head">
+              <h2 data-i18n="maintenance.galleryIndexTitle">Gallery Index</h2>
+            </header>
+            <div class="task-config-groups maintenance-panel">
+              <div class="task-grid compact-grid maintenance-root-grid">
+                <div class="full maintenance-inline-field">
+                  <label for="galleryIndexRootInput" data-i18n="maintenance.galleryIndexRoot">Gallery Root</label>
+                  <input id="galleryIndexRootInput" type="text" readonly />
+                </div>
+              </div>
+              <p class="task-option-help" data-i18n="maintenance.galleryIndexHelp">
+                Rebuilds the gallery image index, total count, and Timeline navigation. It does not rebuild Hash DB or duplicate results.
+              </p>
+              <div class="action-stack">
+                <button id="runImageIndexRebuildButton" type="button" class="ghost" data-i18n="tasks.runImageIndexRebuildTask">Rebuild Gallery Index</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel task-config-panel maintenance-tool-card maintenance-tool-card-wide">
+            <header class="task-panel-head">
+              <h2 data-i18n="tasks.timestampRepairTitle">EXIF Timestamp Repair</h2>
+            </header>
+            <div class="task-config-groups maintenance-panel">
+              <p class="task-option-help timestamp-repair-help" data-i18n="tasks.timestampRepairHelp">
+                Only images with EXIF capture time are eligible. Files without EXIF are skipped.
+              </p>
+              <div class="task-grid compact-grid maintenance-root-grid">
+                <div class="full maintenance-inline-field">
+                  <label for="timestampRepairRootInput" data-i18n="tasks.timestampRepairRoot">Repair Root</label>
+                  <input id="timestampRepairRootInput" type="text" />
+                </div>
+                <div>
+                  <label for="timestampRepairThresholdInput" data-i18n="tasks.timestampRepairThreshold">Minimum Difference</label>
+                  <input id="timestampRepairThresholdInput" type="number" min="1" value="7" />
+                </div>
+              </div>
+              <div class="maintenance-options-grid">
+                <div class="task-checkbox-option">
+                  <label class="task-checkbox-label" for="syncModifiedTimeCheckbox">
+                    <input id="syncModifiedTimeCheckbox" type="checkbox" checked />
+                    <span data-i18n="tasks.syncModifiedTimeLabel">Sync modified time from EXIF</span>
+                  </label>
+                  <p class="task-option-help" data-i18n="tasks.syncModifiedTimeHelp">
+                    Updates only the file modified time when it differs from EXIF capture time by more than 7 days.
+                  </p>
+                </div>
+                <div class="task-checkbox-option">
+                  <label class="task-checkbox-label" for="renameFromExifCheckbox">
+                    <input id="renameFromExifCheckbox" type="checkbox" />
+                    <span data-i18n="tasks.renameFromExifLabel">Rename date-formatted files from EXIF</span>
+                  </label>
+                  <p class="task-option-help" data-i18n="tasks.renameFromExifHelp">
+                    Renames only files whose current name already looks like a date/time. Target format: YYYYMMDD-HHMMSS.
+                  </p>
+                </div>
+                <div class="task-checkbox-option">
+                  <label class="task-checkbox-label" for="includeVideosCheckbox">
+                    <input id="includeVideosCheckbox" type="checkbox" />
+                    <span data-i18n="tasks.includeVideosLabel">Include videos with embedded creation time</span>
+                  </label>
+                  <p class="task-option-help" data-i18n="tasks.includeVideosHelp">
+                    Uses ffprobe to read media creation_time from videos. Videos without embedded creation time are skipped.
+                  </p>
+                </div>
+              </div>
+              <div class="action-stack">
+                <button id="runTimestampRepairButton" type="button" data-i18n="tasks.runTimestampRepairTask">Run EXIF Timestamp Repair</button>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="panel task-output-panel">
+          <header class="task-output-header">
+            <div>
+              <h2 data-i18n="tasks.liveOutput">Live Output</h2>
+            </div>
+            <strong id="liveOutputStatus" class="task-output-status">idle</strong>
+          </header>
+          <div id="taskLog" class="log-box" data-i18n-empty="noTaskStarted">No task started.</div>
+        </section>
+      </section>
+
+      <aside class="sidebar gallery-sidebar tasks-sidebar">
+        <header class="sidebar-header sidebar-header-minimal">
+          <div class="sidebar-header-actions">
+            <a id="backToGalleryLink" href="/index.html" class="button-link" data-i18n="tasks.backToGallery">Back To Gallery</a>
+            <a href="/tasks.html" class="button-link subtle-link" data-i18n="maintenance.backToTasks">Tasks</a>
+          </div>
+        </header>
+
+        <section class="panel tasks-summary-panel">
+          <h2 data-i18n="tasks.taskSummary">Task Summary</h2>
+          <div id="taskSummary" class="summary-list">
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="system.labels.status">Status</span>
+              <strong id="taskStatus">idle</strong>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label" data-i18n="tasks.taskId">Task Id</span>
+              <strong id="taskId">-</strong>
+            </div>
+            <div class="summary-item summary-item-stacked">
+              <span class="summary-label" data-i18n="system.labels.startedAt">Started At</span>
+              <strong id="taskStartedAt">-</strong>
+            </div>
+            <div class="summary-item summary-item-stacked">
+              <span class="summary-label" data-i18n="system.labels.finishedAt">Finished At</span>
+              <strong id="taskFinishedAt">-</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel tasks-summary-panel tasks-outputs-panel">
+          <h2 data-i18n="tasks.outputs">Outputs</h2>
+          <div class="task-output-path-list">
+            <div class="task-output-path-item">
+              <label for="logPath" data-i18n="tasks.logPath">Log Path</label>
+              <div class="task-output-path-row">
+                <input id="logPath" type="text" readonly value="-" />
+                <button id="openLogPathButton" type="button" class="ghost task-output-open-button" data-output-input="logPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+            <div class="task-output-path-item">
+              <label for="csvPath" data-i18n="tasks.csvPath">CSV Path</label>
+              <div class="task-output-path-row">
+                <input id="csvPath" type="text" readonly value="-" />
+                <button id="openCsvPathButton" type="button" class="ghost task-output-open-button" data-output-input="csvPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+            <div class="task-output-path-item">
+              <label for="hashDbPath" data-i18n="tasks.hashDbPath">Hash DB Path</label>
+              <div class="task-output-path-row">
+                <input id="hashDbPath" type="text" readonly value="-" />
+                <button id="openHashDbPathButton" type="button" class="ghost task-output-open-button" data-output-input="hashDbPath" disabled data-i18n="tasks.openDirectory">Open</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="dialogOverlay" class="dialog-overlay is-hidden" role="presentation">
+      <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <h2 id="dialogTitle">ZeroTraceBrowser</h2>
+        <div id="dialogMessage" class="dialog-message"></div>
+        <div class="dialog-actions">
+          <button id="dialogCancelButton" type="button" class="ghost" data-i18n="dialog.buttons.cancel">Cancel</button>
+          <button id="dialogConfirmButton" type="button" class="primary-button" data-i18n="dialog.buttons.ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js?v=20260528-maintenance"></script>
+  </body>
+</html>

@@ -20,19 +20,6 @@ function getTasksElements() {
     langSelect: $("#langSelect"),
 
     runTaskButton: $("#runTaskButton"),
-    toggleMaintenanceButton: $("#toggleMaintenanceButton"),
-    maintenancePanel: $("#maintenancePanel"),
-
-    rebuildRootInput: $("#rebuildRootInput"),
-    hashMethodSelect: $("#hashMethodSelect"),
-    rebuildThresholdInput: $("#rebuild_thresholdInput"),
-    runRebuildButton: $("#runRebuildButton"),
-    timestampRepairRootInput: $("#timestampRepairRootInput"),
-    timestampRepairThresholdInput: $("#timestampRepairThresholdInput"),
-    syncModifiedTimeCheckbox: $("#syncModifiedTimeCheckbox"),
-    renameFromExifCheckbox: $("#renameFromExifCheckbox"),
-    includeVideosCheckbox: $("#includeVideosCheckbox"),
-    runTimestampRepairButton: $("#runTimestampRepairButton"),
 
     taskLog: $("#taskLog"),
     liveOutputStatus: $("#liveOutputStatus"),
@@ -55,7 +42,6 @@ function createTasksState() {
     currentTaskId: null,
     pollHandle: null,
     currentLang: getLang(),
-    maintenanceOpen: false,
     activeRoot: "",
     isTaskRunning: false,
     allowNavigation: false,
@@ -113,13 +99,6 @@ function setTaskRunning(els, state, isRunning) {
     els.runTaskButton.disabled = isRunning;
   }
 
-  if (els.runRebuildButton) {
-    els.runRebuildButton.disabled = isRunning;
-  }
-
-  if (els.runTimestampRepairButton) {
-    els.runTimestampRepairButton.disabled = isRunning;
-  }
 }
 
 async function confirmLeaveWhileRunning() {
@@ -167,11 +146,6 @@ function applyTranslations(els, state) {
 
   setDialogLanguage(state.currentLang);
 
-  if (els.toggleMaintenanceButton) {
-    els.toggleMaintenanceButton.textContent = state.maintenanceOpen
-      ? t("tasks.hideHashMaintenance")
-      : t("tasks.showHashMaintenance");
-  }
   if (!state.currentTaskId) {
     setTaskStatus(els, t("tasks.idle"));
     setTaskLog(els, t("tasks.noTaskStarted"));
@@ -268,111 +242,6 @@ async function runTask(els, state) {
   }
 }
 
-async function runRebuildTask(els, state) {
-  if (state.isTaskRunning) {
-    return;
-  }
-
-  const confirmed = await showConfirm(
-    t("tasks.confirmRunRebuild"),
-    {
-      title: t("dialog.title.warning"),
-      confirmText: t("tasks.runRebuildTask"),
-      cancelText: t("dialog.buttons.cancel"),
-    },
-  );
-
-  if (!confirmed) {
-    return;
-  }
-
-  if (state.pollHandle) {
-    window.clearTimeout(state.pollHandle);
-  }
-
-  setTaskRunning(els, state, true);
-
-  try {
-    const task = await fetchJson("/api/tasks/rebuild-hash-db", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        root: els.rebuildRootInput.value.trim(),
-        rebuild_mode: "replace",
-        hash_method: els.hashMethodSelect.value,
-        phash_threshold: Number(els.rebuildThresholdInput.value || 0),
-        lang: state.currentLang,
-      }),
-    });
-
-    state.currentTaskId = task.task_id;
-    updateSummary(els, task);
-    pollTask(els, state, state.currentTaskId);
-  } catch (error) {
-    setTaskLog(els, error.message);
-    setTaskRunning(els, state, false);
-  }
-}
-
-async function runTimestampRepairTask(els, state) {
-  if (state.isTaskRunning) {
-    return;
-  }
-
-  const confirmed = await showConfirm(
-    t("tasks.confirmRunTimestampRepair"),
-    {
-      title: t("dialog.title.warning"),
-      confirmText: t("tasks.runTimestampRepairTask"),
-      cancelText: t("dialog.buttons.cancel"),
-    },
-  );
-
-  if (!confirmed) {
-    return;
-  }
-
-  if (state.pollHandle) {
-    window.clearTimeout(state.pollHandle);
-  }
-
-  setTaskRunning(els, state, true);
-
-  try {
-    const task = await fetchJson("/api/tasks/repair-timestamps", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        root: els.timestampRepairRootInput.value.trim(),
-        threshold_days: Number(els.timestampRepairThresholdInput.value || 7),
-        sync_modified_time: Boolean(els.syncModifiedTimeCheckbox.checked),
-        rename_from_exif: Boolean(els.renameFromExifCheckbox.checked),
-        include_videos: Boolean(els.includeVideosCheckbox.checked),
-        lang: state.currentLang,
-      }),
-    });
-
-    state.currentTaskId = task.task_id;
-    updateSummary(els, task);
-    pollTask(els, state, state.currentTaskId);
-  } catch (error) {
-    setTaskLog(els, error.message);
-    setTaskRunning(els, state, false);
-  }
-}
-
-function syncMaintenanceState(els, state) {
-  if (els.maintenancePanel) {
-    els.maintenancePanel.classList.toggle("is-hidden", !state.maintenanceOpen);
-  }
-
-  if (els.toggleMaintenanceButton) {
-    els.toggleMaintenanceButton.textContent = state.maintenanceOpen
-      ? t("tasks.hideHashMaintenance")
-      : t("tasks.showHashMaintenance");
-  }
-}
-
 function toggleThreshold(els) {
   if (!els.thresholdInput || !els.duplicateSelect) return;
   els.thresholdInput.disabled = els.duplicateSelect.value !== "phash";
@@ -385,11 +254,6 @@ function toggleSkipExistingExact(els) {
   if (!canSkipExistingExact) {
     els.skipExistingExactCheckbox.checked = false;
   }
-}
-
-function toggleRebuildThreshold(els) {
-  if (!els.rebuildThresholdInput || !els.hashMethodSelect) return;
-  els.rebuildThresholdInput.disabled = els.hashMethodSelect.value === "strict";
 }
 
 function setSelectValue(select, value, fallback) {
@@ -449,34 +313,13 @@ async function initializeTasksPage(els, state) {
     state.activeRoot = config.active_root || "";
     const sourceRoot = taskDefaults.src || config.active_root || "";
     const destinationRoot = taskDefaults.dst || suggestedTaskDestination(sourceRoot);
-    const rebuildRoot = taskDefaults.rebuild_root || destinationRoot;
 
     els.srcInput.value = sourceRoot;
     els.dstInput.value = destinationRoot;
-    els.rebuildRootInput.value = rebuildRoot;
-    if (els.timestampRepairRootInput) {
-      els.timestampRepairRootInput.value = config.active_root || rebuildRoot || destinationRoot;
-    }
-    if (els.timestampRepairThresholdInput) {
-      els.timestampRepairThresholdInput.value = "7";
-    }
-    if (els.syncModifiedTimeCheckbox) {
-      els.syncModifiedTimeCheckbox.checked = true;
-    }
-    if (els.renameFromExifCheckbox) {
-      els.renameFromExifCheckbox.checked = false;
-    }
-    if (els.includeVideosCheckbox) {
-      els.includeVideosCheckbox.checked = false;
-    }
     setSelectValue(els.modeSelect, taskDefaults.mode, "copy");
     setSelectValue(els.duplicateSelect, taskDefaults.duplicate_detection, "strict");
-    setSelectValue(els.hashMethodSelect, taskDefaults.rebuild_hash_method, "strict");
     els.thresholdInput.value = String(normalizeThreshold(taskDefaults.phash_threshold));
     els.skipExistingExactCheckbox.checked = taskDefaults.skip_existing_exact !== false;
-    els.rebuildThresholdInput.value = String(
-      normalizeThreshold(taskDefaults.rebuild_phash_threshold ?? taskDefaults.phash_threshold),
-    );
 
     state.currentLang = config.language === "zh-CN" ? "zh" : (config.language || "en");
     setLang(state.currentLang);
@@ -484,10 +327,8 @@ async function initializeTasksPage(els, state) {
     els.langSelect.value = state.currentLang;
 
     applyTranslations(els, state);
-    syncMaintenanceState(els, state);
     toggleThreshold(els);
     toggleSkipExistingExact(els);
-    toggleRebuildThreshold(els);
     await restoreRunningTask(els, state);
   } catch (error) {
     setTaskLog(els, error.message);
@@ -523,10 +364,6 @@ function bindTasksEvents(els, state) {
     toggleSkipExistingExact(els);
   });
 
-  on(els.hashMethodSelect, "change", () => {
-    toggleRebuildThreshold(els);
-  });
-
   on(els.runTaskButton, "click", () => {
     runTask(els, state);
   });
@@ -555,18 +392,6 @@ function bindTasksEvents(els, state) {
     });
   });
 
-  on(els.runRebuildButton, "click", () => {
-    runRebuildTask(els, state);
-  });
-
-  on(els.runTimestampRepairButton, "click", () => {
-    runTimestampRepairTask(els, state);
-  });
-
-  on(els.toggleMaintenanceButton, "click", () => {
-    state.maintenanceOpen = !state.maintenanceOpen;
-    syncMaintenanceState(els, state);
-  });
 }
 
 function renderTasksInitialState(els) {
@@ -583,7 +408,7 @@ function renderTasksInitialState(els) {
 export function initTasksPage() {
   const els = getTasksElements();
 
-  if (!els.tasksPage && !els.runTaskButton) return;
+  if (!els.tasksPage || !els.runTaskButton) return;
 
   const state = createTasksState();
 

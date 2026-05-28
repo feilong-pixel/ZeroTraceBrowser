@@ -269,7 +269,7 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
             local_path=str(imported),
             imported_at=imported_at,
         )
-        _invalidate_gallery_index(active_root)
+        _invalidate_gallery_index(active_root, imported_count=1)
 
     return {
         "status": "success",

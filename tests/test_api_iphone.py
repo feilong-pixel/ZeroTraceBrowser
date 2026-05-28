@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -541,8 +542,11 @@ def test_upload_file_time_keeps_modified_time_when_close_to_exif(monkeypatch, tm
     assert int(target.stat().st_mtime) == int(modified_at.timestamp())
 
 
-def test_iphone_import_invalidates_gallery_index_cache(api_client, monkeypatch):
+def test_iphone_import_invalidates_gallery_index_items_and_updates_total(api_client, monkeypatch):
     _, _, image_root, _ = api_client
+    indexed_path = image_root / "2026" / "04" / "01" / "old.jpg"
+    indexed_path.parent.mkdir(parents=True)
+    indexed_path.write_text("old-content", encoding="utf-8")
     database_path = root_database_path(image_root)
     cache_digest = digest_for_cache_key(
         image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
@@ -550,10 +554,21 @@ def test_iphone_import_invalidates_gallery_index_cache(api_client, monkeypatch):
     ImageIndexRepository(database_path).save_index(
         cache_digest,
         root=str(image_root),
-        items=[],
+        items=[
+            {
+                "relative_path": "2026/04/01/old.jpg",
+                "path": str(indexed_path),
+                "name": "old.jpg",
+                "size": indexed_path.stat().st_size,
+                "timeline_time": "2026-04-01 09:00:00",
+                "timeline_ts": 1775005200,
+            }
+        ],
         total=0,
         generated_at="2026-05-18T00:00:00",
-        timeline_entries=[],
+        timeline_entries=[
+            {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+        ],
     )
     assert ImageIndexRepository(database_path).load_summary(cache_digest) is not None
 
@@ -580,7 +595,58 @@ def test_iphone_import_invalidates_gallery_index_cache(api_client, monkeypatch):
     result = iphone_context.build_iphone_photo_index("Apple iPhone")
 
     assert result["status"] == "imported"
-    assert ImageIndexRepository(database_path).load_summary(cache_digest) is None
+    summary = ImageIndexRepository(database_path).load_summary(cache_digest)
+    assert summary is not None
+    assert summary["total"] == 1
+    assert summary["items"] == []
+    assert ImageIndexRepository(database_path).load_timeline_entries(cache_digest) == [
+        {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+    ]
+
+
+def test_iphone_import_recounts_total_when_index_total_is_null(api_client, monkeypatch):
+    _, _, image_root, _ = api_client
+    existing = image_root / "existing.jpg"
+    existing.write_text("existing-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    cache_digest = digest_for_cache_key(
+        image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    )
+    ImageIndexRepository(database_path).save_index(
+        cache_digest,
+        root=str(image_root),
+        items=[],
+        total=None,
+        generated_at="2026-05-18T00:00:00",
+        timeline_entries=[],
+    )
+
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-demo")
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        temp_path = temp_dir / "IMG_0001.JPG"
+        temp_path.write_text("new-content", encoding="utf-8")
+        return [
+            {
+                "device_id": device_id,
+                "device_name": "Apple iPhone",
+                "album": "100APPLE",
+                "filename": "IMG_0001.JPG",
+                "temp_path": str(temp_path),
+                "size": temp_path.stat().st_size,
+                "modified_at": "2026-05-18 10:00:00",
+            }
+        ]
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone")
+
+    assert result["status"] == "imported"
+    summary = ImageIndexRepository(database_path).load_summary(cache_digest)
+    assert summary is not None
+    assert summary["total"] == 2
 
 
 def test_iphone_index_skips_existing_refs_and_imports_first_unprocessed_item(api_client, monkeypatch):
@@ -881,6 +947,51 @@ def test_iphone_index_skips_existing_strict_duplicate(api_client, monkeypatch):
     assert records[0]["local_path"] == ""
     assert records[0]["existing_local_path"] == str(existing.resolve())
     assert HashDbRepository(database_path).load_hash_db()["strict"][strict_hash] == [str(existing)]
+
+
+def test_iphone_index_does_not_skip_strict_duplicate_when_suffix_differs(api_client, monkeypatch):
+    _, _, image_root, _ = api_client
+
+    existing = image_root / "2020" / "03" / "15" / "IMG_0173.JPG"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("same-content", encoding="utf-8")
+    strict_hash = hashlib.sha256(b"same-content").hexdigest()
+    database_path = root_database_path(image_root)
+    HashDbRepository(database_path).save_hash_db(
+        {"phash": {}, "strict": {strict_hash: [str(existing)]}},
+        source_path=database_path,
+    )
+
+    monkeypatch.setattr(iphone_context.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "")
+
+    def fake_copy_iphone_media_for_index(device_id, temp_dir, cutoff_modified_at="", skip_refs=None, limit=1):
+        temp_path = temp_dir / "IMG_5174.MOV"
+        temp_path.write_text("same-content", encoding="utf-8")
+        return [
+            {
+                "device_id": device_id,
+                "device_name": "Apple iPhone",
+                "album": "202306_a",
+                "filename": "IMG_5174.MOV",
+                "temp_path": str(temp_path),
+                "size": temp_path.stat().st_size,
+                "modified_at": "2023-06-24 10:00:00",
+            }
+        ]
+
+    monkeypatch.setattr(iphone_context, "_copy_iphone_media_for_index", fake_copy_iphone_media_for_index)
+
+    result = iphone_context.build_iphone_photo_index("Apple iPhone")
+
+    assert result["status"] == "imported"
+    assert result["imported"] == 1
+    assert result["skipped_duplicate"] == 0
+    assert result["imported_items"][0]["target"] == "202306_a/IMG_5174.MOV"
+    assert Path(result["imported_items"][0]["local_path"]).suffix.lower() == ".mov"
+    records = MobileRepository(database_path).list_import_records("iphone", "Apple iPhone")
+    assert records[0]["import_status"] == "imported"
+    assert records[0]["existing_local_path"] == ""
 
 
 def test_iphone_index_ignores_mtp_copy_name_mismatch(api_client, monkeypatch):

@@ -215,7 +215,7 @@ def save_image_index_summary(
     summary_payload = {
         "generated_at": generated_at or existing_metadata.get("generated_at") or datetime.now().isoformat(),
         "root": cache_key[0],
-        "total": total,
+        "total": total if isinstance(total, int) else existing_metadata.get("total"),
         "duplicate_group_count": duplicate_group_count if isinstance(duplicate_group_count, int) else existing_metadata.get("duplicate_group_count"),
         "items": items,
     }
@@ -226,7 +226,7 @@ def save_image_index_summary(
     digest = digest_for_cache_key(cache_key)
     stored_items = repository.list_images(digest)
     persisted_items = items
-    if stored_items and isinstance(total, int) and len(items) < len(stored_items):
+    if stored_items and (not isinstance(total, int) or len(items) < len(stored_items)):
         persisted_items = stored_items
     repository.save_index(
         digest,
@@ -235,7 +235,8 @@ def save_image_index_summary(
         total=summary_payload["total"],
         generated_at=summary_payload["generated_at"],
         duplicate_group_count=summary_payload["duplicate_group_count"],
-        timeline_entries=repository.load_timeline_entries(digest) or build_timeline_index_entries(persisted_items),
+        timeline_entries=None,
+        delete_missing_items=False,
     )
 
 
@@ -265,16 +266,17 @@ def save_timeline_index_cache(
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
     items: list[dict[str, Any]],
     generated_at: str | None = None,
+    delete_missing: bool = True,
 ) -> None:
     repository = image_index_repository(index_dir)
     if repository is None:
         return
 
     digest = digest_for_cache_key(cache_key)
-    metadata = repository.load_metadata(digest) or {}
     repository.replace_timeline_entries(
         digest,
         root=cache_key[0],
-        generated_at=generated_at or metadata.get("generated_at") or datetime.now().isoformat(),
+        generated_at=generated_at or datetime.now().isoformat(),
         entries=build_timeline_index_entries(items),
+        delete_missing=delete_missing,
     )

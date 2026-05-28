@@ -375,7 +375,7 @@ def scan_lightweight_image_metadata_into_cache(
                 save_image_index_summary(index_dir, cache_key, preview_items, None)
                 wrote_preview_summary = True
             if timeline_items:
-                save_timeline_index_cache(index_dir, cache_key, timeline_items)
+                save_timeline_index_cache(index_dir, cache_key, timeline_items, delete_missing=False)
     except Exception as exc:
         with IMAGE_SCAN_LOCK:
             state = IMAGE_SCAN_CACHE.get(cache_key)

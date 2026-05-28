@@ -165,6 +165,155 @@ def test_image_index_repository_round_trips_summary_images_and_timeline(tmp_path
     ]
 
 
+def test_image_index_save_upserts_items_and_deletes_missing_paths(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:00:00",
+        total=2,
+        items=[
+            {"relative_path": "keep.jpg", "name": "keep.jpg", "size": 100},
+            {"relative_path": "gone.jpg", "name": "gone.jpg", "size": 200},
+        ],
+    )
+    with sqlite3.connect(tmp_path / "workspace.sqlite3") as connection:
+        keep_id = connection.execute(
+            "SELECT id FROM image_items WHERE cache_digest = ? AND relative_path = ?",
+            ("digest", "keep.jpg"),
+        ).fetchone()[0]
+
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:05:00",
+        total=2,
+        items=[
+            {"relative_path": "keep.jpg", "name": "keep.jpg", "size": 101},
+            {"relative_path": "new.jpg", "name": "new.jpg", "size": 300},
+        ],
+    )
+
+    items = repository.list_images("digest")
+    assert [(item["relative_path"], item["size"]) for item in items] == [
+        ("keep.jpg", 101),
+        ("new.jpg", 300),
+    ]
+    with sqlite3.connect(tmp_path / "workspace.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT id FROM image_items WHERE cache_digest = ? AND relative_path = ?",
+            ("digest", "keep.jpg"),
+        ).fetchone()[0] == keep_id
+        assert connection.execute(
+            "SELECT COUNT(*) FROM image_items WHERE cache_digest = ? AND relative_path = ?",
+            ("digest", "gone.jpg"),
+        ).fetchone()[0] == 0
+
+
+def test_timeline_entries_are_merged_and_sorted_by_key(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+
+    repository.replace_timeline_entries(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:00:00",
+        entries=[
+            {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+            {"key": "2026-03", "label": "2026-03", "index_label": "202603"},
+            {"key": "unknown", "label": "Unknown date", "index_label": "Unknown"},
+        ],
+    )
+
+    with sqlite3.connect(tmp_path / "workspace.sqlite3") as connection:
+        before_ids = {
+            key: row_id
+            for row_id, key in connection.execute(
+                "SELECT id, key FROM timeline_entries WHERE cache_digest = ?",
+                ("digest",),
+            ).fetchall()
+        }
+
+    repository.replace_timeline_entries(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:05:00",
+        entries=[
+            {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+            {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+            {"key": "2026-03", "label": "2026-03", "index_label": "202603"},
+        ],
+    )
+
+    assert repository.load_timeline_entries("digest") == [
+        {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+        {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+        {"key": "2026-03", "label": "2026-03", "index_label": "202603"},
+    ]
+    with sqlite3.connect(tmp_path / "workspace.sqlite3") as connection:
+        after_ids = {
+            key: row_id
+            for row_id, key in connection.execute(
+                "SELECT id, key FROM timeline_entries WHERE cache_digest = ?",
+                ("digest",),
+            ).fetchall()
+        }
+    assert after_ids["2026-05"] == before_ids["2026-05"]
+    assert after_ids["2026-03"] == before_ids["2026-03"]
+    assert "unknown" not in after_ids
+    assert "2026-04" in after_ids
+
+
+def test_partial_timeline_merge_keeps_missing_old_keys(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+
+    repository.replace_timeline_entries(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:00:00",
+        entries=[
+            {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+            {"key": "2026-03", "label": "2026-03", "index_label": "202603"},
+        ],
+    )
+    repository.replace_timeline_entries(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:05:00",
+        entries=[
+            {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+        ],
+        delete_missing=False,
+    )
+
+    assert repository.load_timeline_entries("digest") == [
+        {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+        {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+        {"key": "2026-03", "label": "2026-03", "index_label": "202603"},
+    ]
+
+
+def test_image_index_save_preserves_total_when_total_is_none(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        items=[],
+        total=12,
+        generated_at="2026-05-13T10:00:00",
+    )
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        items=[],
+        total=None,
+        generated_at="2026-05-13T10:05:00",
+    )
+
+    assert repository.load_summary("digest")["total"] == 12
+
+
 def test_hash_db_repository_round_trips_current_hash_records(tmp_path: Path) -> None:
     repository = HashDbRepository(tmp_path / "workspace.sqlite3")
     payload = {

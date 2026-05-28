@@ -1432,10 +1432,52 @@ button:disabled:hover {
   margin-top: var(--space-4);
 }
 
+.maintenance-page .tasks-main {
+  gap: 18px;
+}
+
+.maintenance-page .tasks-page-header {
+  padding-bottom: 16px;
+}
+
+.maintenance-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: var(--panel-gap);
+  align-items: stretch;
+}
+
+.maintenance-tool-card {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+}
+
+.maintenance-tools-grid>.maintenance-tool-card:not(.maintenance-tool-card-wide) {
+  grid-template-rows: auto 1fr;
+}
+
+.maintenance-tools-grid>.maintenance-tool-card:not(.maintenance-tool-card-wide) .maintenance-panel {
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.maintenance-tools-grid>.maintenance-tool-card:not(.maintenance-tool-card-wide) .task-option-help {
+  align-self: end;
+}
+
+.maintenance-tool-card .task-panel-head {
+  margin-bottom: var(--space-4);
+}
+
+.maintenance-tool-card-wide {
+  grid-column: 1 / -1;
+}
+
 .maintenance-panel {
   display: grid;
   gap: var(--space-4);
-  margin-top: var(--space-4);
+  margin-top: 0;
 }
 
 .maintenance-panel .compact-grid {
@@ -1443,9 +1485,19 @@ button:disabled:hover {
   gap: var(--space-3);
 }
 
+.maintenance-root-grid {
+  --maintenance-label-width: 148px;
+}
+
 .maintenance-panel .task-grid>div {
   display: grid;
   gap: 6px;
+}
+
+.maintenance-panel .maintenance-inline-field {
+  grid-template-columns: var(--maintenance-label-width) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .maintenance-panel .task-grid label {
@@ -1455,37 +1507,52 @@ button:disabled:hover {
   line-height: 1.25;
 }
 
+.maintenance-page input[readonly] {
+  border-color: rgba(165, 156, 143, 0.62);
+  background:
+    linear-gradient(180deg, rgba(246, 242, 235, 0.92), rgba(238, 233, 224, 0.92));
+  color: var(--muted);
+  cursor: default;
+}
+
+.maintenance-page input[readonly]:focus-visible {
+  border-color: rgba(15, 109, 97, 0.42);
+  box-shadow: 0 0 0 2px rgba(15, 109, 97, 0.08);
+}
+
 .maintenance-panel .action-stack {
+  justify-content: start;
   gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(214, 207, 196, 0.72);
 }
 
-.maintenance-divider {
-  height: 1px;
-  background: var(--line);
+.maintenance-panel .action-stack button {
+  width: 220px;
+  min-width: 220px;
 }
 
-.timestamp-repair-panel {
+.maintenance-panel>.task-option-help:not(.timestamp-repair-help) {
+  padding-left: calc(var(--maintenance-label-width) + var(--space-3));
+}
+
+.maintenance-options-grid {
   display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   gap: var(--space-3);
 }
 
-.timestamp-repair-panel h3 {
-  margin: 0;
-  color: var(--text-strong);
-  font-size: 15px;
-  line-height: 1.35;
+.maintenance-options-grid .task-checkbox-option {
+  align-content: start;
+  padding: var(--space-3);
+}
+
+.maintenance-page .task-output-panel {
+  min-height: 220px;
 }
 
 .timestamp-repair-help {
   padding-left: 0;
-}
-
-.timestamp-repair-panel .task-checkbox-option {
-  padding: var(--space-3);
-}
-
-.timestamp-repair-panel .task-option-help {
-  padding-left: 28px;
 }
 
 .maintenance-panel.is-hidden {
@@ -3132,6 +3199,25 @@ button:disabled:hover {
 
   .task-grid {
     grid-template-columns: 1fr;
+  }
+
+  .maintenance-tools-grid,
+  .maintenance-options-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .maintenance-panel .maintenance-inline-field {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .maintenance-panel>.task-option-help:not(.timestamp-repair-help) {
+    padding-left: 0;
+  }
+
+  .maintenance-panel .action-stack button {
+    width: 100%;
+    min-width: 0;
   }
 
   .settings-layout {

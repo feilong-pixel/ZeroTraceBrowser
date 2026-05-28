@@ -56,6 +56,11 @@ class RebuildHashDbTaskRequest(BaseModel):
     lang: str = Field(default="en")
 
 
+class RebuildImageIndexTaskRequest(BaseModel):
+    root: str = Field(..., min_length=1)
+    lang: str = Field(default="en")
+
+
 class TimestampRepairTaskRequest(BaseModel):
     root: str = Field(..., min_length=1)
     threshold_days: int = Field(default=7, ge=1)

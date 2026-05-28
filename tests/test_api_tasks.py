@@ -8,10 +8,12 @@ from pathlib import Path
 import app as ztb_app
 import core.routes.tasks_route as tasks_routes
 from core.domain.root_context import RootContext
+from core.services.image_index_service import digest_for_cache_key, image_scan_cache_key
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
+from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.task_repository import TaskRunRepository
-from tests.test_api_user_flow import create_test_image
+from tests.test_api_user_flow import create_test_image, create_test_image_with_exif_dates
 
 
 class ImmediateThread:
@@ -58,6 +60,13 @@ def timestamp_repair_payload(root: Path) -> dict[str, object]:
         "sync_modified_time": True,
         "rename_from_exif": True,
         "include_videos": True,
+        "lang": "en",
+    }
+
+
+def image_index_rebuild_payload(root: Path) -> dict[str, object]:
+    return {
+        "root": str(root),
         "lang": "en",
     }
 
@@ -173,6 +182,34 @@ def test_run_organizer_failed_task_exposes_error_state(api_client, monkeypatch) 
     queried = query_response.json()
     assert queried["status"] == "failed"
     assert queried["error"] == "Fake task failure"
+
+
+def test_rebuild_image_index_task_rebuilds_gallery_index_and_timeline(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    create_test_image_with_exif_dates(image_root / "2024" / "12" / "25" / "winter.jpg")
+    create_test_image_with_exif_dates(image_root / "2023" / "01" / "02" / "newyear.jpg")
+    monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
+
+    response = client.post("/api/tasks/rebuild-image-index", json=image_index_rebuild_payload(image_root))
+
+    assert response.status_code == 200
+    task = response.json()
+    assert task["task_type"] == "rebuild_image_index"
+    assert task["status"] == "completed"
+    assert task["return_code"] == 0
+    assert any("Indexed media files: 2" in line for line in task["output_lines"])
+    database_path = RootContext.from_root(image_root, ztb_app.ROOT_DATA_DIR, ensure=True).database_path
+    repository = ImageIndexRepository(database_path)
+    cache_key = image_scan_cache_key(image_root, ztb_app.SUPPORTED_EXTENSIONS, ztb_app.SKIP_SCAN_DIR_NAMES)
+    digest = digest_for_cache_key(cache_key)
+    summary = repository.load_summary(digest)
+    assert summary is not None
+    assert summary["total"] == 2
+    assert [entry["key"] for entry in repository.load_timeline_entries(digest)] == ["2020-01"]
+    saved_run = TaskRunRepository(task["outputs"]["database_path"]).load_task(task["task_id"])
+    assert saved_run is not None
+    assert saved_run["task_type"] == "rebuild_image_index"
+    assert saved_run["scanned_count"] == 2
 
 
 def test_run_organizer_rejects_second_task_while_one_is_running(api_client, monkeypatch) -> None:
@@ -695,7 +732,7 @@ def test_rebuild_hash_db_writes_task_results_to_root_database(api_client, monkey
     }
 
 
-def test_rebuild_hash_db_persists_rebuild_root_separately_from_destination_defaults(api_client, monkeypatch) -> None:
+def test_rebuild_hash_db_does_not_persist_rebuild_root_default(api_client, monkeypatch) -> None:
     client, workspace, image_root, _ = api_client
     destination = workspace / "organized"
     rebuild_root = workspace / "rebuild_root"
@@ -711,7 +748,7 @@ def test_rebuild_hash_db_persists_rebuild_root_separately_from_destination_defau
 
     config = client.get("/api/config").json()
     assert config["task_defaults"]["dst"] == str(destination)
-    assert config["task_defaults"]["rebuild_root"] == str(rebuild_root)
+    assert "rebuild_root" not in config["task_defaults"]
 
 
 def test_run_organizer_persists_skip_existing_exact_default(api_client, monkeypatch) -> None:

@@ -22,6 +22,8 @@ from core.services.image_index_service import (
     image_index_cache_path,
     image_index_summary_path,
     image_scan_cache_key,
+    load_image_index_summary_metadata,
+    save_image_index_summary_metadata,
     timeline_index_cache_path,
 )
 from core.services.image_scan_service import clear_image_list_cache
@@ -776,8 +778,9 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
         )
 
         hash_repository = HashDbRepository(database_path)
+        expected_suffix = staged_path.suffix.lower()
         deleted_marker = mobile_repository.find_deleted_local_marker(strict_hash)
-        if deleted_marker:
+        if _deleted_marker_matches_suffix(deleted_marker, expected_suffix):
             mobile_repository.mark_skipped_deleted_locally(
                 device_type="iphone",
                 device_id=device_id,
@@ -801,7 +804,12 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
                 "database_path": str(database_path),
             }
 
-        existing_local_path = _find_existing_strict_duplicate(hash_repository.load_hash_db(), strict_hash, active_root)
+        existing_local_path = _find_existing_strict_duplicate(
+            hash_repository.load_hash_db(),
+            strict_hash,
+            active_root,
+            expected_suffix,
+        )
         if existing_local_path:
             mobile_repository.mark_skipped_duplicate(
                 device_type="iphone",
@@ -842,7 +850,7 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
             local_path=imported,
             imported_at=imported_at,
         )
-        _invalidate_gallery_index(active_root)
+        _invalidate_gallery_index(active_root, imported_count=1)
 
     return {
         "status": "success",
@@ -973,8 +981,14 @@ Start-Sleep -Milliseconds 500
     return json.loads(output) if output else {}
 
 
-def _find_existing_strict_duplicate(hash_db: dict[str, dict[str, list[str]]], strict_hash: str, gallery_root: Path) -> str:
+def _find_existing_strict_duplicate(
+    hash_db: dict[str, dict[str, list[str]]],
+    strict_hash: str,
+    gallery_root: Path,
+    expected_suffix: str = "",
+) -> str:
     gallery_root = gallery_root.resolve()
+    normalized_suffix = str(expected_suffix or "").strip().lower()
     for candidate in hash_db.get("strict", {}).get(strict_hash, []):
         try:
             candidate_path = Path(candidate).expanduser().resolve()
@@ -982,8 +996,23 @@ def _find_existing_strict_duplicate(hash_db: dict[str, dict[str, list[str]]], st
         except (OSError, ValueError):
             continue
         if candidate_path.is_file():
+            if normalized_suffix and candidate_path.suffix.lower() != normalized_suffix:
+                continue
             return str(candidate_path)
     return ""
+
+
+def _deleted_marker_matches_suffix(marker: Mapping[str, Any] | None, expected_suffix: str = "") -> bool:
+    if not marker:
+        return False
+    normalized_suffix = str(expected_suffix or "").strip().lower()
+    if not normalized_suffix:
+        return True
+    for key in ("relative_path", "original_path", "deleted_to"):
+        marker_path = str(marker.get(key, "")).strip()
+        if marker_path and Path(marker_path).suffix.lower() == normalized_suffix:
+            return True
+    return False
 
 
 def _import_staged_iphone_media(
@@ -1035,12 +1064,38 @@ def _apply_iphone_file_times(path: Path, created_at: str = "", modified_at: str 
     apply_windows_file_times(path, (created, accessed, written))
 
 
-def _invalidate_gallery_index(root: Path) -> None:
+def _count_gallery_media(root: Path) -> int:
+    return sum(
+        1
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        and not any(part in SKIP_SCAN_DIR_NAMES for part in path.relative_to(root).parts[:-1])
+    )
+
+
+def _invalidate_gallery_index(root: Path, imported_count: int = 0) -> None:
     clear_image_list_cache(root)
     index_dir = root_image_index_dir(root)
     cache_key = image_scan_cache_key(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
     cache_digest = digest_for_cache_key(cache_key)
-    ImageIndexRepository(root_database_path(root)).delete_index(cache_digest)
+    metadata = load_image_index_summary_metadata(index_dir, cache_key)
+    previous_total = metadata.get("total")
+    updated_total = (
+        previous_total + imported_count
+        if isinstance(previous_total, int)
+        else _count_gallery_media(root)
+    )
+    ImageIndexRepository(root_database_path(root)).clear_image_items(cache_digest)
+    save_image_index_summary_metadata(
+        index_dir,
+        root,
+        SUPPORTED_EXTENSIONS,
+        SKIP_SCAN_DIR_NAMES,
+        total=updated_total,
+        duplicate_group_count=metadata.get("duplicate_group_count"),
+        generated_at=datetime.now().isoformat(),
+    )
     for cache_path in (
         image_index_cache_path(index_dir, cache_key),
         image_index_summary_path(index_dir, cache_key),
@@ -1189,13 +1244,15 @@ def build_iphone_photo_index(
                 )
                 continue
 
+            expected_suffix = Path(filename).suffix.lower()
             existing_local_path = _find_existing_strict_duplicate(
                 hash_repository.load_hash_db(),
                 strict_hash,
                 active_root,
+                expected_suffix,
             )
             deleted_marker = mobile_repository.find_deleted_local_marker(strict_hash)
-            if deleted_marker:
+            if _deleted_marker_matches_suffix(deleted_marker, expected_suffix):
                 skipped_duplicate_count += 1
                 skipped_duplicate_items.append(
                     {
@@ -1263,7 +1320,7 @@ def build_iphone_photo_index(
                 imported_any = True
 
         if imported_any:
-            _invalidate_gallery_index(active_root)
+            _invalidate_gallery_index(active_root, imported_count=imported_count)
 
         if imported_count:
             import_status = "imported"

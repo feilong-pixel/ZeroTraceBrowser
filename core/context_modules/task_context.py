@@ -2,8 +2,9 @@ from .base import *
 from .settings_context import save_root_summary, get_active_image_root, save_image_index_summary_metadata_service
 from .root_workspace import ensure_root_workspace, root_task_log_dir, root_database_path, root_image_index_dir
 from .artifact_context import get_hash_db_path
-from .image_context import iter_image_files, clear_image_list_cache
+from .image_context import iter_image_files, clear_image_list_cache, list_images
 from core.domain.root_context import RootContext
+from core.services.image_index_service import image_scan_cache_key, save_image_index_cache
 from core.services.timestamp_repair_service import repair_timestamps_from_exif
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.database import init_root_database
@@ -134,6 +135,52 @@ def run_timestamp_repair_task(task_id: str) -> None:
         persist_task_run_completion(task)
 
 
+def run_image_index_rebuild_task(task_id: str) -> None:
+    task = TASK_REGISTRY.get(task_id)
+    if not task:
+        return
+
+    params = task.get("params", {})
+    if not isinstance(params, dict):
+        params = {}
+
+    output_lines: list[str] = []
+
+    def append_output(line: str) -> None:
+        output_lines.append(line)
+        with TASK_REGISTRY.lock:
+            task["output_lines"] = output_lines[-200:]
+
+    try:
+        root = Path(str(params.get("root", ""))).expanduser().resolve()
+        append_output(f"Gallery index rebuild started: {root}")
+        items = list_images(root)
+        append_output(f"Scanned media files: {len(items)}")
+        cache_key = image_scan_cache_key(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+        save_image_index_cache(root_image_index_dir(root), cache_key, items)
+        generated_at = datetime.now().isoformat()
+        duplicate_summary = DuplicateResultRepository(RootContext.from_root(root, ROOT_DATA_DIR, ensure=True).database_path).load_summary()
+        raw_group_count = duplicate_summary.get("group_count")
+        duplicate_group_count = raw_group_count if isinstance(raw_group_count, int) else None
+        save_root_summary(str(root), len(items), duplicate_group_count, generated_at)
+        clear_image_list_cache(root)
+        append_output(f"Timeline entries rebuilt from image index.")
+        append_output(f"Done. Indexed media files: {len(items)}")
+        with TASK_REGISTRY.lock:
+            task["status"] = "completed"
+            task["return_code"] = 0
+            task["finished_at"] = generated_at
+        persist_task_run_completion(task, scanned_count=len(items), saved_count=len(items), similar_group_count=duplicate_group_count)
+    except Exception as exc:
+        append_output(f"Gallery index rebuild failed: {exc}")
+        with TASK_REGISTRY.lock:
+            task["status"] = "failed"
+            task["return_code"] = 1
+            task["finished_at"] = datetime.now().isoformat()
+            task["error"] = str(exc)
+        persist_task_run_completion(task)
+
+
 def has_running_task() -> bool:
     return TASK_REGISTRY.has_running_task()
 
@@ -151,6 +198,8 @@ def summarize_task_root(task: dict[str, Any]) -> None:
     if task.get("task_type") == "organizer":
         root_value = str(params.get("dst", "")).strip()
     elif task.get("task_type") == "rebuild_hash_db":
+        root_value = str(params.get("root", "")).strip()
+    elif task.get("task_type") == "rebuild_image_index":
         root_value = str(params.get("root", "")).strip()
     elif task.get("task_type") == "timestamp_repair":
         root_value = str(params.get("root", "")).strip()
@@ -192,7 +241,12 @@ def persist_task_run_started(task: dict[str, Any]) -> None:
     TaskRunRepository(database_path).save_task_started(task)
 
 
-def persist_task_run_completion(task: dict[str, Any], similar_group_count: int | None = None) -> None:
+def persist_task_run_completion(
+    task: dict[str, Any],
+    similar_group_count: int | None = None,
+    scanned_count: int | None = None,
+    saved_count: int | None = None,
+) -> None:
     outputs = task.get("outputs", {})
     if not isinstance(outputs, dict):
         return
@@ -201,6 +255,8 @@ def persist_task_run_completion(task: dict[str, Any], similar_group_count: int |
         return
     TaskRunRepository(database_path).update_task_finished(
         task,
+        scanned_count=scanned_count,
+        saved_count=saved_count,
         similar_group_count=similar_group_count,
     )
 

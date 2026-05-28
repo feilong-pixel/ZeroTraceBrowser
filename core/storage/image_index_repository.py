@@ -23,6 +23,7 @@ class ImageIndexRepository:
         generated_at: str | None = None,
         duplicate_group_count: int | None = None,
         timeline_entries: list[dict[str, str]] | None = None,
+        delete_missing_items: bool = True,
     ) -> None:
         init_root_database(self.database_path)
         with connect(self.database_path) as connection:
@@ -35,16 +36,18 @@ class ImageIndexRepository:
                     root = excluded.root,
                     generated_at = excluded.generated_at,
                     timeline_generated_at = COALESCE(excluded.timeline_generated_at, image_indexes.timeline_generated_at),
-                    total = excluded.total,
-                    duplicate_group_count = excluded.duplicate_group_count,
+                    total = COALESCE(excluded.total, image_indexes.total),
+                    duplicate_group_count = COALESCE(excluded.duplicate_group_count, image_indexes.duplicate_group_count),
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (cache_digest, root, generated_at, generated_at if timeline_entries is not None else None, total, duplicate_group_count),
             )
-            connection.execute("DELETE FROM image_items WHERE cache_digest = ?", (cache_digest,))
+            current_paths: set[str] = set()
             for position, item in enumerate(items):
                 if not isinstance(item, dict) or not item.get("relative_path"):
                     continue
+                relative_path = str(item["relative_path"])
+                current_paths.add(relative_path)
                 connection.execute(
                     """
                     INSERT INTO image_items
@@ -54,10 +57,25 @@ class ImageIndexRepository:
                             file_exists, hash, width, height, position, raw_json
                         )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(cache_digest, relative_path) DO UPDATE SET
+                        path = excluded.path,
+                        name = excluded.name,
+                        size = excluded.size,
+                        captured_at = excluded.captured_at,
+                        modified_at = excluded.modified_at,
+                        timeline_time = excluded.timeline_time,
+                        timeline_ts = excluded.timeline_ts,
+                        timeline_source = excluded.timeline_source,
+                        file_exists = excluded.file_exists,
+                        hash = excluded.hash,
+                        width = excluded.width,
+                        height = excluded.height,
+                        position = excluded.position,
+                        raw_json = excluded.raw_json
                     """,
                     (
                         cache_digest,
-                        str(item["relative_path"]),
+                        relative_path,
                         str(item.get("path") or item["relative_path"]),
                         str(item.get("name", "")),
                         int(item.get("size", 0) or 0),
@@ -74,25 +92,38 @@ class ImageIndexRepository:
                         json.dumps(item, ensure_ascii=False),
                     ),
                 )
-
-            connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
-            for position, entry in enumerate(timeline_entries or []):
-                if not isinstance(entry, dict) or not entry.get("key"):
-                    continue
+            if current_paths and delete_missing_items:
+                placeholders = ",".join("?" for _ in current_paths)
                 connection.execute(
-                    """
-                    INSERT INTO timeline_entries
-                        (cache_digest, key, label, index_label, position)
-                    VALUES (?, ?, ?, ?, ?)
+                    f"""
+                    DELETE FROM image_items
+                    WHERE cache_digest = ?
+                      AND relative_path NOT IN ({placeholders})
                     """,
-                    (
-                        cache_digest,
-                        str(entry.get("key", "")),
-                        str(entry.get("label", "")),
-                        str(entry.get("index_label", "")),
-                        position,
-                    ),
+                    (cache_digest, *sorted(current_paths)),
                 )
+            elif not current_paths and delete_missing_items:
+                connection.execute("DELETE FROM image_items WHERE cache_digest = ?", (cache_digest,))
+
+            if timeline_entries is not None:
+                connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
+                for position, entry in enumerate(timeline_entries):
+                    if not isinstance(entry, dict) or not entry.get("key"):
+                        continue
+                    connection.execute(
+                        """
+                        INSERT INTO timeline_entries
+                            (cache_digest, key, label, index_label, position)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            cache_digest,
+                            str(entry.get("key", "")),
+                            str(entry.get("label", "")),
+                            str(entry.get("index_label", "")),
+                            position,
+                        ),
+                    )
             connection.commit()
 
     def load_summary(self, cache_digest: str) -> dict[str, Any] | None:
@@ -171,7 +202,10 @@ class ImageIndexRepository:
                     """
                     SELECT * FROM timeline_entries
                     WHERE cache_digest = ?
-                    ORDER BY position, id
+                    ORDER BY
+                        CASE WHEN key = 'unknown' THEN 1 ELSE 0 END,
+                        key DESC,
+                        id
                     """,
                     (cache_digest,),
                 ).fetchall()
@@ -184,6 +218,11 @@ class ImageIndexRepository:
             connection.execute("DELETE FROM image_indexes WHERE cache_digest = ?", (cache_digest,))
             connection.commit()
 
+    def clear_image_items(self, cache_digest: str) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute("DELETE FROM image_items WHERE cache_digest = ?", (cache_digest,))
+            connection.commit()
+
     def replace_timeline_entries(
         self,
         cache_digest: str,
@@ -191,6 +230,7 @@ class ImageIndexRepository:
         root: str,
         entries: list[dict[str, str]],
         generated_at: str,
+        delete_missing: bool = True,
     ) -> None:
         init_root_database(self.database_path)
         with connect(self.database_path) as connection:
@@ -206,22 +246,40 @@ class ImageIndexRepository:
                 """,
                 (cache_digest, root, generated_at, generated_at),
             )
-            connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
+            current_keys: set[str] = set()
             for position, entry in enumerate(entries):
                 if not isinstance(entry, dict) or not entry.get("key"):
                     continue
+                key = str(entry.get("key", ""))
+                current_keys.add(key)
                 connection.execute(
                     """
                     INSERT INTO timeline_entries
                         (cache_digest, key, label, index_label, position)
                     VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(cache_digest, key) DO UPDATE SET
+                        label = excluded.label,
+                        index_label = excluded.index_label,
+                        position = excluded.position
                     """,
                     (
                         cache_digest,
-                        str(entry.get("key", "")),
+                        key,
                         str(entry.get("label", "")),
                         str(entry.get("index_label", "")),
                         position,
                     ),
                 )
+            if current_keys and delete_missing:
+                placeholders = ",".join("?" for _ in current_keys)
+                connection.execute(
+                    f"""
+                    DELETE FROM timeline_entries
+                    WHERE cache_digest = ?
+                      AND key NOT IN ({placeholders})
+                    """,
+                    (cache_digest, *sorted(current_keys)),
+                )
+            elif not current_keys and delete_missing:
+                connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
             connection.commit()

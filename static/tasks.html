@@ -94,77 +94,9 @@
         </header>
 
         <section class="panel">
-          <h2 data-i18n="tasks.maintenanceTools">Maintenance Tools</h2>
-          <button id="toggleMaintenanceButton" type="button" class="ghost" data-i18n="tasks.showHashMaintenance">Show Hash DB Maintenance</button>
-          <div id="maintenancePanel" class="maintenance-panel is-hidden">
-            <div class="task-grid compact-grid">
-              <div class="full">
-                <label for="rebuildRootInput" data-i18n="tasks.rebuildRoot">Rebuild Root</label>
-                <input id="rebuildRootInput" type="text" />
-              </div>
-              <div>
-                <label for="hashMethodSelect" data-i18n="tasks.hashMethod">Hash Method</label>
-                <select id="hashMethodSelect">
-                  <option value="strict">strict</option>
-                  <option value="phash">phash</option>
-                </select>
-              </div>
-              <div>
-                <label for="rebuild_thresholdInput" data-i18n="tasks.phashThreshold">pHash Threshold</label>
-                <input id="rebuild_thresholdInput" type="number" min="0" value="4" />
-              </div>
-            </div>
-            <div class="action-stack">
-              <button id="runRebuildButton" type="button" data-i18n="tasks.runRebuildTask">Run Hash DB Rebuild</button>
-            </div>
-            <div class="maintenance-divider"></div>
-            <section class="timestamp-repair-panel" aria-labelledby="timestampRepairTitle">
-              <h3 id="timestampRepairTitle" data-i18n="tasks.timestampRepairTitle">EXIF Timestamp Repair</h3>
-              <p class="task-option-help timestamp-repair-help" data-i18n="tasks.timestampRepairHelp">
-                Only images with EXIF capture time are eligible. Files without EXIF are skipped.
-              </p>
-              <div class="task-grid compact-grid">
-                <div class="full">
-                  <label for="timestampRepairRootInput" data-i18n="tasks.timestampRepairRoot">Repair Root</label>
-                  <input id="timestampRepairRootInput" type="text" />
-                </div>
-                <div>
-                  <label for="timestampRepairThresholdInput" data-i18n="tasks.timestampRepairThreshold">Minimum Difference</label>
-                  <input id="timestampRepairThresholdInput" type="number" min="1" value="7" />
-                </div>
-              </div>
-              <div class="task-checkbox-option">
-                <label class="task-checkbox-label" for="syncModifiedTimeCheckbox">
-                  <input id="syncModifiedTimeCheckbox" type="checkbox" checked />
-                  <span data-i18n="tasks.syncModifiedTimeLabel">Sync modified time from EXIF</span>
-                </label>
-                <p class="task-option-help" data-i18n="tasks.syncModifiedTimeHelp">
-                  Updates only the file modified time when it differs from EXIF capture time by more than 7 days.
-                </p>
-              </div>
-              <div class="task-checkbox-option">
-                <label class="task-checkbox-label" for="renameFromExifCheckbox">
-                  <input id="renameFromExifCheckbox" type="checkbox" />
-                  <span data-i18n="tasks.renameFromExifLabel">Rename date-formatted files from EXIF</span>
-                </label>
-                <p class="task-option-help" data-i18n="tasks.renameFromExifHelp">
-                  Renames only files whose current name already looks like a date/time. Target format: YYYYMMDD-HHMMSS.
-                </p>
-              </div>
-              <div class="task-checkbox-option">
-                <label class="task-checkbox-label" for="includeVideosCheckbox">
-                  <input id="includeVideosCheckbox" type="checkbox" />
-                  <span data-i18n="tasks.includeVideosLabel">Include videos with embedded creation time</span>
-                </label>
-                <p class="task-option-help" data-i18n="tasks.includeVideosHelp">
-                  Uses ffprobe to read media creation_time from videos. Videos without embedded creation time are skipped.
-                </p>
-              </div>
-              <div class="action-stack">
-                <button id="runTimestampRepairButton" type="button" data-i18n="tasks.runTimestampRepairTask">Run EXIF Timestamp Repair</button>
-              </div>
-            </section>
-          </div>
+          <h2 data-i18n="maintenance.pageTitle">Maintenance</h2>
+          <p class="task-option-help" data-i18n="tasks.maintenanceMovedHelp">Index rebuilds, timestamp repair, and long-running maintenance live on the maintenance page.</p>
+          <a href="/maintenance.html" class="button-link" data-i18n="tasks.openMaintenance">Open Maintenance</a>
         </section>
         <section class="panel tasks-summary-panel">
           <h2 data-i18n="tasks.taskSummary">Task Summary</h2>

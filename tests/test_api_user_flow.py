@@ -479,6 +479,50 @@ def test_timeline_index_rebuilds_when_image_index_cache_is_newer(api_client, mon
     )
 
 
+def test_preview_summary_does_not_downgrade_total_or_timeline(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    index_dir = ztb_context.root_image_index_dir(image_root)
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+    full_items = [
+        indexed_image("2024/12/25/winter.jpg", "2024-12-25T12:00:00"),
+        indexed_image("2023/01/02/newyear.jpg", "2023-01-02T08:00:00"),
+    ]
+    save_image_index_cache(index_dir, cache_key, full_items)
+    digest = digest_for_cache_key(cache_key)
+    repository = ImageIndexRepository(ztb_context.root_data_dir(image_root) / "workspace.sqlite3")
+    original_summary = repository.load_summary(digest)
+    assert original_summary["total"] == 2
+
+    save_image_index_summary(
+        index_dir,
+        cache_key,
+        [full_items[0]],
+        total=None,
+        generated_at=original_summary["generated_at"],
+    )
+    save_timeline_index_cache(
+        index_dir,
+        cache_key,
+        [full_items[0]],
+    )
+
+    summary = repository.load_summary(digest)
+    assert summary["total"] == 2
+    assert [item["relative_path"] for item in repository.list_images(digest)] == [
+        "2024/12/25/winter.jpg",
+        "2023/01/02/newyear.jpg",
+    ]
+
+    response = client.get("/api/timeline-index")
+
+    assert response.status_code == 200
+    assert response.json()["entries"] == build_timeline_index_entries(full_items)
+
+
 def test_async_scan_writes_timeline_index_in_batches(api_client, monkeypatch) -> None:
     _, _, image_root, _ = api_client
     monkeypatch.setattr(image_scan_service, "IMAGE_SCAN_CACHE", {})
@@ -494,9 +538,9 @@ def test_async_scan_writes_timeline_index_in_batches(api_client, monkeypatch) ->
     timeline_batches: list[list[str]] = []
     original_save_timeline = image_scan_service.save_timeline_index_cache
 
-    def record_timeline_batch(index_dir_arg, cache_key_arg, items, generated_at=None) -> None:
+    def record_timeline_batch(index_dir_arg, cache_key_arg, items, generated_at=None, delete_missing=True) -> None:
         timeline_batches.append([str(item.get("relative_path", "")) for item in items])
-        original_save_timeline(index_dir_arg, cache_key_arg, items, generated_at)
+        original_save_timeline(index_dir_arg, cache_key_arg, items, generated_at, delete_missing=delete_missing)
 
     monkeypatch.setattr(image_scan_service, "TIMELINE_INDEX_BATCH_SIZE", 2)
     monkeypatch.setattr(image_scan_service, "save_timeline_index_cache", record_timeline_batch)

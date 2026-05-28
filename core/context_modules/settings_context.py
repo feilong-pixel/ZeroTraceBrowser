@@ -85,7 +85,7 @@ def get_safe_open_roots(settings: dict[str, Any] | None = None) -> list[Path]:
 
     task_defaults = settings.get("task_defaults", {})
     if isinstance(task_defaults, dict):
-        for key in ("src", "dst", "rebuild_root"):
+        for key in ("src", "dst"):
             value = str(task_defaults.get(key, "")).strip()
             if value:
                 roots.append(resolve_path(value))
@@ -109,8 +109,8 @@ def remember_task_defaults(payload: OrganizerTaskRequest) -> None:
     )
 
 
-def remember_rebuild_root(root: str, phash_threshold: int = 4) -> None:
-    get_settings_store().remember_rebuild_root(root, phash_threshold)
+def remember_rebuild_defaults(phash_threshold: int = 4) -> None:
+    get_settings_store().remember_rebuild_defaults(phash_threshold)
 
 
 def save_root_summary(
