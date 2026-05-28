@@ -17,6 +17,7 @@ import app as ztb_app
 from core.context_modules.root_workspace import root_database_path
 from core.config.app_config import SKIP_SCAN_DIR_NAMES, SUPPORTED_EXTENSIONS
 from core.services.image_index_service import digest_for_cache_key, image_scan_cache_key
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.mobile_repository import MobileRepository
@@ -183,6 +184,41 @@ def test_iphone_shortcut_upload_imports_header_image(api_client, monkeypatch):
     assert records[0]["filename"] == "IMG_0948.jpeg"
     assert records[0]["local_path"] == str(imported)
     assert records[0]["import_status"] == "imported"
+
+
+def test_iphone_shortcut_upload_marks_dirty_and_duplicates_api_rebuilds(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-flow")
+
+    upload_response = client.post(
+        "/api/iphone/upload",
+        content=b"shortcut-flow",
+        headers={
+            "X-Original-Filename": "IMG_FLOW.jpeg",
+            "X-Original-CreateDate": "2026/05/17 10:26:47 JST",
+            "X-Original-UpdateDate": "2026/05/17 11:42:31 JST",
+        },
+    )
+
+    assert upload_response.status_code == 200
+    upload_data = upload_response.json()
+    assert upload_data["status"] == "success"
+    database_path = root_database_path(image_root)
+    summary_before = DuplicateResultRepository(database_path).load_summary()
+    assert summary_before["dirty"] is True
+    assert summary_before["dirty_reason"] == "iphone_shortcut_upload"
+    hash_db = HashDbRepository(database_path).load_hash_db()
+    assert upload_data["local_path"] in next(iter(hash_db["strict"].values()))
+    assert upload_data["local_path"] in hash_db["phash"]["phash-flow"]
+
+    duplicates_response = client.get("/api/duplicates")
+
+    assert duplicates_response.status_code == 200
+    duplicates_payload = duplicates_response.json()
+    assert duplicates_payload["available"] is True
+    assert duplicates_payload["dirty"] is False
+    assert duplicates_payload["groups"] == []
+    assert DuplicateResultRepository(database_path).load_summary()["dirty"] is False
 
 
 def test_iphone_shortcut_upload_separates_people_with_same_device_name(api_client, monkeypatch):

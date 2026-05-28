@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 
 from core.services.task_service import TaskRegistry
+from core.media_policy import IMAGE_EXTENSIONS, SUPPORTED_MEDIA_EXTENSIONS, VIDEO_EXTENSIONS
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -16,10 +17,8 @@ DEFAULT_IMAGE_ROOT = str(Path(os.getenv("ZTB_IMAGE_ROOT", BASE_DIR)).resolve())
 DEFAULT_COPY_TARGET = os.getenv("ZTB_DEFAULT_COPY_TARGET", "")
 
 THUMBNAIL_SIZE = (384, 384)
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
-VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"}
 FRONTEND_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov"}
-SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
+SUPPORTED_EXTENSIONS = SUPPORTED_MEDIA_EXTENSIONS
 SKIP_SCAN_DIR_NAMES = {
     ".git",
     "__pycache__",

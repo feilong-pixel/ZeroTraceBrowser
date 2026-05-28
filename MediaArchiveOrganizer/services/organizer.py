@@ -12,6 +12,13 @@ from typing import Callable
 try:
     from ..core.date_classifier import get_target_date, build_date_path
     from ..core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
+    from ..core.duplicate_result_policy import group_strict_duplicate_paths
+    from ..core.media_policy import (
+        SUPPORTED_MEDIA_EXTENSIONS,
+        is_supported_media_filename,
+        phash_eligible,
+        strict_extension_key,
+    )
     from ..core.hash_db import (
         add_hash_record,
         backfill_file_hash_cache_from_records,
@@ -38,6 +45,13 @@ try:
 except ImportError:
     from core.date_classifier import get_target_date, build_date_path
     from core.duplicate_detector import compute_file_hash, compute_phash, phash_distance
+    from core.duplicate_result_policy import group_strict_duplicate_paths
+    from core.media_policy import (
+        SUPPORTED_MEDIA_EXTENSIONS,
+        is_supported_media_filename,
+        phash_eligible,
+        strict_extension_key,
+    )
     from core.hash_db import (
         add_hash_record,
         backfill_file_hash_cache_from_records,
@@ -62,10 +76,7 @@ except ImportError:
     )
     from core.file_transfer import apply_windows_file_times, read_windows_file_times, transfer_file
 
-SUPPORTED_EXT = (".jpg", ".jpeg", ".png", ".mp4", ".mov")
-STRICT_DUPLICATE_EXTENSION_ALIASES = {
-    ".jpeg": ".jpg",
-}
+SUPPORTED_EXT = tuple(sorted(SUPPORTED_MEDIA_EXTENSIONS))
 ProgressCallback = Callable[[int], None]
 PROGRESS_INTERVAL = 25
 REBUILD_FLUSH_INTERVAL = 500
@@ -710,15 +721,8 @@ def rebuild_duplicate_results_from_hash_db(
     if hash_method in ("strict", "both"):
         for hash_value, paths in sorted(hash_db.get("strict", {}).items()):
             valid_paths = [path for path in paths if is_result_path(path)]
-            paths_by_extension: dict[str, list[str]] = {}
-            for path in valid_paths:
-                extension_key = strict_duplicate_extension_key(path)
-                if extension_key not in SUPPORTED_EXT:
-                    continue
-                paths_by_extension.setdefault(extension_key, []).append(path)
-            for compatible_paths in paths_by_extension.values():
-                if len(compatible_paths) >= 2:
-                    groups.append({"reason": "strict", "hash": hash_value, "paths": compatible_paths})
+            for compatible_paths in group_strict_duplicate_paths(valid_paths):
+                groups.append({"reason": "strict", "hash": hash_value, "paths": compatible_paths})
 
     if hash_method in ("phash", "both"):
         phash_records = []
@@ -949,7 +953,7 @@ def resolve_duplicate_hash(
         if strict_value is not None:
             hashes.append(("strict", strict_value))
 
-    if duplicate_detection in ("phash", "both"):
+    if duplicate_detection in ("phash", "both") and phash_eligible(path):
         phash_value = get_or_compute_hash(hash_cache, "phash", path, pending_cache_upserts)
         if phash_value is not None:
             hashes.append(("phash", phash_value))
@@ -960,13 +964,12 @@ def resolve_duplicate_hash(
 def iter_supported_media_files(root_dir: str):
     for walk_root, _, files in os.walk(root_dir):
         for name in files:
-            if name.lower().endswith(SUPPORTED_EXT):
+            if is_supported_media_filename(name):
                 yield os.path.join(walk_root, name)
 
 
 def strict_duplicate_extension_key(path: str) -> str:
-    suffix = os.path.splitext(path)[1].lower()
-    return STRICT_DUPLICATE_EXTENSION_ALIASES.get(suffix, suffix)
+    return strict_extension_key(path)
 
 
 def build_existing_hash_lookup(
@@ -1275,7 +1278,7 @@ def rebuild_hash_db(
             if strict_value is not None:
                 stats["strict_indexed"] += 1
 
-        if hash_method in ("phash", "both"):
+        if hash_method in ("phash", "both") and phash_eligible(path):
             phash_value = get_reusable_record_hash_from_snapshot(
                 existing_hash_lookup,
                 file_cache_entries,
@@ -1371,7 +1374,7 @@ def organize_images(
             path = os.path.join(root, name)
 
             # Ignore files outside the supported media extensions.
-            if not name.lower().endswith(SUPPORTED_EXT):
+            if not is_supported_media_filename(name):
                 continue
 
             try:

@@ -14,6 +14,7 @@ import core.context_modules.iphone_context as iphone_context
 import core.context_modules.phone_sync_context as phone_sync_context
 import core.context_modules.route_facade as route_facade
 from core.context_modules.root_workspace import root_database_path
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
 from PIL import Image
@@ -516,6 +517,51 @@ def test_mobile_sync_upload_does_not_skip_when_strict_hash_suffix_differs(api_cl
     records = HashDbRepository(root_database_path(image_root)).load_hash_db()["strict"][strict_hash]
     assert str(existing) in records
     assert data["local_path"] in records
+
+
+def test_mobile_sync_upload_then_duplicates_rebuild_filters_cross_type_strict_group(api_client):
+    client, _, image_root, _ = api_client
+    session_id, item_id = start_sync_with_manifest(client, item_id="asset-movie-flow", filename="MOVIE.MOV")
+    body = b"same-content"
+    existing = image_root / "existing.jpg"
+    existing.write_bytes(body)
+    strict_hash = hashlib.sha256(body).hexdigest()
+    database_path = root_database_path(image_root)
+    HashDbRepository(database_path).add_hash_record("strict", strict_hash, existing)
+
+    upload_response = client.post(
+        "/api/mobile/sync/upload",
+        headers={
+            "X-ZTB-Mobile-Metadata": json.dumps(
+                {
+                    "session_id": session_id,
+                    "device_type": "iphone",
+                    "device_id": "phone-1",
+                    "item_id": item_id,
+                    "filename": "MOVIE.MOV",
+                }
+            )
+        },
+        content=body,
+    )
+
+    assert upload_response.status_code == 200
+    upload_data = upload_response.json()
+    assert upload_data["status"] == "success"
+    imported_path = Path(upload_data["local_path"])
+    assert imported_path.suffix.lower() == ".mov"
+    summary_before = DuplicateResultRepository(database_path).load_summary()
+    assert summary_before["dirty"] is True
+    assert summary_before["dirty_reason"] == "phone_sync_upload"
+
+    duplicates_response = client.get("/api/duplicates", params={"method": "strict"})
+
+    assert duplicates_response.status_code == 200
+    duplicates_payload = duplicates_response.json()
+    assert duplicates_payload["available"] is True
+    assert duplicates_payload["dirty"] is False
+    assert duplicates_payload["groups"] == []
+    assert DuplicateResultRepository(database_path).load_summary()["dirty"] is False
 
 
 def test_mobile_sync_upload_skips_deleted_local_marker(api_client):

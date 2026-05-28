@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import platform
-import hashlib
 import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -17,19 +16,16 @@ from fastapi import HTTPException
 from .settings_context import load_settings
 from .root_workspace import root_database_path, root_image_index_dir
 from core.config.app_config import SKIP_SCAN_DIR_NAMES, SUPPORTED_EXTENSIONS
-from core.services.image_index_service import (
-    digest_for_cache_key,
-    image_index_cache_path,
-    image_index_summary_path,
-    image_scan_cache_key,
-    load_image_index_summary_metadata,
-    save_image_index_summary_metadata,
-    timeline_index_cache_path,
+from core.media_policy import is_supported_media_filename, phash_eligible
+from core.services.import_write_service import (
+    analyze_staged_media,
+    count_gallery_media,
+    import_staged_media,
+    invalidate_gallery_index,
+    sha256_file,
 )
-from core.services.image_scan_service import clear_image_list_cache
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
-from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.mobile_repository import MobileRepository
 from MediaArchiveOrganizer.core.date_classifier import build_date_path, get_target_date
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
@@ -559,11 +555,7 @@ def _clean_powershell_error(stderr: str, stdout: str = "", fallback: str = "Powe
 
 
 def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return sha256_file(path)
 
 
 def _header_value(headers: Mapping[str, str], name: str, default: str = "") -> str:
@@ -580,14 +572,14 @@ def _safe_upload_filename(value: str) -> str:
         raise HTTPException(status_code=400, detail="X-Original-Filename is required")
     if filename in {".", ".."} or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid upload filename")
-    suffix = Path(filename).suffix.lower()
-    if suffix not in SUPPORTED_EXTENSIONS:
+    if not is_supported_media_filename(filename):
+        suffix = Path(filename).suffix.lower()
         raise HTTPException(status_code=400, detail=f"Unsupported upload file type: {suffix or filename}")
     return filename
 
 
 def _is_supported_media_filename(value: str) -> bool:
-    return Path(str(value or "")).suffix.lower() in SUPPORTED_EXTENSIONS
+    return is_supported_media_filename(value)
 
 
 def _safe_identity_part(value: str, fallback: str) -> str:
@@ -733,6 +725,15 @@ def _apply_portable_file_times(
     return created_at, modified_at
 
 
+def _repair_import_modified_time_text(path: Path, created_at: str = "", modified_at: str = "") -> str:
+    repaired = _repair_upload_modified_time_from_exif(
+        path,
+        _parse_iphone_local_time(created_at),
+        _parse_iphone_local_time(modified_at),
+    )
+    return _local_time_text(repaired) if repaired else modified_at
+
+
 def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
     if not body:
         raise HTTPException(status_code=400, detail="Upload body is empty")
@@ -756,9 +757,10 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
         staged_path.write_bytes(body)
         created_at, modified_at = _apply_portable_file_times(staged_path, created_at, modified_at)
 
-        strict_hash = _sha256_file(staged_path)
-        phash = compute_phash(str(staged_path)) or ""
-        size = staged_path.stat().st_size
+        analysis = analyze_staged_media(staged_path, compute_phash_fn=compute_phash)
+        strict_hash = analysis.strict_hash
+        phash = analysis.phash
+        size = analysis.size
         record = {
             "device_name": device_name,
             "device_model": device_model,
@@ -840,15 +842,20 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
                 "database_path": str(database_path),
             }
 
-        imported = _import_staged_iphone_media(
-            staged_path,
-            filename,
-            active_root,
-            _local_time_text(created_at),
-            _local_time_text(modified_at),
+        imported_media = import_staged_media(
+            staged_path=staged_path,
+            filename=filename,
+            gallery_root=active_root,
+            duplicate_dirty_reason="iphone_shortcut_upload",
+            created_at=_local_time_text(created_at),
+            modified_at=_local_time_text(modified_at),
+            database_path=database_path,
+            analysis=analysis,
+            compute_phash_fn=compute_phash,
+            apply_file_times_fn=_apply_iphone_file_times,
+            repair_modified_time_fn=_repair_import_modified_time_text,
         )
-        hash_repository.add_hash_record("strict", strict_hash, str(imported))
-        DuplicateResultRepository(database_path).mark_dirty(active_root, "iphone_shortcut_upload")
+        imported = imported_media.path
         mobile_repository.mark_imported(
             device_type="iphone",
             device_id=device_id,
@@ -857,7 +864,6 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
             local_path=imported,
             imported_at=imported_at,
         )
-        _invalidate_gallery_index(active_root, imported_count=1)
 
     return {
         "status": "success",
@@ -1072,46 +1078,11 @@ def _apply_iphone_file_times(path: Path, created_at: str = "", modified_at: str 
 
 
 def _count_gallery_media(root: Path) -> int:
-    return sum(
-        1
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in SUPPORTED_EXTENSIONS
-        and not any(part in SKIP_SCAN_DIR_NAMES for part in path.relative_to(root).parts[:-1])
-    )
+    return count_gallery_media(root)
 
 
 def _invalidate_gallery_index(root: Path, imported_count: int = 0) -> None:
-    clear_image_list_cache(root)
-    index_dir = root_image_index_dir(root)
-    cache_key = image_scan_cache_key(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
-    cache_digest = digest_for_cache_key(cache_key)
-    metadata = load_image_index_summary_metadata(index_dir, cache_key)
-    previous_total = metadata.get("total")
-    updated_total = (
-        previous_total + imported_count
-        if isinstance(previous_total, int)
-        else _count_gallery_media(root)
-    )
-    ImageIndexRepository(root_database_path(root)).clear_image_items(cache_digest)
-    save_image_index_summary_metadata(
-        index_dir,
-        root,
-        SUPPORTED_EXTENSIONS,
-        SKIP_SCAN_DIR_NAMES,
-        total=updated_total,
-        duplicate_group_count=metadata.get("duplicate_group_count"),
-        generated_at=datetime.now().isoformat(),
-    )
-    for cache_path in (
-        image_index_cache_path(index_dir, cache_key),
-        image_index_summary_path(index_dir, cache_key),
-        timeline_index_cache_path(index_dir, cache_key),
-    ):
-        try:
-            cache_path.unlink()
-        except OSError:
-            pass
+    invalidate_gallery_index(root, imported_count=imported_count)
 
 
 def _existing_local_path_for_record(records: list[dict[str, Any]], album: str, filename: str) -> str:
@@ -1216,7 +1187,7 @@ def build_iphone_photo_index(
             if temp_path.name.lower() != filename.lower():
                 continue
             strict_hash = _sha256_file(temp_path)
-            phash = compute_phash(str(temp_path)) or ""
+            phash = (compute_phash(str(temp_path)) or "") if phash_eligible(temp_path) else ""
             indexed_records.append(
                 {
                     **record,

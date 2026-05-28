@@ -180,6 +180,82 @@ Upload behavior:
   results from the current root hash DB and clears the marker. This keeps
   upload responsive while allowing duplicates data to refresh lazily.
 
+### Future Architecture Consolidation
+
+The current system has grown several write paths into the same root-scoped
+state:
+
+- Organizer tasks
+- Hash DB rebuild
+- iPhone MTP import
+- iPhone Shortcut upload
+- Phone Sync upload
+- Maintenance rebuilds
+
+These paths should not keep their own private rules for supported media,
+sidecar exclusion, strict duplicate compatibility, pHash computation, duplicate
+dirty markers, gallery index invalidation, or import-state persistence. The
+next architecture pass should move those rules into shared services so every
+entry point writes through the same contract.
+
+Target shape:
+
+- A single import/write service owns staged-file validation, supported media
+  checks, final destination naming, file transfer, timestamp repair, strict
+  hash recording, optional pHash recording, duplicate-result dirty marking,
+  import-state updates, and gallery-index invalidation.
+- A single duplicate-result service owns rebuilding duplicate groups from
+  root hash DB records, including strict extension compatibility rules such as
+  allowing `.jpg` / `.jpeg` together while rejecting `.aae` / image and
+  video / image strict groups.
+- A single read/repository layer owns root-scoped loading for hash DB,
+  duplicate results, image index, timeline index, summaries, recycle records,
+  and import records. Pages should read these repositories through API
+  services instead of each page reconstructing partial state on its own.
+- Derived data should be explicit. Duplicate results, timeline indexes,
+  gallery summaries, thumbnail caches, and maintenance summaries are derived
+  from root files plus root DB state. They can be rebuilt or refreshed, but
+  they must not become hidden sources of truth for user originals.
+- Tests should follow complete data flows rather than only single endpoints:
+  entry point -> root database writes -> rebuild/maintenance -> page API. This
+  is the best way to catch bugs where an import path writes data that later
+  appears incorrectly on `duplicates.html` or `index.html`.
+
+Suggested implementation plan:
+
+1. Inventory all write paths and list exactly which tables, caches, summaries,
+   and dirty markers they touch. See `docs/write-path-inventory.md`.
+2. Extract shared media policy helpers for supported extensions, sidecar
+   exclusion, strict extension compatibility, and pHash eligibility.
+3. Introduce a shared import/write service and migrate one low-risk entry point
+   first, keeping API behavior unchanged.
+4. Move duplicate-result rebuild/filter rules behind one service and make
+   `duplicates.html`, maintenance rebuilds, and dirty-result refresh use it.
+5. Consolidate read paths so page APIs load root-scoped data through the same
+   repository/service layer instead of ad hoc page-specific reads.
+6. Add end-to-end regression tests for MTP, Shortcut upload, Phone Sync,
+   maintenance rebuild, and page APIs using the same sample root.
+
+Current implementation status:
+
+- Step 1 is captured in `docs/write-path-inventory.md`.
+- Step 2 is implemented by shared media policy helpers in
+  `MediaArchiveOrganizer/core/media_policy.py` and `core/media_policy.py`.
+- Step 3 is started through `core/services/import_write_service.py`, currently
+  used by Shortcut upload and Phone Sync upload for the successful import/write
+  path.
+- Step 4 is implemented by duplicate-result policy/service helpers used by both
+  duplicate result rebuild and `duplicates.html` API filtering.
+- Step 5 is started through `core/services/root_read_service.py`, currently
+  applied to duplicate/hash DB reads.
+- Step 6 has end-to-end coverage for Shortcut upload and Phone Sync upload
+  through dirty duplicate-result rebuild and duplicates API reads.
+
+The goal is not a large rewrite in one pass. Each step should be small,
+verifiable, and compatible with the existing local-first safety rules: no
+automatic deletion, no hidden moving/renaming of originals, and no writes
+outside the active or registered root workspace.
+
 ### Production Endpoint Direction
 
 Keep the existing Shortcut endpoint as compatibility, then add a generic mobile

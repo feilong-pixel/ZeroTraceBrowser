@@ -1,15 +1,15 @@
 from .base import *
 from .settings_context import load_settings
 from .image_context import resolve_under_root
-from core.domain.root_context import RootContext
-from core.storage.duplicates_repository import DuplicateResultRepository
-from core.storage.hash_db_repository import HashDbRepository
-from MediaArchiveOrganizer.services.organizer import rebuild_duplicate_results_from_hash_db
+from core.services.duplicate_result_service import (
+    largest_strict_compatible_item_dicts,
+    rebuild_duplicate_results_from_hash_db,
+)
+from core.services.root_read_service import RootReadService
 
 
 def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
-    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-    result = DuplicateResultRepository(database_path).load_result()
+    result = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_duplicate_result()
     if result is None:
         return None
     return result
@@ -22,8 +22,7 @@ def load_database_duplicates_page(
     limit: int,
     method: str,
 ) -> dict[str, Any] | None:
-    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-    result = DuplicateResultRepository(database_path).load_result_page(
+    result = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_duplicate_result_page(
         offset=offset,
         limit=limit,
         method=method,
@@ -34,9 +33,9 @@ def load_database_duplicates_page(
 
 
 def rebuild_dirty_duplicates_if_needed(active_root: str) -> None:
-    database_path = RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-    repository = DuplicateResultRepository(database_path)
-    summary = repository.load_summary()
+    root_reader = RootReadService.from_root(active_root, ROOT_DATA_DIR)
+    repository = root_reader.duplicate_repository()
+    summary = root_reader.load_duplicate_summary()
     if not summary.get("dirty"):
         return
 
@@ -52,10 +51,10 @@ def rebuild_dirty_duplicates_if_needed(active_root: str) -> None:
     rebuild_duplicate_results_from_hash_db(
         active_root,
         "",
-        HashDbRepository(database_path).load_hash_db(),
+        root_reader.load_hash_db(),
         "both",
         phash_threshold,
-        sqlite_db_path=str(database_path),
+        sqlite_db_path=str(root_reader.database_path),
     )
     repository.clear_dirty()
     clear_duplicates_path_cache()
@@ -97,22 +96,8 @@ def get_latest_duplicates_result_root() -> Path | None:
     return root
 
 
-def strict_duplicate_extension_key(path: str) -> str:
-    suffix = Path(str(path or "")).suffix.lower()
-    return ".jpg" if suffix == ".jpeg" else suffix
-
-
 def compatible_strict_duplicate_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    paths_by_extension: dict[str, list[dict[str, Any]]] = {}
-    for item in items:
-        extension_key = strict_duplicate_extension_key(str(item.get("path", "")))
-        if extension_key not in SUPPORTED_EXTENSIONS:
-            continue
-        paths_by_extension.setdefault(extension_key, []).append(item)
-    compatible_groups = [group for group in paths_by_extension.values() if len(group) >= 2]
-    if not compatible_groups:
-        return []
-    return max(compatible_groups, key=len)
+    return list(largest_strict_compatible_item_dicts(items))
 
 
 def load_duplicates_payload(
@@ -127,14 +112,11 @@ def load_duplicates_payload(
     method_filter = str(method or "").strip().lower()
     is_paged_request = offset != 0 or limit is not None or bool(method_filter)
 
-    database_summary = DuplicateResultRepository(
-        RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-    ).load_summary()
+    root_reader = RootReadService.from_root(active_root, ROOT_DATA_DIR)
+    database_summary = root_reader.load_duplicate_summary()
     if database_summary.get("available") and database_summary.get("dirty"):
         rebuild_dirty_duplicates_if_needed(active_root)
-        database_summary = DuplicateResultRepository(
-            RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-        ).load_summary()
+        database_summary = root_reader.load_duplicate_summary()
     database_payload = (
         load_database_duplicates_page(
             active_root,
@@ -257,7 +239,7 @@ def load_duplicates_payload(
 
     return {
         "available": True,
-        "database_path": str(RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path) if database_payload is not None else "",
+        "database_path": str(root_reader.database_path) if database_payload is not None else "",
         "generated_at": payload.get("generated_at"),
         "destination_root": destination_root,
         "active_root": active_root,
@@ -278,9 +260,7 @@ def load_duplicates_payload(
 def load_duplicates_summary() -> dict[str, Any]:
     settings = load_settings()
     active_root = str(Path(settings["active_root"]).resolve())
-    database_summary = DuplicateResultRepository(
-        RootContext.from_root(active_root, ROOT_DATA_DIR, ensure=True).database_path
-    ).load_summary()
+    database_summary = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_duplicate_summary()
     if database_summary.get("available"):
         return {"available": True, "group_count": database_summary.get("group_count", 0)}
 

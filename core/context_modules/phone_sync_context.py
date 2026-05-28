@@ -2,15 +2,14 @@ from .base import *
 from .settings_context import load_settings, save_settings
 from .root_workspace import root_data_id, root_database_path
 from .iphone_context import (
+    _apply_iphone_file_times,
     _apply_portable_file_times,
     _deleted_marker_matches_suffix,
     _find_existing_strict_duplicate,
-    _invalidate_gallery_index,
-    _import_staged_iphone_media,
     _local_time_text,
     _parse_iphone_shortcut_time,
+    _repair_import_modified_time_text,
     _safe_upload_filename,
-    _sha256_file,
 )
 
 import secrets
@@ -22,7 +21,8 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from MediaArchiveOrganizer.core.duplicate_detector import compute_phash
-from core.storage.duplicates_repository import DuplicateResultRepository
+from core.media_policy import phash_eligible
+from core.services.import_write_service import analyze_staged_media, import_staged_media
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
 from core.storage.phone_sync_repository import PhoneSyncRepository
@@ -200,9 +200,10 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
         staged_path.write_bytes(body)
         created_at, modified_at = _apply_portable_file_times(staged_path, created_at, modified_at)
 
-        strict_hash = _sha256_file(staged_path)
-        phash = _compute_optional_phash(staged_path)
-        size = staged_path.stat().st_size
+        analysis = analyze_staged_media(staged_path, compute_phash_fn=compute_phash)
+        strict_hash = analysis.strict_hash
+        phash = analysis.phash
+        size = analysis.size
 
         mobile_repository = MobileRepository(database_path)
         expected_suffix = staged_path.suffix.lower()
@@ -256,17 +257,20 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
                 "size": size,
             }
 
-        imported = _import_staged_iphone_media(
-            staged_path,
-            filename,
-            active_root,
-            _local_time_text(created_at),
-            _local_time_text(modified_at),
+        imported_media = import_staged_media(
+            staged_path=staged_path,
+            filename=filename,
+            gallery_root=active_root,
+            duplicate_dirty_reason="phone_sync_upload",
+            created_at=_local_time_text(created_at),
+            modified_at=_local_time_text(modified_at),
+            database_path=database_path,
+            analysis=analysis,
+            compute_phash_fn=compute_phash,
+            apply_file_times_fn=_apply_iphone_file_times,
+            repair_modified_time_fn=_repair_import_modified_time_text,
         )
-        hash_repository.add_hash_record("strict", strict_hash, str(imported))
-        if phash:
-            hash_repository.add_hash_record("phash", phash, str(imported))
-        DuplicateResultRepository(database_path).mark_dirty(active_root, "phone_sync_upload")
+        imported = imported_media.path
         repository.mark_uploaded_item(
             session_id=session_id,
             item_id=item_id,
@@ -276,7 +280,6 @@ def upload_mobile_sync_item(metadata: dict[str, Any], body: bytes) -> dict[str, 
             local_path=str(imported),
             imported_at=imported_at,
         )
-        _invalidate_gallery_index(active_root, imported_count=1)
 
     return {
         "status": "success",
@@ -297,6 +300,8 @@ def get_mobile_sync_status() -> dict[str, Any]:
 
 
 def _compute_optional_phash(path: Path) -> str:
+    if not phash_eligible(path):
+        return ""
     try:
         return compute_phash(str(path)) or ""
     except Exception:
