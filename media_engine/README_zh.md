@@ -1,5 +1,7 @@
 # Media Archive Organizer
 
+[English](README.md) | [日本語](README_ja.md)
+
 面向高级用户的媒体整理工具，适用于需要重复检测、严格匹配和更高可控性的归档场景。
 
 程序会优先读取图片 EXIF 时间；如果没有 EXIF 时间，则使用文件修改时间。

@@ -1,5 +1,7 @@
 # Media Archive Organizer
 
+[English](README.md) | [中文](README_zh.md)
+
 重複検出、厳密な一致判定、より高い制御性を必要とするユーザー向けの高度なメディア整理ツールです。
 
 本プログラムは、まず画像の EXIF 時刻を読み取ります。

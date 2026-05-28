@@ -1,5 +1,7 @@
 # Media Archive Organizer
 
+[中文](README_zh.md) | [日本語](README_ja.md)
+
 An advanced media organization tool for users who need duplicate detection, stricter matching, and more controllable archiving workflows.
 
 The program reads image EXIF time first. If EXIF time is unavailable, it falls back to the file's modified time.
