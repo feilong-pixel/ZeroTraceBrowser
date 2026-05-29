@@ -16,6 +16,7 @@ from core.services.thumbnail_service import (
     deleted_thumbnail_path_for as deleted_thumb_fn,
     thumbnail_path_for,
 )
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.recycle_repository import RecycleRepository
 
 
@@ -166,4 +167,5 @@ class RestoreImageUseCase:
             ])
         database_path = getattr(self.ctx, "database_path", None)
         if database_path:
+            DuplicateResultRepository(database_path).mark_item_available(relative_path)
             RecycleRepository(database_path).update_action(str(deleted_path), "restored")

@@ -139,6 +139,12 @@ def init_root_database(database_path: str | Path) -> Path:
             CREATE INDEX IF NOT EXISTS idx_image_items_cache_position
                 ON image_items(cache_digest, position, id);
 
+            CREATE INDEX IF NOT EXISTS idx_duplicate_items_path
+                ON duplicate_items(path);
+
+            CREATE INDEX IF NOT EXISTS idx_duplicate_items_group_exists
+                ON duplicate_items(group_row_id, file_exists);
+
             CREATE INDEX IF NOT EXISTS idx_timeline_entries_cache_key
                 ON timeline_entries(cache_digest, key DESC, id);
 

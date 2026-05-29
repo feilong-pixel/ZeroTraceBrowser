@@ -12,6 +12,7 @@ from core.services.file_operations import move_file_preserve_times, resolve_unde
 from core.services.image_scan_service import clear_image_list_cache
 from core.services.recycle_paths import build_deleted_path
 from core.services.thumbnail_service import thumbnail_path_for
+from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.recycle_repository import RecycleRepository
 from core.storage.mobile_repository import MobileRepository
 
@@ -136,6 +137,7 @@ class DeleteImageUseCase:
             ])
         database_path = getattr(self.ctx, "database_path", None)
         if database_path:
+            DuplicateResultRepository(database_path).mark_item_missing(relative_path)
             RecycleRepository(database_path).append_record(
                 timestamp=timestamp,
                 root=str(root),

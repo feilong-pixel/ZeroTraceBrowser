@@ -12,6 +12,7 @@ import core.context_modules.duplicates_context as duplicates_context
 from core.domain.root_context import RootContext
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
+from core.storage.recycle_repository import RecycleRepository
 from media_engine.services.organizer import rebuild_duplicate_results_from_hash_db
 
 
@@ -238,8 +239,8 @@ def test_duplicates_api_phash_page_skips_unavailable_leading_groups(api_client) 
             "reason": "phash",
             "hash": "missing",
             "items": [
-                {"role": "kept", "path": "missing_a.jpg"},
-                {"role": "duplicate", "path": "missing_b.jpg"},
+                {"role": "kept", "path": "missing_a.jpg", "exists": False},
+                {"role": "duplicate", "path": "missing_b.jpg", "exists": False},
             ],
         },
         {
@@ -269,12 +270,95 @@ def test_duplicates_api_phash_page_skips_unavailable_leading_groups(api_client) 
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["group_count"] == 3
+    assert payload["group_count"] == 2
     assert payload["has_more"] is True
     assert [group["group_id"] for group in payload["groups"]] == ["visible_0001"]
 
 
-def test_duplicates_api_does_not_check_skipped_pages(api_client, monkeypatch) -> None:
+def test_duplicates_api_paged_results_reconcile_missing_files(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    archive_root.mkdir()
+    groups = [
+        {
+            "group_id": "db_visible",
+            "reason": "phash",
+            "hash": "db-visible",
+            "items": [
+                {"role": "kept", "path": "missing_on_disk_a.jpg", "exists": True},
+                {"role": "duplicate", "path": "missing_on_disk_b.jpg", "exists": True},
+            ],
+        },
+    ]
+
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(archive_root, groups)
+
+    response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "phash"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 0
+    assert payload["groups"] == []
+
+
+def test_duplicates_api_strict_page_counts_only_remaining_visible_groups(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "visible_a.jpg")
+    create_test_image(archive_root / "visible_b.jpg", color=(80, 90, 100))
+    create_test_image(archive_root / "visible_c.jpg", color=(90, 100, 110))
+    create_test_image(archive_root / "visible_d.jpg", color=(100, 110, 120))
+    groups = [
+        {
+            "group_id": "missing_0000",
+            "reason": "strict",
+            "hash": "missing",
+            "items": [
+                {"role": "kept", "path": "missing_a.jpg", "exists": False},
+                {"role": "duplicate", "path": "missing_b.jpg", "exists": False},
+            ],
+        },
+        {
+            "group_id": "visible_0001",
+            "reason": "strict",
+            "hash": "visible-1",
+            "items": [
+                {"role": "kept", "path": "visible_a.jpg"},
+                {"role": "duplicate", "path": "visible_b.jpg"},
+            ],
+        },
+        {
+            "group_id": "visible_0002",
+            "reason": "strict",
+            "hash": "visible-2",
+            "items": [
+                {"role": "kept", "path": "visible_c.jpg"},
+                {"role": "duplicate", "path": "visible_d.jpg"},
+            ],
+        },
+    ]
+
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(archive_root, groups)
+
+    first_response = client.get("/api/duplicates", params={"offset": 0, "limit": 1, "method": "strict"})
+    second_response = client.get("/api/duplicates", params={"offset": 1, "limit": 1, "method": "strict"})
+
+    assert first_response.status_code == 200
+    first_payload = first_response.json()
+    assert first_payload["group_count"] == 2
+    assert first_payload["has_more"] is True
+    assert [group["group_id"] for group in first_payload["groups"]] == ["visible_0001"]
+
+    assert second_response.status_code == 200
+    second_payload = second_response.json()
+    assert second_payload["group_count"] == 2
+    assert second_payload["has_more"] is False
+    assert [group["group_id"] for group in second_payload["groups"]] == ["visible_0002"]
+
+
+def test_duplicates_api_strict_offset_uses_remaining_visible_groups(api_client) -> None:
     client, workspace, *_ = api_client
     archive_root = workspace / "archive"
     groups = []
@@ -298,26 +382,146 @@ def test_duplicates_api_does_not_check_skipped_pages(api_client, monkeypatch) ->
 
     client.post("/api/settings/roots", json={"path": str(archive_root)})
     save_duplicates_db(archive_root, groups)
-    resolved_paths: list[str] = []
-    original_resolve_under_root = duplicates_context.resolve_under_root
-
-    def record_resolved_path(root: Path, candidate: str) -> Path:
-        resolved_paths.append(candidate)
-        return original_resolve_under_root(root, candidate)
-
-    monkeypatch.setattr(duplicates_context, "resolve_under_root", record_resolved_path)
 
     response = client.get("/api/duplicates", params={"offset": 3, "limit": 1, "method": "strict"})
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["group_count"] == 6
+    assert payload["has_more"] is True
     assert [group["group_id"] for group in payload["groups"]] == ["dup_0003"]
-    assert resolved_paths == [
-        "kept_3.jpg",
-        "kept_3_dup1.jpg",
-        "kept_4.jpg",
-        "kept_4_dup1.jpg",
-    ]
+
+
+def test_duplicates_api_delete_updates_remaining_group_count(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "remove_a.jpg")
+    create_test_image(archive_root / "remove_b.jpg", color=(80, 90, 100))
+    create_test_image(archive_root / "keep_a.jpg", color=(90, 100, 110))
+    create_test_image(archive_root / "keep_b.jpg", color=(100, 110, 120))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "removed_after_delete",
+                "reason": "strict",
+                "hash": "remove",
+                "items": [
+                    {"role": "kept", "path": "remove_a.jpg"},
+                    {"role": "duplicate", "path": "remove_b.jpg"},
+                ],
+            },
+            {
+                "group_id": "still_remaining",
+                "reason": "strict",
+                "hash": "keep",
+                "items": [
+                    {"role": "kept", "path": "keep_a.jpg"},
+                    {"role": "duplicate", "path": "keep_b.jpg"},
+                ],
+            },
+        ],
+    )
+
+    delete_response = client.post("/api/delete", json={"relative_path": "remove_b.jpg"})
+    response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "strict"})
+
+    assert delete_response.status_code == 200
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 1
+    assert payload["has_more"] is False
+    assert payload["method_counts"] == {"phash": 0, "strict": 1}
+    assert [group["group_id"] for group in payload["groups"]] == ["still_remaining"]
+
+
+def test_duplicates_api_syncs_existing_recycle_records_to_remaining_count(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "deleted_a.jpg")
+    create_test_image(archive_root / "deleted_b.jpg", color=(80, 90, 100))
+    create_test_image(archive_root / "keep_a.jpg", color=(90, 100, 110))
+    create_test_image(archive_root / "keep_b.jpg", color=(100, 110, 120))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    database_path = save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "old_deleted_group",
+                "reason": "phash",
+                "hash": "deleted",
+                "items": [
+                    {"role": "kept", "path": "deleted_a.jpg"},
+                    {"role": "duplicate", "path": "deleted_b.jpg"},
+                ],
+            },
+            {
+                "group_id": "still_remaining",
+                "reason": "phash",
+                "hash": "keep",
+                "items": [
+                    {"role": "kept", "path": "keep_a.jpg"},
+                    {"role": "duplicate", "path": "keep_b.jpg"},
+                ],
+            },
+        ],
+    )
+    RecycleRepository(database_path).append_record(
+        timestamp="2026-05-29T10:00:00",
+        root=str(archive_root),
+        relative_path="deleted_b.jpg",
+        deleted_to=str(archive_root / ".deleted" / "deleted_b.jpg"),
+        action="deleted",
+    )
+
+    response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "phash"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 1
+    assert payload["method_counts"] == {"phash": 1, "strict": 0}
+    assert [group["group_id"] for group in payload["groups"]] == ["still_remaining"]
+
+
+def test_duplicates_api_restore_updates_remaining_group_count(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "restore_a.jpg")
+    create_test_image(archive_root / "restore_b.jpg", color=(80, 90, 100))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    database_path = save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "restored_group",
+                "reason": "strict",
+                "hash": "restore",
+                "items": [
+                    {"role": "kept", "path": "restore_a.jpg"},
+                    {"role": "duplicate", "path": "restore_b.jpg"},
+                ],
+            },
+        ],
+    )
+
+    delete_response = client.post("/api/delete", json={"relative_path": "restore_b.jpg"})
+    after_delete_response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "strict"})
+    restore_response = client.post(
+        "/api/recycle-bin/restore",
+        json={"deleted_to": delete_response.json()["deleted_to"]},
+    )
+    after_restore_response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "strict"})
+
+    assert delete_response.status_code == 200
+    assert after_delete_response.status_code == 200
+    assert after_delete_response.json()["group_count"] == 0
+    assert restore_response.status_code == 200
+    assert after_restore_response.status_code == 200
+    payload = after_restore_response.json()
+    assert payload["database_path"] == str(database_path)
+    assert payload["group_count"] == 1
+    assert [group["group_id"] for group in payload["groups"]] == ["restored_group"]
 
 
 def test_duplicates_api_filters_strict_cross_type_groups(api_client) -> None:

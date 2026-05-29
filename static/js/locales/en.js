@@ -287,7 +287,7 @@ export default {
     deleted: (path) => `Moved ${path} to the Recycle Bin`,
     deleting: (path) => `Moving ${path} to the Recycle Bin ...`,
     groupUnavailable: "Files in this group are no longer available. Click [Open Organizer Tool] and rebuild Hash DB from the maintenance tools in the [Media Engine Tasks] page.",
-    groups: "Groups",
+    groups: "Remaining duplicate groups",
     items: (count) => `${count} items`,
     leavePage: "Leave page",
     loading: "Loading duplicate results...",

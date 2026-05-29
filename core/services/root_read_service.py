@@ -55,6 +55,19 @@ class RootReadService:
             method=method,
         )
 
+    def load_remaining_duplicate_result_page(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        method: str,
+    ) -> dict[str, Any] | None:
+        return self.duplicate_repository(ensure_schema=False).load_remaining_result_page(
+            offset=offset,
+            limit=limit,
+            method=method,
+        )
+
     def load_duplicate_summary(self) -> dict[str, Any]:
         return self.duplicate_repository(ensure_schema=False).load_summary()
 

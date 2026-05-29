@@ -387,15 +387,11 @@ function renderDuplicatesPage(els, state) {
     els.duplicateMethodFilter.value = state.methodFilter;
   }
 
-  const allGroups = payload.groups || [];
   const activeGroups = filteredGroups(state);
   const isServerPaged = Boolean(payload.page_limit);
   const totalGroupCount = isServerPaged
     ? Number(payload.group_count || activeGroups.length)
     : activeGroups.length;
-  const allGroupCount = isServerPaged
-    ? Object.values(payload.method_counts || {}).reduce((sum, value) => sum + Number(value || 0), 0)
-    : allGroups.length;
   const total = Math.max(1, Math.ceil(totalGroupCount / state.pageSize));
   state.page = Math.min(state.page, total);
 
@@ -403,11 +399,8 @@ function renderDuplicatesPage(els, state) {
   const groups = (isServerPaged ? activeGroups : activeGroups.slice(start, start + state.pageSize))
     .map(availableGroup);
 
-  setText(
-    els.duplicatesSummary,
-    `${totalGroupCount} / ${allGroupCount || totalGroupCount}`,
-  );
-  setText(els.summaryGroupCount, String(allGroupCount || totalGroupCount));
+  setText(els.duplicatesSummary, String(totalGroupCount));
+  setText(els.summaryGroupCount, String(totalGroupCount));
   setText(els.summaryGeneratedAt, formatDisplayTime(payload.generated_at));
   setInputValue(els.summaryResultRoot, payload.destination_root || "-");
   setText(els.pageInfo, t("duplicates.pageInfo", state.page, total));

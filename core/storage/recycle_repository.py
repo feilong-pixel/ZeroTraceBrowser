@@ -83,6 +83,16 @@ class RecycleRepository:
                 ).fetchone()[0]
             )
 
+    def sync_signature(self) -> tuple[int, str]:
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS count, COALESCE(MAX(updated_at), '') AS updated_at
+                FROM recycle_records
+                """
+            ).fetchone()
+            return int(row["count"]), str(row["updated_at"])
+
     def update_action(self, deleted_to: str, action: str) -> bool:
         with connect(self.database_path) as connection:
             cursor = connection.execute(

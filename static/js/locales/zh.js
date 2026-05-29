@@ -287,7 +287,7 @@ export default {
     deleted: (path) => `已删除 ${path}`,
     deleting: (path) => `正在删除 ${path} ...`,
     groupUnavailable: "该组文件已不存在，请点击【打开整理工具】按钮，在【Media Engine 任务】画面，使用维护工具重新生成 Hash DB。",
-    groups: "重复组",
+    groups: "剩余重复组数",
     items: (count) => `${count} 张`,
     leavePage: "仍要离开",
     loading: "正在加载重复结果...",

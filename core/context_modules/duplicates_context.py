@@ -6,6 +6,9 @@ from core.services.duplicate_result_service import (
     rebuild_duplicate_results_from_hash_db,
 )
 from core.services.root_read_service import RootReadService
+from core.storage.recycle_repository import RecycleRepository
+
+RECYCLE_DUPLICATE_SYNC_CACHE: dict[str, tuple[int, str, str]] = {}
 
 
 def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
@@ -15,14 +18,14 @@ def load_database_duplicates_payload(active_root: str) -> dict[str, Any] | None:
     return result
 
 
-def load_database_duplicates_page(
+def load_database_remaining_duplicates_page(
     active_root: str,
     *,
     offset: int,
     limit: int,
     method: str,
 ) -> dict[str, Any] | None:
-    result = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_duplicate_result_page(
+    result = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_remaining_duplicate_result_page(
         offset=offset,
         limit=limit,
         method=method,
@@ -30,6 +33,106 @@ def load_database_duplicates_page(
     if result is None:
         return None
     return result
+
+
+def reconcile_duplicate_page_availability(
+    active_root: str,
+    groups: list[dict[str, Any]],
+    destination_root_path: Path | None,
+) -> int:
+    if destination_root_path is None:
+        return 0
+
+    missing_paths: set[str] = set()
+    for group in groups:
+        for item in group.get("items", []):
+            if not isinstance(item, dict) or not item.get("path") or item.get("exists") is False:
+                continue
+            path_value = str(item["path"])
+            try:
+                candidate = resolve_under_root(destination_root_path, path_value)
+                if not candidate.exists() or not candidate.is_file():
+                    missing_paths.add(path_value)
+            except HTTPException:
+                missing_paths.add(path_value)
+
+    if not missing_paths:
+        return 0
+
+    repository = RootReadService.from_root(active_root, ROOT_DATA_DIR).duplicate_repository()
+    return repository.mark_items_missing(list(missing_paths))
+
+
+def sync_duplicates_availability_from_recycle(active_root: str) -> None:
+    root_reader = RootReadService.from_root(active_root, ROOT_DATA_DIR)
+    repository = root_reader.duplicate_repository()
+    recycle_repository = RecycleRepository(root_reader.database_path)
+    duplicate_updated_at = str(root_reader.load_duplicate_summary().get("updated_at", ""))
+    recycle_count, recycle_updated_at = recycle_repository.sync_signature()
+    cache_key = str(root_reader.database_path)
+    signature = (recycle_count, recycle_updated_at, duplicate_updated_at)
+    if RECYCLE_DUPLICATE_SYNC_CACHE.get(cache_key) == signature:
+        return
+
+    missing_paths: set[str] = set()
+    available_paths: set[str] = set()
+
+    try:
+        records = recycle_repository.list_records()
+    except Exception:
+        return
+
+    for record in reversed(records):
+        if str(Path(record.get("root", "")).expanduser().resolve()) != active_root:
+            continue
+        relative_path = str(record.get("relative_path", "")).strip()
+        if not relative_path:
+            continue
+        action = str(record.get("action", "")).strip().lower()
+        if action in {"deleted", "purged"}:
+            missing_paths.add(relative_path)
+            available_paths.discard(relative_path)
+        elif action == "restored":
+            available_paths.add(relative_path)
+            missing_paths.discard(relative_path)
+
+    if missing_paths:
+        repository.mark_items_missing(list(missing_paths))
+    if available_paths:
+        repository.mark_items_available(list(available_paths))
+    RECYCLE_DUPLICATE_SYNC_CACHE[cache_key] = signature
+
+
+def load_reconciled_remaining_duplicates_page(
+    active_root: str,
+    *,
+    offset: int,
+    limit: int,
+    method: str,
+) -> dict[str, Any] | None:
+    payload = None
+    for _ in range(2):
+        payload = load_database_remaining_duplicates_page(
+            active_root,
+            offset=offset,
+            limit=limit,
+            method=method,
+        )
+        if payload is None:
+            return None
+        destination_root_path = get_duplicates_root_from_payload(payload)
+        raw_groups = payload.get("groups", [])
+        if not isinstance(raw_groups, list) or not raw_groups:
+            return payload
+        if reconcile_duplicate_page_availability(active_root, raw_groups, destination_root_path) == 0:
+            break
+
+    return load_database_remaining_duplicates_page(
+        active_root,
+        offset=offset,
+        limit=limit,
+        method=method,
+    )
 
 
 def rebuild_dirty_duplicates_if_needed(active_root: str) -> None:
@@ -97,20 +200,30 @@ def compatible_strict_duplicate_items(items: list[dict[str, Any]]) -> list[dict[
     return list(largest_strict_compatible_item_dicts(items))
 
 
-def visible_duplicate_group(group: dict[str, Any], destination_root_path: Path | None) -> dict[str, Any] | None:
+def visible_duplicate_group(
+    group: dict[str, Any],
+    destination_root_path: Path | None,
+    *,
+    trust_database_exists: bool = False,
+) -> dict[str, Any] | None:
     group_method = str(group.get("reason", "-")).strip().lower()
     items = []
     for item in group.get("items", []):
         if not isinstance(item, dict) or not item.get("path"):
             continue
         path_value = str(item["path"])
-        exists = False
-        if destination_root_path is not None:
+        if trust_database_exists and item.get("exists") is False:
+            exists = False
+        elif trust_database_exists and item.get("exists") is True:
+            exists = True
+        elif destination_root_path is not None:
             try:
                 candidate = resolve_under_root(destination_root_path, path_value)
                 exists = candidate.exists() and candidate.is_file()
             except HTTPException:
                 exists = False
+        else:
+            exists = False
         items.append(
             {
                 "role": str(item.get("role", "")),
@@ -156,13 +269,14 @@ def load_duplicates_payload(
     if database_summary.get("available") and database_summary.get("dirty"):
         rebuild_dirty_duplicates_if_needed(active_root)
         database_summary = root_reader.load_duplicate_summary()
-    scan_from_start = method_filter == "phash"
-    initial_offset = 0 if scan_from_start else offset
+    if database_summary.get("available"):
+        sync_duplicates_availability_from_recycle(active_root)
+        database_summary = root_reader.load_duplicate_summary()
     database_payload = (
-        load_database_duplicates_page(
+        load_reconciled_remaining_duplicates_page(
             active_root,
-            offset=initial_offset,
-            limit=max(limit + 1, 100) if method_filter else limit + 1,
+            offset=offset,
+            limit=limit,
             method=method_filter,
         )
         if is_paged_request and limit is not None
@@ -212,54 +326,28 @@ def load_duplicates_payload(
             if group_method in method_counts:
                 method_counts[group_method] += 1
 
-    matched_group_count = 0 if scan_from_start else initial_offset
-    has_more = False
-    raw_offset = initial_offset
-    batch_limit = max(limit + 1, 100) if limit is not None else 0
-    while True:
+    if limit is not None and method_filter:
+        raw_group_count = int(method_counts.get(method_filter, 0))
+        for group in raw_groups:
+            visible_group = visible_duplicate_group(group, destination_root_path, trust_database_exists=True)
+            if visible_group is not None:
+                groups.append(visible_group)
+        group_count = raw_group_count
+        has_more = offset + limit < group_count
+        method_counts[method_filter] = group_count
+    else:
+        has_more = False
         for group in raw_groups:
             group_method = str(group.get("reason", "-")).strip().lower()
             if method_filter and group_method != method_filter:
                 continue
-
             visible_group = visible_duplicate_group(group, destination_root_path)
             if visible_group is None:
                 continue
-
-            if limit is not None and matched_group_count < offset:
-                matched_group_count += 1
-                continue
-
-            if limit is not None and len(groups) >= limit:
-                has_more = True
-                break
-
-            matched_group_count += 1
             groups.append(visible_group)
-
-        if has_more or limit is None or not method_filter:
-            break
-        if len(raw_groups) < batch_limit:
-            break
-
-        raw_offset += len(raw_groups)
-        database_payload = load_database_duplicates_page(
-            active_root,
-            offset=raw_offset,
-            limit=batch_limit,
-            method=method_filter,
-        )
-        raw_groups = database_payload.get("groups", []) if database_payload else []
-        if not isinstance(raw_groups, list) or not raw_groups:
-            break
-
-    if limit is None:
+            if group_method in method_counts:
+                method_counts[group_method] += 1
         group_count = len(groups)
-    elif method_filter:
-        group_count = method_counts.get(method_filter, matched_group_count + len(groups) + (1 if has_more else 0))
-    else:
-        raw_group_count = payload.get("group_count")
-        group_count = raw_group_count if isinstance(raw_group_count, int) else len(raw_groups)
 
     return {
         "available": True,
