@@ -49,6 +49,8 @@ function createViewerState() {
     dateStart: "",
     dateEnd: "",
     timelineGroup: "",
+    timelineStartGroup: "",
+    timelineEndGroup: "",
     hasMoreImages: false,
     nextImagesOffset: 0,
     imagesLoadToken: 0,
@@ -266,6 +268,25 @@ async function fetchImagesPage(offset) {
   return fetchJson(`/api/images?${params.toString()}`);
 }
 
+async function fetchTimelineGroupPage(groupKey, offset) {
+  const params = new URLSearchParams({
+    group_key: groupKey,
+    offset: String(offset),
+    limit: String(IMAGE_PAGE_SIZE),
+  });
+
+  return fetchJson(`/api/images/timeline-group?${params.toString()}`);
+}
+
+async function fetchTimelineNeighborGroup(groupKey, direction) {
+  const params = new URLSearchParams({
+    group_key: groupKey,
+    direction,
+  });
+
+  return fetchJson(`/api/images/timeline-neighbor?${params.toString()}`);
+}
+
 function applyViewerFilters(state) {
   state.filtered = state.items.filter((item) => {
     if (
@@ -301,6 +322,60 @@ function updateImagePaginationState(state, data) {
       : null;
 }
 
+async function loadFullTimelineGroup(state, groupKey, loadToken) {
+  let offset = 0;
+  let guard = 0;
+
+  while (guard < 80) {
+    guard += 1;
+    const data = await fetchTimelineGroupPage(groupKey, offset);
+    if (loadToken !== state.imagesLoadToken) return false;
+
+    mergeImageItems(state, data.items || []);
+    if (!data.has_more || data.next_offset === null || data.next_offset === undefined) {
+      return true;
+    }
+    offset = data.next_offset;
+  }
+
+  return true;
+}
+
+async function loadTimelineWindowImages(els, state, targetPath, loadToken) {
+  let groupKey = state.timelineStartGroup;
+  let guard = 0;
+
+  while (groupKey && guard < 240) {
+    guard += 1;
+    await loadFullTimelineGroup(state, groupKey, loadToken);
+    if (loadToken !== state.imagesLoadToken) return;
+
+    applyViewerFilters(state);
+    const foundTarget = targetPath
+      ? state.filtered.some((item) => item.relative_path === targetPath)
+      : state.filtered.length > 0;
+    if (foundTarget) {
+      updateZoomText(els, state);
+      updateViewerNavigationState(els, state);
+    }
+
+    if (!state.timelineEndGroup || groupKey === state.timelineEndGroup) {
+      break;
+    }
+
+    const neighbor = await fetchTimelineNeighborGroup(groupKey, "next");
+    groupKey = neighbor.neighbor_group_key || "";
+  }
+
+  applyViewerFilters(state);
+  state.hasMoreImages = false;
+  state.nextImagesOffset = null;
+
+  if (!state.filtered.length) {
+    throw new Error("No images");
+  }
+}
+
 function scheduleBackgroundImageLoad(els, state) {
   if (state.backgroundLoadHandle) {
     window.clearTimeout(state.backgroundLoadHandle);
@@ -319,7 +394,9 @@ function scheduleBackgroundImageLoad(els, state) {
       state.isLoadingMoreImages = true;
 
       try {
-        const data = await fetchImagesPage(state.nextImagesOffset);
+        const data = state.timelineGroup
+          ? await fetchTimelineGroupPage(state.timelineGroup, state.nextImagesOffset)
+          : await fetchImagesPage(state.nextImagesOffset);
         if (loadToken !== state.imagesLoadToken) return;
 
         mergeImageItems(state, data.items || []);
@@ -346,11 +423,18 @@ async function loadImages(els, state, targetPath = "") {
   state.imagesLoadToken += 1;
   const loadToken = state.imagesLoadToken;
 
+  if (state.timelineStartGroup) {
+    await loadTimelineWindowImages(els, state, targetPath, loadToken);
+    return;
+  }
+
   let fetchedAny = false;
 
   while (state.nextImagesOffset !== null || !fetchedAny) {
     const offset = fetchedAny && state.nextImagesOffset !== null ? state.nextImagesOffset : 0;
-    const data = await fetchImagesPage(offset);
+    const data = state.timelineGroup
+      ? await fetchTimelineGroupPage(state.timelineGroup, offset)
+      : await fetchImagesPage(offset);
     if (loadToken !== state.imagesLoadToken) return;
 
     fetchedAny = true;
@@ -541,6 +625,12 @@ function goBack(state) {
 
   if (state.timelineGroup) {
     params.set("timeline_group", state.timelineGroup);
+  }
+  if (state.timelineStartGroup) {
+    params.set("timeline_start", state.timelineStartGroup);
+  }
+  if (state.timelineEndGroup) {
+    params.set("timeline_end", state.timelineEndGroup);
   }
 
   if (state.selected) {
@@ -767,6 +857,8 @@ async function initializeViewerPage(els, state) {
   state.dateStart = params.get("from") || "";
   state.dateEnd = params.get("to") || "";
   state.timelineGroup = params.get("timeline_group") || "";
+  state.timelineStartGroup = params.get("timeline_start") || state.timelineGroup;
+  state.timelineEndGroup = params.get("timeline_end") || state.timelineGroup;
   state.returnTo = safeReturnTo(params.get("return_to") || "");
 
   await loadConfig(state);

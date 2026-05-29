@@ -67,6 +67,7 @@ function createIndexState() {
     lastSelectedPath: null,
     activeDuplicateGroupId: null,
     activeTimelineGroupKey: "",
+    isTimelineGroupMode: false,
     imagesLoadToken: 0,
     isImageListLoading: false,
     isLoadingMoreImages: false,
@@ -91,6 +92,7 @@ function createIndexState() {
     timelineIndexEntries: [],
     loadedTimelineGroups: new Set(),
     loadingTimelineGroups: new Set(),
+    timelineGroupNextOffsets: new Map(),
     virtual: {
       rows: [],
       groups: [],
@@ -123,6 +125,9 @@ function readGalleryViewState(root) {
 function saveGalleryViewState(els, state) {
   if (!els.galleryScroller || !state.config?.active_root) return;
 
+  const timelineGroups = state.isTimelineGroupMode
+    ? state.virtual.groups.filter((group) => state.loadedTimelineGroups.has(group.key))
+    : [];
   const payload = {
     root: state.config.active_root,
     scrollTop: els.galleryScroller.scrollTop,
@@ -131,6 +136,9 @@ function saveGalleryViewState(els, state) {
     dateEnd: els.dateEndInput?.value || "",
     duplicateGroupId: state.activeDuplicateGroupId || "",
     timelineGroupKey: state.activeTimelineGroupKey || "",
+    timelineMode: Boolean(state.isTimelineGroupMode),
+    timelineStartGroupKey: timelineGroups[0]?.key || "",
+    timelineEndGroupKey: timelineGroups[timelineGroups.length - 1]?.key || "",
     savedAt: Date.now(),
   };
 
@@ -1038,6 +1046,19 @@ function openViewer(els, state, path) {
   const params = new URLSearchParams();
 
   params.set("path", path);
+  if (state.isTimelineGroupMode) {
+    const groupKey = getTimelineGroupKey({ timeline_time: path.replace(/[\\/]/g, "-") });
+    if (groupKey !== "unknown") {
+      params.set("timeline_group", groupKey);
+    }
+    const timelineGroups = state.virtual.groups.filter((group) =>
+      state.loadedTimelineGroups.has(group.key),
+    );
+    if (timelineGroups.length) {
+      params.set("timeline_start", timelineGroups[0].key);
+      params.set("timeline_end", timelineGroups[timelineGroups.length - 1].key);
+    }
+  }
 
   if (els.searchInput.value.trim()) {
     params.set("q", els.searchInput.value.trim());
@@ -1248,6 +1269,35 @@ function updateImagePaginationState(state, data) {
   }
 }
 
+function updateTimelineGroupPaginationState(state, groupKey, data) {
+  if (data.has_more && data.next_offset !== null && data.next_offset !== undefined) {
+    state.timelineGroupNextOffsets.set(groupKey, data.next_offset);
+  } else {
+    state.timelineGroupNextOffsets.delete(groupKey);
+    state.loadedTimelineGroups.add(groupKey);
+  }
+}
+
+async function loadTimelineGroupPage(els, state, groupKey, offset = 0, options = {}) {
+  const { refreshUi = true } = options;
+  if (!groupKey) return null;
+  const loadKey = `${groupKey}:${offset}`;
+  if (state.loadingTimelineGroups.has(loadKey)) return null;
+
+  state.loadingTimelineGroups.add(loadKey);
+  try {
+    const data = await fetchImagesByTimelineGroup(groupKey, offset);
+    mergeImageItems(state, data.items || []);
+    updateTimelineGroupPaginationState(state, groupKey, data);
+    if (refreshUi) {
+      applyFilter(els, state, { resetScroll: false });
+    }
+    return data;
+  } finally {
+    state.loadingTimelineGroups.delete(loadKey);
+  }
+}
+
 async function preloadTimelineNeighborGroup(els, state, groupKey, direction = "next", chainDepth = 0) {
   if (!groupKey) return;
   let neighborKey = "";
@@ -1276,10 +1326,6 @@ async function preloadTimelineNeighborGroup(els, state, groupKey, direction = "n
         updateStickyHeader(els, state);
       }
     }
-    if (chainDepth > 0) {
-      preloadTimelineNeighborGroup(els, state, neighborKey, direction, chainDepth - 1);
-    }
-    window.setTimeout(() => maybeLoadTimelineNeighbors(els, state), 0);
   } catch {
     // Neighbor preload is opportunistic; the current timeline view stays usable.
   } finally {
@@ -1290,36 +1336,23 @@ async function preloadTimelineNeighborGroup(els, state, groupKey, direction = "n
 }
 
 function maybeLoadTimelineNeighbors(els, state) {
+  if (!state.isTimelineGroupMode) return;
   if (!els.galleryScroller || state.virtual.groups.length < 1) return;
   if (state.loadedTimelineGroups.size < 1) return;
+  if (state.isImageListLoading || state.isLoadingMoreImages) return;
 
   const scrollTop = els.galleryScroller.scrollTop;
-  const viewportBottom = scrollTop + els.galleryScroller.clientHeight;
   const loadedGroups = state.virtual.groups.filter((group) =>
     state.loadedTimelineGroups.has(group.key),
   );
   const firstGroup = loadedGroups[0];
-  const lastGroup = loadedGroups[loadedGroups.length - 1];
-  const lastGroupBottom = lastGroup
-    ? state.virtual.rows
-        .filter((row) => row.key === lastGroup.key)
-        .reduce((bottom, row) => Math.max(bottom, row.y + row.height), lastGroup.y)
-    : 0;
 
   if (
     firstGroup &&
     state.loadedTimelineGroups.has(firstGroup.key) &&
     scrollTop - firstGroup.y < TIMELINE_NEIGHBOR_LOAD_THRESHOLD_PX
   ) {
-    preloadTimelineNeighborGroup(els, state, firstGroup.key, "prev", 1);
-  }
-
-  if (
-    lastGroup &&
-    state.loadedTimelineGroups.has(lastGroup.key) &&
-    lastGroupBottom - viewportBottom < TIMELINE_NEIGHBOR_LOAD_THRESHOLD_PX
-  ) {
-    preloadTimelineNeighborGroup(els, state, lastGroup.key, "next", 1);
+    preloadTimelineNeighborGroup(els, state, firstGroup.key, "prev", 0);
   }
 }
 
@@ -1328,31 +1361,30 @@ async function loadTimelineGroup(els, state, groupKey) {
 
   setStatus(els, t("browser.status.loadingImages"));
   state.activeTimelineGroupKey = groupKey;
+  state.isTimelineGroupMode = true;
   state.loadingTimelineGroups.add(groupKey);
   state.isImageListLoading = true;
   state.isLoadingMoreImages = false;
   state.lastLoadMoreOffset = null;
+  state.hasMoreImages = false;
+  state.nextImagesOffset = null;
   clearImageRefreshTimers(state);
+  state.items = [];
+  state.filtered = [];
+  state.loadedTimelineGroups.clear();
+  state.loadingTimelineGroups.clear();
+  state.timelineGroupNextOffsets.clear();
 
   try {
-    const data = await fetchImagesByTimelineGroup(groupKey);
-    mergeImageItems(state, data.items || []);
-    state.loadedTimelineGroups.add(groupKey);
+    await loadTimelineGroupPage(els, state, groupKey, 0);
     state.isImageListLoading = false;
-    applyFilter(els, state);
     setStatus(els, t("browser.status.loadedImages", state.filtered.length));
 
     if (els.galleryScroller) {
-      const targetGroup = state.virtual.groups.find((group) => group.key === groupKey);
-      if (targetGroup) {
-        els.galleryScroller.scrollTo({ top: targetGroup.y, behavior: "smooth" });
-      }
+      els.galleryScroller.scrollTo({ top: 0, behavior: "auto" });
+      renderVirtualGalleryViewport(els, state);
       updateStickyHeader(els, state);
     }
-
-    scheduleBackgroundImageRefresh(els, state);
-    preloadTimelineNeighborGroup(els, state, groupKey, "prev", 1);
-    preloadTimelineNeighborGroup(els, state, groupKey, "next", 1);
   } finally {
     state.loadingTimelineGroups.delete(groupKey);
     state.isImageListLoading = false;
@@ -1364,6 +1396,7 @@ async function loadImages(els, state) {
 
   const loadToken = state.imagesLoadToken + 1;
   state.imagesLoadToken = loadToken;
+  state.isTimelineGroupMode = false;
   state.isImageListLoading = true;
   state.isLoadingMoreImages = false;
   state.nextImagesOffset = 0;
@@ -1489,6 +1522,77 @@ async function loadMoreImages(els, state, options = {}) {
   }
 }
 
+async function loadMoreTimelineGroupImages(els, state) {
+  if (!state.isTimelineGroupMode || state.isImageListLoading || state.isLoadingMoreImages) return false;
+
+  const loadedGroups = state.virtual.groups.filter((group) =>
+    state.loadedTimelineGroups.has(group.key) || state.timelineGroupNextOffsets.has(group.key),
+  );
+  const lastGroup = loadedGroups[loadedGroups.length - 1];
+  const groupKey = lastGroup?.key || state.activeTimelineGroupKey;
+  if (!groupKey) return false;
+
+  state.isLoadingMoreImages = true;
+  try {
+    const nextOffset = state.timelineGroupNextOffsets.get(groupKey);
+    if (nextOffset !== undefined) {
+      return Boolean(await loadTimelineGroupPage(els, state, groupKey, nextOffset));
+    }
+
+    const neighbor = await fetchTimelineNeighborGroup(groupKey, "next");
+    const neighborKey = neighbor.neighbor_group_key;
+    if (!neighborKey || state.loadedTimelineGroups.has(neighborKey)) return false;
+
+    return Boolean(await loadTimelineGroupPage(els, state, neighborKey, 0));
+  } catch (error) {
+    setStatus(els, error.message, true);
+    return null;
+  } finally {
+    state.isLoadingMoreImages = false;
+  }
+}
+
+async function restoreTimelineGroupWindow(els, state, startGroupKey, endGroupKey, selectedPath = "") {
+  if (!startGroupKey) return false;
+
+  state.activeTimelineGroupKey = startGroupKey;
+  state.isTimelineGroupMode = true;
+  state.isImageListLoading = true;
+  state.isLoadingMoreImages = false;
+  state.lastLoadMoreOffset = null;
+  state.hasMoreImages = false;
+  state.nextImagesOffset = null;
+  clearImageRefreshTimers(state);
+  state.items = [];
+  state.filtered = [];
+  state.loadedTimelineGroups.clear();
+  state.loadingTimelineGroups.clear();
+  state.timelineGroupNextOffsets.clear();
+
+  let groupKey = startGroupKey;
+  let guard = 0;
+
+  while (groupKey && guard < 240) {
+    guard += 1;
+    await loadTimelineGroupPage(els, state, groupKey, 0, { refreshUi: false });
+
+    while (state.timelineGroupNextOffsets.has(groupKey) && guard < 240) {
+      guard += 1;
+      const nextOffset = state.timelineGroupNextOffsets.get(groupKey);
+      await loadTimelineGroupPage(els, state, groupKey, nextOffset, { refreshUi: false });
+    }
+
+    if (!endGroupKey || groupKey === endGroupKey) break;
+
+    const neighbor = await fetchTimelineNeighborGroup(groupKey, "next");
+    groupKey = neighbor.neighbor_group_key || "";
+  }
+
+  state.isImageListLoading = false;
+  applyFilter(els, state, { resetScroll: false });
+  return true;
+}
+
 async function restoreGalleryScrollPosition(els, state) {
   if (!els.galleryScroller || state.hasRestoredScroll) return;
   const targetTop = Number(state.pendingRestoreScrollTop);
@@ -1555,13 +1659,22 @@ function scheduleBackgroundImageRefresh(els, state) {
 
 
 function maybeLoadMoreImages(els, state) {
-  if (!els.galleryScroller || !state.hasMoreImages) return;
+  if (!els.galleryScroller) return;
   if (state.isImageListLoading || state.isLoadingMoreImages) return;
 
   const remaining =
     els.galleryScroller.scrollHeight -
     els.galleryScroller.scrollTop -
     els.galleryScroller.clientHeight;
+
+  if (state.isTimelineGroupMode) {
+    if (remaining < getLoadMoreThreshold(els, state)) {
+      loadMoreTimelineGroupImages(els, state).then(() => updateStickyHeader(els, state));
+    }
+    return;
+  }
+
+  if (!state.hasMoreImages) return;
 
   if (remaining < getLoadMoreThreshold(els, state)) {
     if (state.nextImagesOffset === state.lastLoadMoreOffset) return;
@@ -1937,20 +2050,14 @@ async function initializeIndexPage(els, state) {
   }
 
   const savedViewState = readGalleryViewState(state.config.active_root);
-  const savedTimelineGroupKey =
+  const canUseSavedViewState =
     savedViewState &&
     (savedViewState.query || "") === query &&
     (savedViewState.dateStart || "") === startDate &&
     (savedViewState.dateEnd || "") === endDate &&
-    (savedViewState.duplicateGroupId || "") === (duplicateGroupId || "")
-      ? savedViewState.timelineGroupKey || ""
-      : "";
+    (savedViewState.duplicateGroupId || "") === (duplicateGroupId || "");
   if (
-    savedViewState &&
-    (savedViewState.query || "") === query &&
-    (savedViewState.dateStart || "") === startDate &&
-    (savedViewState.dateEnd || "") === endDate &&
-    (savedViewState.duplicateGroupId || "") === (duplicateGroupId || "")
+    canUseSavedViewState
   ) {
     state.pendingRestoreScrollTop = Number(savedViewState.scrollTop) || null;
   }
@@ -1959,8 +2066,19 @@ async function initializeIndexPage(els, state) {
   await loadImages(els, state);
   loadDeferredIndexData(els, state);
 
-  if (selected && !state.hasRestoredSelectedPath && savedTimelineGroupKey) {
-    await loadTimelineGroup(els, state, savedTimelineGroupKey);
+  if (
+    selected &&
+    canUseSavedViewState &&
+    savedViewState.timelineMode &&
+    savedViewState.timelineStartGroupKey
+  ) {
+    await restoreTimelineGroupWindow(
+      els,
+      state,
+      savedViewState.timelineStartGroupKey,
+      savedViewState.timelineEndGroupKey || savedViewState.timelineGroupKey || "",
+      selected,
+    );
   }
 
   if (!restorePendingSelectedPath(els, state)) {
