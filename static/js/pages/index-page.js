@@ -1554,6 +1554,9 @@ async function loadMoreTimelineGroupImages(els, state) {
 
 async function restoreTimelineGroupWindow(els, state, startGroupKey, endGroupKey, selectedPath = "") {
   if (!startGroupKey) return false;
+  const selectedGroupKey = selectedPath
+    ? getTimelineGroupKey({ timeline_time: selectedPath.replace(/[\\/]/g, "-") })
+    : "";
 
   state.activeTimelineGroupKey = startGroupKey;
   state.isTimelineGroupMode = true;
@@ -1567,10 +1570,11 @@ async function restoreTimelineGroupWindow(els, state, startGroupKey, endGroupKey
   state.filtered = [];
   state.loadedTimelineGroups.clear();
   state.loadingTimelineGroups.clear();
-  state.timelineGroupNextOffsets.clear();
+    state.timelineGroupNextOffsets.clear();
 
   let groupKey = startGroupKey;
   let guard = 0;
+  let renderedSelectedGroup = false;
 
   while (groupKey && guard < 240) {
     guard += 1;
@@ -1582,6 +1586,14 @@ async function restoreTimelineGroupWindow(els, state, startGroupKey, endGroupKey
       await loadTimelineGroupPage(els, state, groupKey, nextOffset, { refreshUi: false });
     }
 
+    if (!renderedSelectedGroup && selectedGroupKey && groupKey === selectedGroupKey) {
+      state.isImageListLoading = false;
+      applyFilter(els, state, { resetScroll: false });
+      restorePendingSelectedPath(els, state);
+      renderedSelectedGroup = true;
+      break;
+    }
+
     if (!endGroupKey || groupKey === endGroupKey) break;
 
     const neighbor = await fetchTimelineNeighborGroup(groupKey, "next");
@@ -1589,7 +1601,9 @@ async function restoreTimelineGroupWindow(els, state, startGroupKey, endGroupKey
   }
 
   state.isImageListLoading = false;
-  applyFilter(els, state, { resetScroll: false });
+  if (!renderedSelectedGroup) {
+    applyFilter(els, state, { resetScroll: false });
+  }
   return true;
 }
 
