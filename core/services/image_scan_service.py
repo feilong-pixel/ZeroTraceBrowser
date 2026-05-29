@@ -23,6 +23,7 @@ from core.services.file_operations import (
 from core.services.image_index_service import (
     IMAGE_INDEX_PREVIEW_LIMIT,
     build_timeline_index_entries,
+    find_timeline_neighbor_group,
     get_image_timestamp_for_sort,
     image_index_cache_path,
     image_index_summary_path,
@@ -361,6 +362,34 @@ def get_images_for_timeline_group_page(
         "limit": limit,
         "next_offset": next_offset if has_more else None,
         "has_more": has_more,
+        "from_cache": True,
+    }
+
+
+def get_timeline_neighbor_group(
+    index_dir: Path,
+    root: Path,
+    supported_extensions: set[str],
+    excluded_scan_dirs: set[str],
+    group_key: str,
+    direction: str,
+) -> dict[str, Any]:
+    normalized_direction = str(direction or "").strip().lower()
+    if normalized_direction not in {"prev", "next"}:
+        raise HTTPException(status_code=400, detail="direction must be prev or next")
+
+    cache_key = image_scan_cache_key(root, supported_extensions, excluded_scan_dirs)
+    neighbor = find_timeline_neighbor_group(
+        index_dir,
+        cache_key,
+        group_key,
+        normalized_direction,
+    )
+    return {
+        "root": str(root),
+        "group_key": group_key,
+        "direction": normalized_direction,
+        "neighbor_group_key": neighbor,
         "from_cache": True,
     }
 

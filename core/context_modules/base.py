@@ -22,6 +22,7 @@ from core.services.image_scan_service import (
     clear_image_list_cache as clear_image_list_cache_service,
     get_images_for_timeline_group as get_images_for_timeline_group_service,
     get_images_for_timeline_group_page as get_images_for_timeline_group_page_service,
+    get_timeline_neighbor_group as get_timeline_neighbor_group_service,
     get_timeline_index as get_timeline_index_service,
     iter_image_files as iter_image_files_service,
     list_images_cached_page as list_images_cached_page_service,

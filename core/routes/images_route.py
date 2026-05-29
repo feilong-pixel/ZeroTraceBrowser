@@ -64,6 +64,12 @@ def create_images_router(ctx: Any) -> APIRouter:
         root = ctx.get_active_image_root()
         return ctx.get_images_for_timeline_group_page(root, group_key, offset, limit)
 
+    # GET /api/images/timeline-neighbor
+    @router.get("/api/images/timeline-neighbor")
+    def get_images_timeline_neighbor(group_key: str, direction: str) -> dict[str, Any]:
+        root = ctx.get_active_image_root()
+        return ctx.get_timeline_neighbor_group(root, group_key, direction)
+
     # GET /api/image
     @router.get("/api/image")
     def get_image(relative_path: str) -> FileResponse:

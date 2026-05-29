@@ -32,6 +32,13 @@ class ImageIndexRepository:
             "height": row["height"],
         }
 
+    @staticmethod
+    def _normalize_timeline_group_key(group_key: str) -> str:
+        group = str(group_key or "").strip()
+        if len(group) == 6 and group.isdigit():
+            return f"{group[:4]}-{group[4:]}"
+        return group
+
     def save_index(
         self,
         cache_digest: str,
@@ -226,7 +233,7 @@ class ImageIndexRepository:
     ) -> list[dict[str, Any]]:
         if not self.database_path.exists():
             return []
-        group = str(group_key or "").strip()
+        group = self._normalize_timeline_group_key(group_key)
         if not group:
             return []
 
@@ -263,6 +270,48 @@ class ImageIndexRepository:
             if "locked" not in str(exc).lower():
                 raise
             return []
+
+    def find_timeline_neighbor_group(
+        self,
+        cache_digest: str,
+        group_key: str,
+        direction: str,
+    ) -> str | None:
+        if not self.database_path.exists():
+            return None
+        group = self._normalize_timeline_group_key(group_key)
+        if not group or group == "unknown":
+            return None
+
+        if direction == "prev":
+            comparator = ">"
+            order = "ASC"
+        elif direction == "next":
+            comparator = "<"
+            order = "DESC"
+        else:
+            return None
+
+        query = f"""
+            SELECT substr(timeline_time, 1, 7) AS group_key
+            FROM image_items
+            WHERE cache_digest = ?
+              AND file_exists = 1
+              AND timeline_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*'
+              AND substr(timeline_time, 1, 7) {comparator} ?
+            GROUP BY group_key
+            ORDER BY group_key {order}
+            LIMIT 1
+        """
+
+        try:
+            with connect(self.database_path) as connection:
+                row = connection.execute(query, (cache_digest, group)).fetchone()
+                return str(row["group_key"]) if row is not None else None
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return None
 
     def load_timeline_entries(self, cache_digest: str) -> list[dict[str, str]]:
         if not self.database_path.exists():

@@ -224,6 +224,51 @@ def test_image_index_repository_lists_timeline_group_page(tmp_path: Path) -> Non
     assert [item["relative_path"] for item in page] == ["may_2.jpg"]
 
 
+def test_image_index_repository_finds_timeline_neighbor_group(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:00:00",
+        total=5,
+        items=[
+            {"relative_path": "apr.jpg", "timeline_time": "2026-04-01 10:00:00"},
+            {"relative_path": "may.jpg", "timeline_time": "2026-05-01 10:00:00"},
+            {"relative_path": "jun.jpg", "timeline_time": "2026-06-01 10:00:00"},
+            {"relative_path": "jul_deleted.jpg", "timeline_time": "2026-07-01 10:00:00", "exists": False},
+            {"relative_path": "unknown.jpg", "timeline_time": ""},
+        ],
+    )
+
+    assert repository.find_timeline_neighbor_group("digest", "2026-05", "prev") == "2026-06"
+    assert repository.find_timeline_neighbor_group("digest", "2026-05", "next") == "2026-04"
+    assert repository.find_timeline_neighbor_group("digest", "2026-06", "prev") is None
+    assert repository.find_timeline_neighbor_group("digest", "unknown", "next") is None
+
+
+def test_image_index_repository_timeline_neighbor_handles_year_boundaries(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:00:00",
+        total=4,
+        items=[
+            {"relative_path": "2000_01.jpg", "timeline_time": "2000-01-01 10:00:00"},
+            {"relative_path": "2001_12.jpg", "timeline_time": "2001-12-01 10:00:00"},
+            {"relative_path": "2018_12.jpg", "timeline_time": "2018-12-01 10:00:00"},
+            {"relative_path": "2019_01.jpg", "timeline_time": "2019-01-01 10:00:00"},
+        ],
+    )
+
+    assert repository.find_timeline_neighbor_group("digest", "2018-12", "prev") == "2019-01"
+    assert repository.find_timeline_neighbor_group("digest", "2019-01", "next") == "2018-12"
+    assert repository.find_timeline_neighbor_group("digest", "200112", "next") == "2000-01"
+    assert [item["relative_path"] for item in repository.list_images_for_timeline_group("digest", "201812")] == [
+        "2018_12.jpg"
+    ]
+
+
 def test_image_index_save_upserts_items_and_deletes_missing_paths(tmp_path: Path) -> None:
     repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
 

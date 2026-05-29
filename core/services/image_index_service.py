@@ -185,6 +185,22 @@ def load_timeline_group_image_page(
     )
 
 
+def find_timeline_neighbor_group(
+    index_dir: Path,
+    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
+    group_key: str,
+    direction: str,
+) -> str | None:
+    repository = image_index_repository(index_dir, ensure_schema=False)
+    if repository is None:
+        return None
+    return repository.find_timeline_neighbor_group(
+        digest_for_cache_key(cache_key),
+        group_key,
+        direction,
+    )
+
+
 def load_timeline_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],

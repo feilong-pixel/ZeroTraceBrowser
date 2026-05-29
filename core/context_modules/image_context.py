@@ -51,6 +51,18 @@ def get_images_for_timeline_group_page(root: Path, group_key: str, offset: int =
     )
 
 
+def get_timeline_neighbor_group(root: Path, group_key: str, direction: str) -> dict[str, Any]:
+    ensure_root_workspace(root)
+    return get_timeline_neighbor_group_service(
+        image_index_dir_for_read(root),
+        root,
+        SUPPORTED_EXTENSIONS,
+        SKIP_SCAN_DIR_NAMES,
+        group_key,
+        direction,
+    )
+
+
 def clear_image_list_cache(root: Path | None = None) -> None:
     clear_image_list_cache_service(root)
 
