@@ -203,8 +203,8 @@ ZeroTraceBrowser/
 │       ├── logs/               # 操作ログ（CSV 形式）
 │       ├── indexes/            # 画像インデックス / タイムラインインデックス
 │       ├── tasks/              # タスク出力（タスク別）
-│       ├── hash_db.sqlite3     # コンテンツハッシュデータベース
-│       └── duplicates.json     # 重複画像検出結果
+│       ├── workspace.sqlite3    # 画像ルートごとの SQLite ワークスペース
+│       └── duplicates.json     # 重複画像検出結果（互換 / エクスポート）
 
 ├── media_engine/      # 画像解析・整理エンジン
 └── tests/                      # テスト
@@ -391,7 +391,7 @@ ZeroTraceBrowser は、各画像ルートに対応する実行時データを `d
 * 削除ログ（logs/、CSV 形式）
 * アプリ内リサイクル領域のファイル（deleted/）
 * 重複画像結果（duplicates.json）
-* コンテンツハッシュデータベース（hash_db.sqlite3）
+* 画像ルートごとの SQLite ワークスペース（workspace.sqlite3）。hash データ、重複結果、タスク記録、キャッシュを含みます
 * タスク出力（tasks/）
 
 これらのデータは、閲覧速度の向上、操作履歴の保持、画像ルートごとの状態分離に使われます。元画像は、ユーザーが設定した画像ディレクトリ内にそのまま残ります。

@@ -203,8 +203,8 @@ ZeroTraceBrowser/
 │       ├── logs/               # 操作日志（CSV 格式）
 │       ├── indexes/            # 图片索引 / 时间线索引
 │       ├── tasks/              # 任务输出（按任务隔离）
-│       ├── hash_db.sqlite3     # 内容哈希数据库
-│       └── duplicates.json     # 重复图片检测结果
+│       ├── workspace.sqlite3    # 每个根目录的 SQLite 工作区
+│       └── duplicates.json     # 重复图片检测结果（兼容 / 导出）
 
 ├── media_engine/      # 图片分析与整理引擎
 └── tests/                      # 测试
@@ -391,7 +391,7 @@ ZeroTraceBrowser 会在 `data/roots/<root_id>/` 下保存每个图片根目录�
 * 删除日志（logs/，CSV 格式）
 * 应用内回收区文件（deleted/）
 * 重复图片结果（duplicates.json）
-* 内容哈希数据库（hash_db.sqlite3）
+* 每个根目录的 SQLite 工作区（workspace.sqlite3），包含 hash 数据、重复结果、任务记录和缓存
 * 任务输出（tasks/）
 
 这些数据用于提升浏览速度、保存操作历史和隔离不同图片根目录的状态。原始图片仍保存在用户配置的图片目录中。
