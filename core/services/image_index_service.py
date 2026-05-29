@@ -55,9 +55,9 @@ def database_path_for_index_dir(index_dir: Path) -> Path | None:
     return index_dir.parent / "workspace.sqlite3"
 
 
-def image_index_repository(index_dir: Path) -> ImageIndexRepository | None:
+def image_index_repository(index_dir: Path, *, ensure_schema: bool = True) -> ImageIndexRepository | None:
     database_path = database_path_for_index_dir(index_dir)
-    return ImageIndexRepository(database_path) if database_path is not None else None
+    return ImageIndexRepository(database_path, ensure_schema=ensure_schema) if database_path is not None else None
 
 
 def get_image_timestamp_for_sort(item: dict[str, Any]) -> float | None:
@@ -120,7 +120,7 @@ def load_image_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> tuple[list[dict[str, Any]], int | None, str | None]:
-    repository = image_index_repository(index_dir)
+    repository = image_index_repository(index_dir, ensure_schema=False)
     if repository is None:
         return [], None, None
 
@@ -140,7 +140,7 @@ def load_image_index_summary_metadata(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> dict[str, Any]:
-    repository = image_index_repository(index_dir)
+    repository = image_index_repository(index_dir, ensure_schema=False)
     if repository is None:
         return {"items": [], "total": None, "generated_at": None, "duplicate_group_count": None}
 
@@ -160,7 +160,7 @@ def load_full_image_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> list[dict[str, Any]]:
-    repository = image_index_repository(index_dir)
+    repository = image_index_repository(index_dir, ensure_schema=False)
     if repository is None:
         return []
     return repository.list_images(digest_for_cache_key(cache_key))
@@ -170,7 +170,7 @@ def load_timeline_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
 ) -> tuple[list[dict[str, str]], str | None]:
-    repository = image_index_repository(index_dir)
+    repository = image_index_repository(index_dir, ensure_schema=False)
     if repository is None:
         return [], None
 

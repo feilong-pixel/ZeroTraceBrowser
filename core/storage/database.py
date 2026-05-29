@@ -27,9 +27,10 @@ def root_database_path(root_context: RootContext) -> Path:
 def connect(database_path: str | Path) -> sqlite3.Connection:
     database = Path(database_path)
     database.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database, factory=ClosingConnection)
+    connection = sqlite3.connect(database, timeout=5.0, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 5000")
     return connection
 
 
@@ -134,6 +135,12 @@ def init_root_database(database_path: str | Path) -> Path:
                 UNIQUE(cache_digest, key),
                 FOREIGN KEY(cache_digest) REFERENCES image_indexes(cache_digest) ON DELETE CASCADE
             );
+
+            CREATE INDEX IF NOT EXISTS idx_image_items_cache_position
+                ON image_items(cache_digest, position, id);
+
+            CREATE INDEX IF NOT EXISTS idx_timeline_entries_cache_key
+                ON timeline_entries(cache_digest, key DESC, id);
 
             CREATE TABLE IF NOT EXISTS recycle_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

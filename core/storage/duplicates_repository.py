@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -10,8 +11,8 @@ from core.storage.database import connect, init_root_database
 
 
 class DuplicateResultRepository:
-    def __init__(self, database_path: str | Path):
-        self.database_path = init_root_database(database_path)
+    def __init__(self, database_path: str | Path, *, ensure_schema: bool = True):
+        self.database_path = init_root_database(database_path) if ensure_schema else Path(database_path)
 
     def save_result(self, payload: dict[str, Any], source_path: str | Path = "") -> None:
         groups = payload.get("groups", [])
@@ -92,54 +93,61 @@ class DuplicateResultRepository:
             connection.commit()
 
     def load_result(self) -> dict[str, Any] | None:
-        with connect(self.database_path) as connection:
-            result = connection.execute("SELECT * FROM duplicate_results WHERE id = 1").fetchone()
-            if result is None:
-                return None
-            groups = []
-            group_rows = connection.execute(
-                """
-                SELECT * FROM duplicate_groups
-                WHERE result_id = 1
-                ORDER BY position, id
-                """
-            ).fetchall()
-            for group in group_rows:
-                items = [
-                    {
-                        "role": item["role"],
-                        "path": item["path"],
-                        "exists": bool(item["file_exists"]),
-                    }
-                    for item in connection.execute(
-                        """
-                        SELECT * FROM duplicate_items
-                        WHERE group_row_id = ?
-                        ORDER BY position, id
-                        """,
-                        (group["id"],),
-                    ).fetchall()
-                ]
-                groups.append(
-                    {
-                        "group_id": group["group_id"],
-                        "reason": group["reason"],
-                        "hash": group["hash"],
-                        "kept_path": group["kept_path"],
-                        "item_count": group["item_count"],
-                        "items": items,
-                    }
-                )
-            return {
-                "generated_at": result["generated_at"],
-                "destination_root": result["destination_root"],
-                "group_count": result["group_count"],
-                "source_path": result["source_path"],
-                "dirty": bool(result["dirty"]),
-                "dirty_reason": result["dirty_reason"],
-                "dirty_at": result["dirty_at"],
-                "groups": groups,
-            }
+        if not self.database_path.exists():
+            return None
+        try:
+            with connect(self.database_path) as connection:
+                result = connection.execute("SELECT * FROM duplicate_results WHERE id = 1").fetchone()
+                if result is None:
+                    return None
+                groups = []
+                group_rows = connection.execute(
+                    """
+                    SELECT * FROM duplicate_groups
+                    WHERE result_id = 1
+                    ORDER BY position, id
+                    """
+                ).fetchall()
+                for group in group_rows:
+                    items = [
+                        {
+                            "role": item["role"],
+                            "path": item["path"],
+                            "exists": bool(item["file_exists"]),
+                        }
+                        for item in connection.execute(
+                            """
+                            SELECT * FROM duplicate_items
+                            WHERE group_row_id = ?
+                            ORDER BY position, id
+                            """,
+                            (group["id"],),
+                        ).fetchall()
+                    ]
+                    groups.append(
+                        {
+                            "group_id": group["group_id"],
+                            "reason": group["reason"],
+                            "hash": group["hash"],
+                            "kept_path": group["kept_path"],
+                            "item_count": group["item_count"],
+                            "items": items,
+                        }
+                    )
+                return {
+                    "generated_at": result["generated_at"],
+                    "destination_root": result["destination_root"],
+                    "group_count": result["group_count"],
+                    "source_path": result["source_path"],
+                    "dirty": bool(result["dirty"]),
+                    "dirty_reason": result["dirty_reason"],
+                    "dirty_at": result["dirty_at"],
+                    "groups": groups,
+                }
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return None
 
     def load_result_page(
         self,
@@ -148,102 +156,116 @@ class DuplicateResultRepository:
         limit: int,
         method: str = "",
     ) -> dict[str, Any] | None:
-        with connect(self.database_path) as connection:
-            result = connection.execute("SELECT * FROM duplicate_results WHERE id = 1").fetchone()
-            if result is None:
-                return None
+        if not self.database_path.exists():
+            return None
+        try:
+            with connect(self.database_path) as connection:
+                result = connection.execute("SELECT * FROM duplicate_results WHERE id = 1").fetchone()
+                if result is None:
+                    return None
 
-            method_counts = {
-                row["reason"]: row["count"]
-                for row in connection.execute(
-                    """
-                    SELECT reason, COUNT(*) AS count
-                    FROM duplicate_groups
-                    WHERE result_id = 1
-                    GROUP BY reason
-                    """
-                ).fetchall()
-            }
-            query = """
-                SELECT * FROM duplicate_groups
-                WHERE result_id = 1
-            """
-            params: list[Any] = []
-            if method:
-                query += " AND lower(reason) = ?"
-                params.append(method.lower())
-            query += " ORDER BY position, id LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-
-            groups = []
-            for group in connection.execute(query, params).fetchall():
-                items = [
-                    {
-                        "role": item["role"],
-                        "path": item["path"],
-                        "exists": bool(item["file_exists"]),
-                    }
-                    for item in connection.execute(
+                method_counts = {
+                    row["reason"]: row["count"]
+                    for row in connection.execute(
                         """
-                        SELECT * FROM duplicate_items
-                        WHERE group_row_id = ?
-                        ORDER BY position, id
-                        """,
-                        (group["id"],),
+                        SELECT reason, COUNT(*) AS count
+                        FROM duplicate_groups
+                        WHERE result_id = 1
+                        GROUP BY reason
+                        """
                     ).fetchall()
-                ]
-                groups.append(
-                    {
-                        "group_id": group["group_id"],
-                        "reason": group["reason"],
-                        "hash": group["hash"],
-                        "kept_path": group["kept_path"],
-                        "item_count": group["item_count"],
-                        "items": items,
-                    }
-                )
+                }
+                query = """
+                    SELECT * FROM duplicate_groups
+                    WHERE result_id = 1
+                """
+                params: list[Any] = []
+                if method:
+                    query += " AND lower(reason) = ?"
+                    params.append(method.lower())
+                query += " ORDER BY position, id LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
 
-            return {
-                "generated_at": result["generated_at"],
-                "destination_root": result["destination_root"],
-                "group_count": result["group_count"],
-                "source_path": result["source_path"],
-                "dirty": bool(result["dirty"]),
-                "dirty_reason": result["dirty_reason"],
-                "dirty_at": result["dirty_at"],
-                "method_counts": method_counts,
-                "groups": groups,
-            }
+                groups = []
+                for group in connection.execute(query, params).fetchall():
+                    items = [
+                        {
+                            "role": item["role"],
+                            "path": item["path"],
+                            "exists": bool(item["file_exists"]),
+                        }
+                        for item in connection.execute(
+                            """
+                            SELECT * FROM duplicate_items
+                            WHERE group_row_id = ?
+                            ORDER BY position, id
+                            """,
+                            (group["id"],),
+                        ).fetchall()
+                    ]
+                    groups.append(
+                        {
+                            "group_id": group["group_id"],
+                            "reason": group["reason"],
+                            "hash": group["hash"],
+                            "kept_path": group["kept_path"],
+                            "item_count": group["item_count"],
+                            "items": items,
+                        }
+                    )
+
+                return {
+                    "generated_at": result["generated_at"],
+                    "destination_root": result["destination_root"],
+                    "group_count": result["group_count"],
+                    "source_path": result["source_path"],
+                    "dirty": bool(result["dirty"]),
+                    "dirty_reason": result["dirty_reason"],
+                    "dirty_at": result["dirty_at"],
+                    "method_counts": method_counts,
+                    "groups": groups,
+                }
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return None
 
     def load_summary(self) -> dict[str, Any]:
-        with connect(self.database_path) as connection:
-            result = connection.execute(
-                "SELECT generated_at, destination_root, group_count, source_path, dirty, dirty_reason, dirty_at FROM duplicate_results WHERE id = 1"
-            ).fetchone()
-            if result is None:
-                return {"available": False, "group_count": 0, "dirty": False}
-            method_counts = {
-                row["reason"]: row["count"]
-                for row in connection.execute(
-                    """
-                    SELECT reason, COUNT(*) AS count
-                    FROM duplicate_groups
-                    WHERE result_id = 1
-                    GROUP BY reason
-                    """
-                ).fetchall()
-            }
-            return {
-                "available": True,
-                "generated_at": result["generated_at"],
-                "destination_root": result["destination_root"],
-                "group_count": result["group_count"],
-                "source_path": result["source_path"],
-                "dirty": bool(result["dirty"]),
-                "dirty_reason": result["dirty_reason"],
-                "dirty_at": result["dirty_at"],
-                "method_counts": method_counts,
-            }
+        if not self.database_path.exists():
+            return {"available": False, "group_count": 0, "dirty": False}
+        try:
+            with connect(self.database_path) as connection:
+                result = connection.execute(
+                    "SELECT generated_at, destination_root, group_count, source_path, dirty, dirty_reason, dirty_at FROM duplicate_results WHERE id = 1"
+                ).fetchone()
+                if result is None:
+                    return {"available": False, "group_count": 0, "dirty": False}
+                method_counts = {
+                    row["reason"]: row["count"]
+                    for row in connection.execute(
+                        """
+                        SELECT reason, COUNT(*) AS count
+                        FROM duplicate_groups
+                        WHERE result_id = 1
+                        GROUP BY reason
+                        """
+                    ).fetchall()
+                }
+                return {
+                    "available": True,
+                    "generated_at": result["generated_at"],
+                    "destination_root": result["destination_root"],
+                    "group_count": result["group_count"],
+                    "source_path": result["source_path"],
+                    "dirty": bool(result["dirty"]),
+                    "dirty_reason": result["dirty_reason"],
+                    "dirty_at": result["dirty_at"],
+                    "method_counts": method_counts,
+                }
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return {"available": False, "group_count": 0, "dirty": False}
 
     def clear_result(self) -> None:
         with connect(self.database_path) as connection:

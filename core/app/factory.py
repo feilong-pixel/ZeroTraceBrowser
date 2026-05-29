@@ -47,6 +47,7 @@ def create_app() -> FastAPI:
         return FileResponse("favicon.ico")
 
     ctx = build_route_context()
+    app.state.route_context = ctx
 
     app.include_router(create_settings_router(ctx))
     app.include_router(create_tasks_router(ctx))

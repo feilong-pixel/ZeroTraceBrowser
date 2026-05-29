@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -10,8 +11,8 @@ from core.storage.database import connect, init_root_database
 
 
 class ImageIndexRepository:
-    def __init__(self, database_path: str | Path):
-        self.database_path = init_root_database(database_path)
+    def __init__(self, database_path: str | Path, *, ensure_schema: bool = True):
+        self.database_path = init_root_database(database_path) if ensure_schema else Path(database_path)
 
     def save_index(
         self,
@@ -127,40 +128,56 @@ class ImageIndexRepository:
             connection.commit()
 
     def load_summary(self, cache_digest: str) -> dict[str, Any] | None:
-        with connect(self.database_path) as connection:
-            row = connection.execute(
-                "SELECT * FROM image_indexes WHERE cache_digest = ?",
-                (cache_digest,),
-            ).fetchone()
-            if row is None:
-                return None
-            preview_items = self.list_images(cache_digest, limit=240)
-            return {
-                "generated_at": row["generated_at"],
-                "timeline_generated_at": row["timeline_generated_at"],
-                "root": row["root"],
-                "total": row["total"],
-                "duplicate_group_count": row["duplicate_group_count"],
-                "items": preview_items,
-            }
+        if not self.database_path.exists():
+            return None
+        try:
+            with connect(self.database_path) as connection:
+                row = connection.execute(
+                    "SELECT * FROM image_indexes WHERE cache_digest = ?",
+                    (cache_digest,),
+                ).fetchone()
+                if row is None:
+                    return None
+                preview_items = self.list_images(cache_digest, limit=240)
+                return {
+                    "generated_at": row["generated_at"],
+                    "timeline_generated_at": row["timeline_generated_at"],
+                    "root": row["root"],
+                    "total": row["total"],
+                    "duplicate_group_count": row["duplicate_group_count"],
+                    "items": preview_items,
+                }
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return None
 
     def load_metadata(self, cache_digest: str) -> dict[str, Any] | None:
-        with connect(self.database_path) as connection:
-            row = connection.execute(
-                "SELECT * FROM image_indexes WHERE cache_digest = ?",
-                (cache_digest,),
-            ).fetchone()
-            if row is None:
-                return None
-            return {
-                "generated_at": row["generated_at"],
-                "timeline_generated_at": row["timeline_generated_at"],
-                "root": row["root"],
-                "total": row["total"],
-                "duplicate_group_count": row["duplicate_group_count"],
-            }
+        if not self.database_path.exists():
+            return None
+        try:
+            with connect(self.database_path) as connection:
+                row = connection.execute(
+                    "SELECT * FROM image_indexes WHERE cache_digest = ?",
+                    (cache_digest,),
+                ).fetchone()
+                if row is None:
+                    return None
+                return {
+                    "generated_at": row["generated_at"],
+                    "timeline_generated_at": row["timeline_generated_at"],
+                    "root": row["root"],
+                    "total": row["total"],
+                    "duplicate_group_count": row["duplicate_group_count"],
+                }
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return None
 
     def list_images(self, cache_digest: str, *, offset: int = 0, limit: int | None = None) -> list[dict[str, Any]]:
+        if not self.database_path.exists():
+            return []
         query = """
             SELECT * FROM image_items
             WHERE cache_digest = ?
@@ -170,46 +187,58 @@ class ImageIndexRepository:
         if limit is not None:
             query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
-        with connect(self.database_path) as connection:
-            return [
-                {
-                    "relative_path": row["relative_path"],
-                    "path": row["path"],
-                    "name": row["name"],
-                    "size": row["size"],
-                    "captured_at": row["captured_at"],
-                    "modified_at": row["modified_at"],
-                    "timeline_time": row["timeline_time"],
-                    "timeline_ts": row["timeline_ts"],
-                    "timeline_source": row["timeline_source"],
-                    "exists": bool(row["file_exists"]),
-                    "hash": row["hash"],
-                    "width": row["width"],
-                    "height": row["height"],
-                }
-                for row in connection.execute(query, params).fetchall()
-            ]
+        try:
+            with connect(self.database_path) as connection:
+                return [
+                    {
+                        "relative_path": row["relative_path"],
+                        "path": row["path"],
+                        "name": row["name"],
+                        "size": row["size"],
+                        "captured_at": row["captured_at"],
+                        "modified_at": row["modified_at"],
+                        "timeline_time": row["timeline_time"],
+                        "timeline_ts": row["timeline_ts"],
+                        "timeline_source": row["timeline_source"],
+                        "exists": bool(row["file_exists"]),
+                        "hash": row["hash"],
+                        "width": row["width"],
+                        "height": row["height"],
+                    }
+                    for row in connection.execute(query, params).fetchall()
+                ]
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return []
 
     def load_timeline_entries(self, cache_digest: str) -> list[dict[str, str]]:
-        with connect(self.database_path) as connection:
-            return [
-                {
-                    "key": row["key"],
-                    "label": row["label"],
-                    "index_label": row["index_label"],
-                }
-                for row in connection.execute(
-                    """
-                    SELECT * FROM timeline_entries
-                    WHERE cache_digest = ?
-                    ORDER BY
-                        CASE WHEN key = 'unknown' THEN 1 ELSE 0 END,
-                        key DESC,
-                        id
-                    """,
-                    (cache_digest,),
-                ).fetchall()
-            ]
+        if not self.database_path.exists():
+            return []
+        try:
+            with connect(self.database_path) as connection:
+                return [
+                    {
+                        "key": row["key"],
+                        "label": row["label"],
+                        "index_label": row["index_label"],
+                    }
+                    for row in connection.execute(
+                        """
+                        SELECT * FROM timeline_entries
+                        WHERE cache_digest = ?
+                        ORDER BY
+                            CASE WHEN key = 'unknown' THEN 1 ELSE 0 END,
+                            key DESC,
+                            id
+                        """,
+                        (cache_digest,),
+                    ).fetchall()
+                ]
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return []
 
     def delete_index(self, cache_digest: str) -> None:
         with connect(self.database_path) as connection:

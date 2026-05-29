@@ -33,14 +33,14 @@ class RootReadService:
     def indexes_dir(self) -> Path:
         return self.context.indexes_dir
 
-    def duplicate_repository(self) -> DuplicateResultRepository:
-        return DuplicateResultRepository(self.database_path)
+    def duplicate_repository(self, *, ensure_schema: bool = True) -> DuplicateResultRepository:
+        return DuplicateResultRepository(self.database_path, ensure_schema=ensure_schema)
 
     def hash_repository(self) -> HashDbRepository:
         return HashDbRepository(self.database_path)
 
     def load_duplicate_result(self) -> dict[str, Any] | None:
-        return self.duplicate_repository().load_result()
+        return self.duplicate_repository(ensure_schema=False).load_result()
 
     def load_duplicate_result_page(
         self,
@@ -49,14 +49,14 @@ class RootReadService:
         limit: int,
         method: str,
     ) -> dict[str, Any] | None:
-        return self.duplicate_repository().load_result_page(
+        return self.duplicate_repository(ensure_schema=False).load_result_page(
             offset=offset,
             limit=limit,
             method=method,
         )
 
     def load_duplicate_summary(self) -> dict[str, Any]:
-        return self.duplicate_repository().load_summary()
+        return self.duplicate_repository(ensure_schema=False).load_summary()
 
     def load_hash_db(self) -> dict[str, dict[str, list[str]]]:
         return self.hash_repository().load_hash_db()

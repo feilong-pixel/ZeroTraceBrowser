@@ -16,6 +16,10 @@ from core.storage.phone_sync_repository import PhoneSyncRepository
 from core.storage.recycle_repository import RecycleRepository
 from core.storage.similarity_repository import SimilarityRepository
 from core.storage.task_repository import TaskRunRepository
+from core.services.image_index_service import (
+    image_scan_cache_key,
+    load_image_index_summary_metadata,
+)
 
 
 def test_root_database_initializes_schema(tmp_path: Path) -> None:
@@ -32,6 +36,12 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        indexes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
             ).fetchall()
         }
     assert {
@@ -60,6 +70,10 @@ def test_root_database_initializes_schema(tmp_path: Path) -> None:
         "import_runs",
         "import_items",
     }.issubset(tables)
+    assert {
+        "idx_image_items_cache_position",
+        "idx_timeline_entries_cache_key",
+    }.issubset(indexes)
 
 
 def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None:
@@ -118,6 +132,31 @@ def test_duplicate_repository_round_trips_current_result(tmp_path: Path) -> None
             }
         ],
     }
+
+
+def test_duplicate_summary_read_does_not_create_missing_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "workspace.sqlite3"
+
+    summary = DuplicateResultRepository(database_path, ensure_schema=False).load_summary()
+
+    assert summary == {"available": False, "group_count": 0, "dirty": False}
+    assert not database_path.exists()
+
+
+def test_image_index_summary_read_does_not_create_missing_database(tmp_path: Path) -> None:
+    root = tmp_path / "images"
+    index_dir = tmp_path / "data" / "roots" / "root-1" / "indexes"
+    cache_key = image_scan_cache_key(root, {".jpg"}, set())
+
+    summary = load_image_index_summary_metadata(index_dir, cache_key)
+
+    assert summary == {
+        "items": [],
+        "total": None,
+        "generated_at": None,
+        "duplicate_group_count": None,
+    }
+    assert not (index_dir.parent / "workspace.sqlite3").exists()
 
 
 def test_image_index_repository_round_trips_summary_images_and_timeline(tmp_path: Path) -> None:
