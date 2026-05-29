@@ -176,6 +176,53 @@ def test_images_async_scan_can_return_cached_total(api_client, monkeypatch) -> N
     assert payload["has_more"] is True
 
 
+def test_images_timeline_group_returns_lightweight_cached_page(api_client, monkeypatch) -> None:
+    client, _, image_root, _ = api_client
+    index_dir = ztb_context.root_image_index_dir(image_root)
+    cache_key = image_scan_cache_key(
+        image_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+    save_image_index_cache(
+        index_dir,
+        cache_key,
+        [
+            indexed_image("may_1.jpg", "2024-05-01T00:00:00"),
+            indexed_image("may_2.jpg", "2024-05-02T00:00:00"),
+            indexed_image("jun.jpg", "2024-06-01T00:00:00"),
+        ],
+    )
+
+    def fail_full_scan(*args, **kwargs):
+        raise AssertionError("timeline group page should not scan the filesystem")
+
+    monkeypatch.setattr(image_scan_service, "list_lightweight_image_metadata", fail_full_scan)
+
+    response = client.get(
+        "/api/images/timeline-group",
+        params={"group_key": "2024-05", "offset": 0, "limit": 1},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_key"] == "2024-05"
+    assert payload["count"] == 1
+    assert payload["has_more"] is True
+    assert payload["next_offset"] == 1
+    assert [item["relative_path"] for item in payload["items"]] == ["may_1.jpg"]
+
+    next_response = client.get(
+        "/api/images/timeline-group",
+        params={"group_key": "2024-05", "offset": 1, "limit": 1},
+    )
+    assert next_response.status_code == 200
+    next_payload = next_response.json()
+    assert next_payload["has_more"] is False
+    assert next_payload["next_offset"] is None
+    assert [item["relative_path"] for item in next_payload["items"]] == ["may_2.jpg"]
+
+
 def test_images_async_scan_starts_refresh_for_preview_cache_on_first_load(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
     monkeypatch.setattr(image_scan_service, "IMAGE_SCAN_CACHE", {})

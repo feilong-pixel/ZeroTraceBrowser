@@ -14,6 +14,24 @@ class ImageIndexRepository:
     def __init__(self, database_path: str | Path, *, ensure_schema: bool = True):
         self.database_path = init_root_database(database_path) if ensure_schema else Path(database_path)
 
+    @staticmethod
+    def _image_item_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "relative_path": row["relative_path"],
+            "path": row["path"],
+            "name": row["name"],
+            "size": row["size"],
+            "captured_at": row["captured_at"],
+            "modified_at": row["modified_at"],
+            "timeline_time": row["timeline_time"],
+            "timeline_ts": row["timeline_ts"],
+            "timeline_source": row["timeline_source"],
+            "exists": bool(row["file_exists"]),
+            "hash": row["hash"],
+            "width": row["width"],
+            "height": row["height"],
+        }
+
     def save_index(
         self,
         cache_digest: str,
@@ -190,21 +208,55 @@ class ImageIndexRepository:
         try:
             with connect(self.database_path) as connection:
                 return [
-                    {
-                        "relative_path": row["relative_path"],
-                        "path": row["path"],
-                        "name": row["name"],
-                        "size": row["size"],
-                        "captured_at": row["captured_at"],
-                        "modified_at": row["modified_at"],
-                        "timeline_time": row["timeline_time"],
-                        "timeline_ts": row["timeline_ts"],
-                        "timeline_source": row["timeline_source"],
-                        "exists": bool(row["file_exists"]),
-                        "hash": row["hash"],
-                        "width": row["width"],
-                        "height": row["height"],
-                    }
+                    self._image_item_from_row(row)
+                    for row in connection.execute(query, params).fetchall()
+                ]
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            return []
+
+    def list_images_for_timeline_group(
+        self,
+        cache_digest: str,
+        group_key: str,
+        *,
+        offset: int = 0,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        if not self.database_path.exists():
+            return []
+        group = str(group_key or "").strip()
+        if not group:
+            return []
+
+        query = """
+            SELECT * FROM image_items
+            WHERE cache_digest = ?
+              AND file_exists = 1
+              AND timeline_time LIKE ?
+            ORDER BY position, id
+            LIMIT ? OFFSET ?
+        """
+        params: list[Any] = [cache_digest, f"{group}%", limit, offset]
+        if group == "unknown":
+            query = """
+                SELECT * FROM image_items
+                WHERE cache_digest = ?
+                  AND file_exists = 1
+                  AND (
+                    timeline_time = ''
+                    OR timeline_time NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]*'
+                  )
+                ORDER BY position, id
+                LIMIT ? OFFSET ?
+            """
+            params = [cache_digest, limit, offset]
+
+        try:
+            with connect(self.database_path) as connection:
+                return [
+                    self._image_item_from_row(row)
                     for row in connection.execute(query, params).fetchall()
                 ]
         except sqlite3.OperationalError as exc:

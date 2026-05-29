@@ -30,6 +30,7 @@ from core.services.image_index_service import (
     load_full_image_index_cache,
     load_image_index_cache,
     load_image_index_summary_metadata,
+    load_timeline_group_image_page,
     load_timeline_index_cache,
     save_image_index_cache,
     save_image_index_summary,
@@ -323,6 +324,44 @@ def get_images_for_timeline_group(
         "group_key": group_key,
         "items": group_items,
         "count": len(group_items),
+    }
+
+
+def get_images_for_timeline_group_page(
+    index_dir: Path,
+    root: Path,
+    supported_extensions: set[str],
+    excluded_scan_dirs: set[str],
+    group_key: str,
+    offset: int = 0,
+    limit: int = 300,
+) -> dict[str, Any]:
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be greater than or equal to 0")
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="limit must be greater than 0")
+
+    cache_key = image_scan_cache_key(root, supported_extensions, excluded_scan_dirs)
+    page_items = load_timeline_group_image_page(
+        index_dir,
+        cache_key,
+        group_key,
+        offset=offset,
+        limit=limit + 1,
+    )
+    has_more = len(page_items) > limit
+    items = page_items[:limit]
+    next_offset = offset + len(items)
+    return {
+        "root": str(root),
+        "group_key": group_key,
+        "items": items,
+        "count": len(items),
+        "offset": offset,
+        "limit": limit,
+        "next_offset": next_offset if has_more else None,
+        "has_more": has_more,
+        "from_cache": True,
     }
 
 

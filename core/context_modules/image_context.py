@@ -38,6 +38,19 @@ def get_images_for_timeline_group(root: Path, group_key: str) -> dict[str, Any]:
     )
 
 
+def get_images_for_timeline_group_page(root: Path, group_key: str, offset: int = 0, limit: int = 300) -> dict[str, Any]:
+    ensure_root_workspace(root)
+    return get_images_for_timeline_group_page_service(
+        image_index_dir_for_read(root),
+        root,
+        SUPPORTED_EXTENSIONS,
+        SKIP_SCAN_DIR_NAMES,
+        group_key,
+        offset,
+        limit,
+    )
+
+
 def clear_image_list_cache(root: Path | None = None) -> None:
     clear_image_list_cache_service(root)
 

@@ -13,6 +13,7 @@ const LOAD_MORE_THRESHOLD_PAGES = 2;
 const LOAD_MORE_RECHECK_DELAY_MS = 220;
 const LOAD_MORE_EMPTY_RECHECK_DELAY_MS = 1600;
 const IMAGE_PAGE_SIZE = 48;
+const TIMELINE_GROUP_PAGE_SIZE = 300;
 const THUMBNAIL_CONCURRENCY = 3;
 const GALLERY_VIEW_STATE_KEY = "zerotrace.galleryViewState";
 const GALLERY_SCROLL_SAVE_INTERVAL_MS = 250;
@@ -1193,9 +1194,13 @@ function clearImageRefreshTimers(state) {
   state.hasPendingUiRefresh = false;
 }
 
-async function fetchImagesByTimelineGroup(groupKey) {
-  const params = new URLSearchParams({ group_key: groupKey });
-  return fetchJson(`/api/images/by-group?${params.toString()}`);
+async function fetchImagesByTimelineGroup(groupKey, offset = 0) {
+  const params = new URLSearchParams({
+    group_key: groupKey,
+    offset: String(offset),
+    limit: String(TIMELINE_GROUP_PAGE_SIZE),
+  });
+  return fetchJson(`/api/images/timeline-group?${params.toString()}`);
 }
 
 function mergeImageItems(state, items) {

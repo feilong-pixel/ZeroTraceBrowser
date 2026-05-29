@@ -204,6 +204,26 @@ def test_image_index_repository_round_trips_summary_images_and_timeline(tmp_path
     ]
 
 
+def test_image_index_repository_lists_timeline_group_page(tmp_path: Path) -> None:
+    repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
+    repository.save_index(
+        "digest",
+        root=str(tmp_path / "images"),
+        generated_at="2026-05-13T10:00:00",
+        total=4,
+        items=[
+            {"relative_path": "may_1.jpg", "timeline_time": "2026-05-01 10:00:00"},
+            {"relative_path": "may_2.jpg", "timeline_time": "2026-05-02 10:00:00"},
+            {"relative_path": "jun.jpg", "timeline_time": "2026-06-01 10:00:00"},
+            {"relative_path": "deleted.jpg", "timeline_time": "2026-05-03 10:00:00", "exists": False},
+        ],
+    )
+
+    page = repository.list_images_for_timeline_group("digest", "2026-05", offset=1, limit=2)
+
+    assert [item["relative_path"] for item in page] == ["may_2.jpg"]
+
+
 def test_image_index_save_upserts_items_and_deletes_missing_paths(tmp_path: Path) -> None:
     repository = ImageIndexRepository(tmp_path / "workspace.sqlite3")
 

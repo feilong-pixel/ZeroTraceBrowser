@@ -166,6 +166,25 @@ def load_full_image_index_cache(
     return repository.list_images(digest_for_cache_key(cache_key))
 
 
+def load_timeline_group_image_page(
+    index_dir: Path,
+    cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
+    group_key: str,
+    *,
+    offset: int = 0,
+    limit: int = 300,
+) -> list[dict[str, Any]]:
+    repository = image_index_repository(index_dir, ensure_schema=False)
+    if repository is None:
+        return []
+    return repository.list_images_for_timeline_group(
+        digest_for_cache_key(cache_key),
+        group_key,
+        offset=offset,
+        limit=limit,
+    )
+
+
 def load_timeline_index_cache(
     index_dir: Path,
     cache_key: tuple[str, tuple[str, ...], tuple[str, ...]],
