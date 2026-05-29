@@ -65,6 +65,7 @@ function createIndexState() {
     selectedPaths: new Set(),
     lastSelectedPath: null,
     activeDuplicateGroupId: null,
+    activeTimelineGroupKey: "",
     imagesLoadToken: 0,
     isImageListLoading: false,
     isLoadingMoreImages: false,
@@ -126,6 +127,7 @@ function saveGalleryViewState(els, state) {
     dateStart: els.dateStartInput?.value || "",
     dateEnd: els.dateEndInput?.value || "",
     duplicateGroupId: state.activeDuplicateGroupId || "",
+    timelineGroupKey: state.activeTimelineGroupKey || "",
     savedAt: Date.now(),
   };
 
@@ -732,6 +734,7 @@ function renderTimelineIndex(els, state) {
       }
 
       if (entry.y === null && entry.groupKey) {
+        state.activeTimelineGroupKey = entry.groupKey;
         loadTimelineGroup(els, state, entry.groupKey).catch((error) => {
           setStatus(els, error.message, true);
         });
@@ -739,6 +742,7 @@ function renderTimelineIndex(els, state) {
       }
 
       if (!els.galleryScroller || entry.y === null) return;
+      state.activeTimelineGroupKey = entry.groupKey || "";
       els.galleryScroller.scrollTo({ top: entry.y, behavior: "smooth" });
       updateStickyHeader(els, state);
     });
@@ -783,6 +787,7 @@ function updateStickyHeader(els, state) {
     els.galleryStickyHeader.textContent = activeLabel;
   }
   state.virtual.activeIndexKey = activeGroup?.key || "";
+  state.activeTimelineGroupKey = activeGroup?.key || "";
 
   if (!els.galleryIndex) return;
 
@@ -1236,6 +1241,7 @@ async function loadTimelineGroup(els, state, groupKey) {
   if (!groupKey) return;
 
   setStatus(els, t("browser.status.loadingImages"));
+  state.activeTimelineGroupKey = groupKey;
   state.isImageListLoading = true;
   state.isLoadingMoreImages = false;
   state.lastLoadMoreOffset = null;
@@ -1839,6 +1845,14 @@ async function initializeIndexPage(els, state) {
   }
 
   const savedViewState = readGalleryViewState(state.config.active_root);
+  const savedTimelineGroupKey =
+    savedViewState &&
+    (savedViewState.query || "") === query &&
+    (savedViewState.dateStart || "") === startDate &&
+    (savedViewState.dateEnd || "") === endDate &&
+    (savedViewState.duplicateGroupId || "") === (duplicateGroupId || "")
+      ? savedViewState.timelineGroupKey || ""
+      : "";
   if (
     savedViewState &&
     (savedViewState.query || "") === query &&
@@ -1852,6 +1866,11 @@ async function initializeIndexPage(els, state) {
   translatePage(els, state);
   await loadImages(els, state);
   loadDeferredIndexData(els, state);
+
+  if (selected && !state.hasRestoredSelectedPath && savedTimelineGroupKey) {
+    await loadTimelineGroup(els, state, savedTimelineGroupKey);
+  }
+
   if (!restorePendingSelectedPath(els, state)) {
     restoreGalleryScrollPosition(els, state);
   }
