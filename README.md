@@ -17,6 +17,16 @@ It does not try to be an all-in-one media manager, and it does not make decision
 
 ---
 
+## Project Status
+
+**Current baseline:** `v0.5.0 stable baseline` — 2026-05-29
+
+This baseline marks the first stable usable release of ZeroTraceBrowser. The core local photo workflow is now usable with large libraries: direct gallery browsing, fast Timeline jumps, viewer first-paint priority, background viewer context hydration, return-to-Timeline behavior, duplicate review, app-level recycle handling, and iPhone import are all connected into a controlled workflow.
+
+Future `v0.5.x` releases will focus on polishing and hardening this stable baseline.
+
+---
+
 ## Use Cases
 
 ZeroTraceBrowser is useful as a:
@@ -488,7 +498,7 @@ If this project is useful to you, contributions are welcome:
 
 ## Status
 
-Current version: v0.4.1
+Current version: v0.5.0
 
 This is an early local-first release for technical users.
 A packaged desktop release may be considered later.
