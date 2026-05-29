@@ -22,6 +22,9 @@ function getRecycleElements() {
     recycleLogSummary: $("#recycleLogSummary"),
 
     refreshRecycleButton: $("#refreshRecycleButton"),
+    recycleSearchInput: $("#recycleSearchInput"),
+    prevRecyclePageTopButton: $("#prevRecyclePageTopButton"),
+    nextRecyclePageTopButton: $("#nextRecyclePageTopButton"),
     prevRecyclePageButton: $("#prevRecyclePageButton"),
     nextRecyclePageButton: $("#nextRecyclePageButton"),
     clearRecycleLogsButton: $("#clearRecycleLogsButton"),
@@ -42,6 +45,7 @@ function createRecycleState() {
     logs: [],
     logTotal: 0,
     logFilter: "all",
+    searchQuery: "",
     itemStatuses: {},
     isBusy: false,
     allowNavigation: false,
@@ -91,6 +95,15 @@ function setBusyState(els, state, isBusy) {
   }
   if (els.recycleLogFilter) {
     els.recycleLogFilter.disabled = isBusy;
+  }
+  if (els.recycleSearchInput) {
+    els.recycleSearchInput.disabled = isBusy;
+  }
+  if (els.prevRecyclePageTopButton) {
+    els.prevRecyclePageTopButton.disabled = isBusy || els.prevRecyclePageTopButton.disabled;
+  }
+  if (els.nextRecyclePageTopButton) {
+    els.nextRecyclePageTopButton.disabled = isBusy || els.nextRecyclePageTopButton.disabled;
   }
   if (els.prevRecyclePageButton) {
     els.prevRecyclePageButton.disabled = isBusy || els.prevRecyclePageButton.disabled;
@@ -203,13 +216,32 @@ function totalRecyclePages(state) {
   return Math.max(1, Math.ceil(state.recycleTotal / state.pageSize));
 }
 
+function normalizedRecycleSearch(state) {
+  return String(state.searchQuery || "").trim().toLowerCase();
+}
+
+function recycleSearchText(item) {
+  return [
+    item.name,
+    item.relative_path,
+    item.deleted_to,
+    item.original_path,
+  ].filter(Boolean).join("\n").toLowerCase();
+}
+
+function filteredRecycleItems(state) {
+  const query = normalizedRecycleSearch(state);
+  if (!query) return state.recycle;
+  return state.recycle.filter((item) => recycleSearchText(item).includes(query));
+}
+
 function setRecyclePaginationVisible(els, visible) {
   if (!els.recyclePagination) return;
   els.recyclePagination.classList.toggle("is-hidden", !visible);
 }
 
 function clearRecycleConfirmMessage(state) {
-  const count = state.recycle.length;
+  const count = filteredRecycleItems(state).length;
   return state.systemRecycleSupported
     ? t("recycle.confirmClear.messageSystemRecycle", count)
     : t("recycle.confirmClear.messagePermanent", count);
@@ -224,16 +256,21 @@ function purgeConfirmMessage(state, deletedTo) {
 function renderRecycleItems(els, state) {
   const total = state.recycleTotal;
   const totalPages = totalRecyclePages(state);
+  const visibleItems = filteredRecycleItems(state);
+  const searchQuery = normalizedRecycleSearch(state);
   state.page = Math.min(state.page, totalPages);
 
   setText(els.recycleCount, t("recycle.itemCount", total));
   setText(els.summaryRecycleCount, String(total));
   setText(els.recyclePageInfo, t("recycle.pageInfo", state.page, totalPages));
+  if (els.recycleSearchInput && els.recycleSearchInput.value !== state.searchQuery) {
+    els.recycleSearchInput.value = state.searchQuery;
+  }
   if (els.clearRecycleButton) {
-    els.clearRecycleButton.disabled = state.isBusy || state.recycle.length === 0;
-    els.clearRecycleButton.title = state.recycle.length === 0
+    els.clearRecycleButton.disabled = state.isBusy || visibleItems.length === 0;
+    els.clearRecycleButton.title = visibleItems.length === 0
       ? t("recycle.noRecycleItems")
-      : t("recycle.clearCurrentPageTitle", state.recycle.length);
+      : t(searchQuery ? "recycle.clearSearchResultsTitle" : "recycle.clearCurrentPageTitle", visibleItems.length);
   }
   if (els.clearRecycle100Button) {
     els.clearRecycle100Button.disabled = state.isBusy || state.recycle.length === 0;
@@ -247,6 +284,12 @@ function renderRecycleItems(els, state) {
   if (els.nextRecyclePageButton) {
     els.nextRecyclePageButton.disabled = state.isBusy || state.page >= totalPages;
   }
+  if (els.prevRecyclePageTopButton) {
+    els.prevRecyclePageTopButton.disabled = state.isBusy || state.page <= 1;
+  }
+  if (els.nextRecyclePageTopButton) {
+    els.nextRecyclePageTopButton.disabled = state.isBusy || state.page >= totalPages;
+  }
 
   if (!state.recycle.length) {
     els.recycleList.className = "recycle-list muted";
@@ -255,9 +298,16 @@ function renderRecycleItems(els, state) {
     return;
   }
 
+  if (!visibleItems.length) {
+    els.recycleList.className = "recycle-list muted";
+    setText(els.recycleList, t("recycle.noRecycleSearchResults"));
+    setRecyclePaginationVisible(els, totalPages > 1);
+    return;
+  }
+
   setRecyclePaginationVisible(els, totalPages > 1);
   els.recycleList.className = "recycle-list";
-  els.recycleList.innerHTML = state.recycle
+  els.recycleList.innerHTML = visibleItems
     .map(
       (item) => {
         const isTerminal = isTerminalRecycleItem(state, item.deleted_to);
@@ -410,6 +460,7 @@ async function loadAll(els, state) {
 
     state.recycle = recyclePayload.items || [];
     state.recycleTotal = Number(recyclePayload.count || state.recycle.length);
+    state.searchQuery = "";
 
     renderRecycleItems(els, state);
     renderLogs(els, state);
@@ -439,6 +490,7 @@ async function loadRecyclePage(els, state) {
     const recyclePayload = await fetchJson(recyclePageUrl(state));
     state.recycle = recyclePayload.items || [];
     state.recycleTotal = Number(recyclePayload.count || state.recycle.length);
+    state.searchQuery = "";
     const totalPages = totalRecyclePages(state);
     if (!state.recycle.length && state.recycleTotal > 0 && state.page > totalPages) {
       state.page = totalPages;
@@ -490,7 +542,7 @@ async function restoreItem(els, state, deletedTo) {
 
 async function clearRecycleBin(els, state) {
   if (state.isBusy) return;
-  const items = [...state.recycle];
+  const items = [...filteredRecycleItems(state)];
   if (!items.length) return;
 
   const confirmed = await showConfirm(
@@ -753,6 +805,27 @@ function bindRecycleEvents(els, state) {
       setStatus(els, error.message);
       renderRecycleItems(els, state);
     });
+  });
+
+  on(els.prevRecyclePageTopButton, "click", () => {
+    state.page = Math.max(1, state.page - 1);
+    loadRecyclePage(els, state).catch((error) => {
+      setStatus(els, error.message);
+      renderRecycleItems(els, state);
+    });
+  });
+
+  on(els.nextRecyclePageTopButton, "click", () => {
+    state.page = Math.min(totalRecyclePages(state), state.page + 1);
+    loadRecyclePage(els, state).catch((error) => {
+      setStatus(els, error.message);
+      renderRecycleItems(els, state);
+    });
+  });
+
+  on(els.recycleSearchInput, "input", () => {
+    state.searchQuery = els.recycleSearchInput.value || "";
+    renderRecycleItems(els, state);
   });
 
   on(els.clearRecycleButton, "click", () => {

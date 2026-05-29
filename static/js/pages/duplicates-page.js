@@ -17,6 +17,8 @@ function getDuplicatesElements() {
     duplicatesPagination: $("#duplicatesPagination"),
 
     pageInfo: $("#pageInfo"),
+    prevPageTopButton: $("#prevPageTopButton"),
+    nextPageTopButton: $("#nextPageTopButton"),
     prevPageButton: $("#prevPageButton"),
     nextPageButton: $("#nextPageButton"),
     refreshDuplicatesButton: $("#refreshDuplicatesButton"),
@@ -171,6 +173,12 @@ function setBusyState(els, state, isBusy) {
   }
   if (els.nextPageButton) {
     els.nextPageButton.disabled = isBusy || els.nextPageButton.disabled;
+  }
+  if (els.prevPageTopButton) {
+    els.prevPageTopButton.disabled = isBusy || els.prevPageTopButton.disabled;
+  }
+  if (els.nextPageTopButton) {
+    els.nextPageTopButton.disabled = isBusy || els.nextPageTopButton.disabled;
   }
   if (els.openResultRootButton) {
     els.openResultRootButton.disabled = isBusy || els.openResultRootButton.disabled;
@@ -385,6 +393,8 @@ function renderDuplicatesPage(els, state) {
 
     els.prevPageButton.disabled = true;
     els.nextPageButton.disabled = true;
+    els.prevPageTopButton.disabled = true;
+    els.nextPageTopButton.disabled = true;
     els.openResultRootButton.disabled = true;
     setPaginationVisible(els, false);
     return;
@@ -402,6 +412,8 @@ function renderDuplicatesPage(els, state) {
 
     els.prevPageButton.disabled = true;
     els.nextPageButton.disabled = true;
+    els.prevPageTopButton.disabled = true;
+    els.nextPageTopButton.disabled = true;
     els.openResultRootButton.disabled = !payload.destination_root;
     setPaginationVisible(els, false);
     return;
@@ -431,6 +443,8 @@ function renderDuplicatesPage(els, state) {
 
   els.prevPageButton.disabled = state.page <= 1;
   els.nextPageButton.disabled = state.page >= total;
+  els.prevPageTopButton.disabled = state.page <= 1;
+  els.nextPageTopButton.disabled = state.page >= total;
   els.openResultRootButton.disabled = !payload.destination_root;
 
   const bulkItems = currentPageDuplicateItems(state);
@@ -451,6 +465,8 @@ function renderDuplicatesPage(els, state) {
     els.duplicatesList.innerHTML = "";
     els.prevPageButton.disabled = true;
     els.nextPageButton.disabled = true;
+    els.prevPageTopButton.disabled = true;
+    els.nextPageTopButton.disabled = true;
     setPaginationVisible(els, false);
     return;
   }
@@ -776,20 +792,28 @@ function bindLeaveGuard(els, state) {
 }
 
 function bindDuplicatesEvents(els, state) {
-  on(els.prevPageButton, "click", () => {
-    state.page = Math.max(1, state.page - 1);
+  const goToPage = (page) => {
+    state.page = Math.min(totalPages(state), Math.max(1, page));
     loadDuplicatesPage(els, state).catch((error) => {
       setSummaryStatus(els, error.message);
       renderDuplicatesPage(els, state);
     });
+  };
+
+  on(els.prevPageButton, "click", () => {
+    goToPage(state.page - 1);
   });
 
   on(els.nextPageButton, "click", () => {
-    state.page = Math.min(totalPages(state), state.page + 1);
-    loadDuplicatesPage(els, state).catch((error) => {
-      setSummaryStatus(els, error.message);
-      renderDuplicatesPage(els, state);
-    });
+    goToPage(state.page + 1);
+  });
+
+  on(els.prevPageTopButton, "click", () => {
+    goToPage(state.page - 1);
+  });
+
+  on(els.nextPageTopButton, "click", () => {
+    goToPage(state.page + 1);
   });
 
   on(els.refreshDuplicatesButton, "click", () => {
