@@ -48,10 +48,12 @@ function createViewerState() {
     query: "",
     dateStart: "",
     dateEnd: "",
+    timelineGroup: "",
     hasMoreImages: false,
     nextImagesOffset: 0,
     imagesLoadToken: 0,
     isLoadingMoreImages: false,
+    isContextLoading: false,
     backgroundLoadHandle: 0,
     exifLoadToken: 0,
     returnTo: "",
@@ -104,6 +106,12 @@ function updateZoomText(els, state) {
   );
 }
 
+function updateViewerNavigationState(els, state) {
+  const disabled = state.isContextLoading || state.filtered.length <= 1;
+  els.viewerPrevButton.disabled = disabled;
+  els.viewerNextButton.disabled = disabled;
+}
+
 function applyImageTransform(els, state) {
   els.viewerImage.style.transform = `scale(${state.zoom}) rotate(${state.rotation}deg)`;
 }
@@ -111,6 +119,17 @@ function applyImageTransform(els, state) {
 function isVideoItem(item) {
   const path = String(item?.relative_path || "").toLowerCase();
   return item?.media_type === "video" || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(path);
+}
+
+function imageItemFromPath(path) {
+  const normalizedPath = String(path || "");
+  const name = normalizedPath.split(/[\\/]/).pop() || normalizedPath;
+  return {
+    relative_path: normalizedPath,
+    path: normalizedPath,
+    name,
+    media_type: isVideoItem({ relative_path: normalizedPath }) ? "video" : "image",
+  };
 }
 
 function translateViewerPage(els, state) {
@@ -307,6 +326,7 @@ function scheduleBackgroundImageLoad(els, state) {
         updateImagePaginationState(state, data);
         applyViewerFilters(state);
         updateZoomText(els, state);
+        updateViewerNavigationState(els, state);
       } catch {
         return;
       } finally {
@@ -446,6 +466,7 @@ async function openAt(els, state, index) {
   }
 
   updateZoomText(els, state);
+  updateViewerNavigationState(els, state);
   loadExif(els, state).catch(() => {
     setText(els.viewerExifBox, t("viewer.exif.failed"));
     els.viewerExifBox.className = "muted";
@@ -474,6 +495,7 @@ async function openSelectedFolder(els, state) {
 }
 
 function shiftImage(els, state, delta) {
+  if (state.isContextLoading) return;
   if (!state.filtered.length) return;
 
   openAt(
@@ -515,6 +537,10 @@ function goBack(state) {
 
   if (state.dateEnd) {
     params.set("to", state.dateEnd);
+  }
+
+  if (state.timelineGroup) {
+    params.set("timeline_group", state.timelineGroup);
   }
 
   if (state.selected) {
@@ -740,19 +766,53 @@ async function initializeViewerPage(els, state) {
   state.query = params.get("q") || "";
   state.dateStart = params.get("from") || "";
   state.dateEnd = params.get("to") || "";
+  state.timelineGroup = params.get("timeline_group") || "";
   state.returnTo = safeReturnTo(params.get("return_to") || "");
 
   await loadConfig(state);
   translateViewerPage(els, state);
+
+  if (path) {
+    const initialItem = imageItemFromPath(path);
+    state.items = [initialItem];
+    state.filtered = [initialItem];
+    await openAt(els, state, 0);
+    hydrateViewerContext(els, state, path);
+    return;
+  }
+
   setStatus(els, t("browser.status.loadingImages"));
-  await loadImages(els, state, path || "");
+  await loadImages(els, state, "");
 
-  const index = state.filtered.findIndex(
-    (item) => item.relative_path === path,
-  );
-
-  await openAt(els, state, index >= 0 ? index : 0);
+  await openAt(els, state, 0);
+  updateViewerNavigationState(els, state);
   setStatus(els, t("viewer.status.ready"));
+}
+
+async function hydrateViewerContext(els, state, path) {
+  state.isContextLoading = true;
+  updateViewerNavigationState(els, state);
+  setStatus(els, t("browser.status.loadingImages"));
+
+  try {
+    await loadImages(els, state, path);
+    const index = state.filtered.findIndex((item) => item.relative_path === path);
+    if (index >= 0) {
+      const item = state.filtered[index];
+      state.index = index;
+      state.selected = item.relative_path;
+      setText(els.viewerName, item.name);
+      setText(els.viewerPath, item.relative_path);
+      els.viewerOpenEditorButton.disabled = isVideoItem(item);
+    }
+    setStatus(els, t("viewer.status.ready"));
+  } catch (error) {
+    setStatus(els, error.message, true);
+  } finally {
+    state.isContextLoading = false;
+    updateZoomText(els, state);
+    updateViewerNavigationState(els, state);
+  }
 }
 
 function renderViewerInitialState(els) {

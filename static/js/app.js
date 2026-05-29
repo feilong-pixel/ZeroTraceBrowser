@@ -4,8 +4,8 @@ import { initLang, scheduleI18nFallback, translateStaticText } from "./locales/i
 import { applyStoredDisplayStyle } from "./core/theme.js";
 
 import { initSettingsPage } from "./pages/settings-page.js?v=20260424-io9";
-import { initIndexPage } from "./pages/index-page.js?v=20260429-timeline2";
-import { initViewerPage } from "./pages/viewer-page.js?v=20260513-viewer-media";
+import { initIndexPage } from "./pages/index-page.js?v=20260529-selected-return";
+import { initViewerPage } from "./pages/viewer-page.js?v=20260529-viewer-first-paint";
 import { initDuplicatesPage } from "./pages/duplicates-page.js?v=20260424-io10";
 import { initRecyclePage } from "./pages/recycle-page.js?v=20260424-io9";
 import { initTasksPage } from "./pages/tasks-page.js?v=20260513-db-cleanup";

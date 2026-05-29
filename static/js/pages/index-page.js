@@ -81,7 +81,9 @@ function createIndexState() {
     loadMoreRecheckTimer: 0,
     hasPendingUiRefresh: false,
     pendingRestoreScrollTop: null,
+    pendingSelectedPath: "",
     hasRestoredScroll: false,
+    hasRestoredSelectedPath: false,
     lastScrollSaveAt: 0,
     timelineIndexEntries: [],
     virtual: {
@@ -909,6 +911,19 @@ function scrollToGalleryPath(els, state, path) {
   }
 }
 
+function restorePendingSelectedPath(els, state) {
+  if (!state.pendingSelectedPath || state.hasRestoredSelectedPath) return false;
+  if (!state.filtered.some((item) => item.relative_path === state.pendingSelectedPath)) return false;
+
+  state.selectedPaths.add(state.pendingSelectedPath);
+  state.lastSelectedPath = state.pendingSelectedPath;
+  scrollToGalleryPath(els, state, state.pendingSelectedPath);
+  updateSelection(els, state);
+  state.hasRestoredSelectedPath = true;
+  state.pendingSelectedPath = "";
+  return true;
+}
+
 function renderDuplicates(els, state) {
   const payload = state.duplicates;
 
@@ -1281,6 +1296,7 @@ async function loadImages(els, state) {
 
   state.isImageListLoading = false;
   applyFilter(els, state);
+  restorePendingSelectedPath(els, state);
 
   setStatus(
     els,
@@ -1304,6 +1320,7 @@ async function loadImages(els, state) {
 function refreshGalleryFromBackground(els, state) {
   state.hasPendingUiRefresh = false;
   applyFilter(els, state, { resetScroll: false });
+  restorePendingSelectedPath(els, state);
   updateStickyHeader(els, state);
   setStatus(
     els,
@@ -1798,6 +1815,7 @@ async function initializeIndexPage(els, state) {
 
   await loadConfig(els, state);
   state.activeDuplicateGroupId = duplicateGroupId;
+  state.pendingSelectedPath = selected || "";
 
   if (query && els.searchInput) {
     els.searchInput.value = query;
@@ -1829,11 +1847,13 @@ async function initializeIndexPage(els, state) {
   translatePage(els, state);
   await loadImages(els, state);
   loadDeferredIndexData(els, state);
-  restoreGalleryScrollPosition(els, state);
+  if (!restorePendingSelectedPath(els, state)) {
+    restoreGalleryScrollPosition(els, state);
+  }
 
   if (
     selected &&
-    !state.pendingRestoreScrollTop &&
+    !state.hasRestoredSelectedPath &&
     state.filtered.some((item) => item.relative_path === selected)
   ) {
     state.selectedPaths.add(selected);
