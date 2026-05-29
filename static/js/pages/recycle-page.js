@@ -141,6 +141,10 @@ function statusClassFor(state, deletedTo) {
   return "";
 }
 
+function isTerminalRecycleItem(state, deletedTo) {
+  return state.itemStatuses[deletedTo] === "restored" || state.itemStatuses[deletedTo] === "purged";
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -255,7 +259,10 @@ function renderRecycleItems(els, state) {
   els.recycleList.className = "recycle-list";
   els.recycleList.innerHTML = state.recycle
     .map(
-      (item) => `
+      (item) => {
+        const isTerminal = isTerminalRecycleItem(state, item.deleted_to);
+
+        return `
       <article class="recycle-item">
         <div class="recycle-item-layout">
           <div class="recycle-thumb-column ${isVideoPath(item.relative_path || item.deleted_to) ? "is-video" : ""}">
@@ -298,7 +305,7 @@ function renderRecycleItems(els, state) {
                 type="button"
                 data-action="restore"
                 data-path="${item.deleted_to}"
-                ${state.isBusy || !item.restorable || item.original_exists ? "disabled" : ""}
+                ${state.isBusy || isTerminal || !item.restorable || item.original_exists ? "disabled" : ""}
               >
                 ${t("recycle.restoreButton")}
               </button>
@@ -307,7 +314,7 @@ function renderRecycleItems(els, state) {
                 class="danger"
                 data-action="purge"
                 data-path="${item.deleted_to}"
-                ${state.isBusy ? "disabled" : ""}
+                ${state.isBusy || isTerminal ? "disabled" : ""}
               >
                 ${t("recycle.confirmPurge.confirm")}
               </button>
@@ -315,7 +322,8 @@ function renderRecycleItems(els, state) {
           </div>
         </div>
       </article>
-    `,
+    `;
+      },
     )
     .join("");
 }
@@ -708,6 +716,7 @@ function bindRecycleEvents(els, state) {
   on(els.recycleList, "click", (event) => {
     const button = event.target.closest("[data-action]");
     if (!button) return;
+    if (button.disabled || isTerminalRecycleItem(state, button.dataset.path)) return;
 
     if (button.dataset.action === "restore") {
       restoreItem(els, state, button.dataset.path).catch((error) => {
