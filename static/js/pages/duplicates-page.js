@@ -107,6 +107,15 @@ function duplicateFileName(path) {
   return String(path || "").split(/[\\/]/).pop() || String(path || "");
 }
 
+function isDeviceOriginalName(path) {
+  return /^IMG[\s_.-]?\w*/i.test(duplicateFileName(path));
+}
+
+function hasDuplicateSuffix(path) {
+  const name = duplicateFileName(path).replace(/\.[^.]*$/, "");
+  return /(?:^|[\s_.-])dup(?:licate)?[\s_.-]?\d*$/i.test(name);
+}
+
 function duplicateDirectory(path) {
   const value = String(path || "");
   const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
@@ -262,14 +271,29 @@ function chooseInitialMethod(payload, currentMethod) {
 
 function currentPageDuplicateItems(state) {
   // Server pagination means this intentionally returns only the current page.
-  return filteredGroups(state).flatMap((group) =>
-    (group.items || [])
-      .filter((item) => item.exists !== false && item.role === "duplicate" && item.path)
-      .map((item) => ({
-        groupId: group.group_id,
-        path: item.path,
-      })),
-  );
+  return filteredGroups(state).flatMap((group) => bulkDeleteItemsForGroup(group));
+}
+
+function bulkDeleteItemsForGroup(group) {
+  const availableItems = (group.items || []).filter((item) => item.exists !== false && item.path);
+  if (availableItems.length < 2) return [];
+
+  const protectedItem = preferredKeepItem(availableItems);
+  return availableItems
+    .filter((item) => item.path !== protectedItem.path)
+    .map((item) => ({
+      groupId: group.group_id,
+      path: item.path,
+    }));
+}
+
+function preferredKeepItem(items) {
+  const deviceOriginals = items.filter((item) => isDeviceOriginalName(item.path) && !hasDuplicateSuffix(item.path));
+  const nonDuplicateSuffixItems = items.filter((item) => !hasDuplicateSuffix(item.path));
+  const candidates = deviceOriginals.length
+    ? deviceOriginals
+    : (nonDuplicateSuffixItems.length ? nonDuplicateSuffixItems : items);
+  return candidates.find((item) => item.role === "kept") || candidates[0];
 }
 
 function strictDuplicateItems(state) {

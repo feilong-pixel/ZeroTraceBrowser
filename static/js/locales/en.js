@@ -278,11 +278,11 @@ export default {
     bulkStrict100Title: "Move strict duplicate files from the next 100 groups to the Recycle Bin",
     bulkStrictTitle: (count) => `Move ${count} strict duplicate files from this page to the Recycle Bin`,
     confirmBulkCurrentPageDelete: (count, method) =>
-            `This will move ${count} ${method} duplicate files from the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
+            `This will move ${count} ${method} duplicate files from the current page to the Recycle Bin. One file is kept in each group, preferring device originals whose names start with IMG. Continue?`,
     confirmBulkStrict100Delete: (count) =>
-            `This will move ${count} strict duplicate files from up to 100 groups starting at the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
+            `This will move ${count} strict duplicate files from up to 100 groups starting at the current page to the Recycle Bin. One file is kept in each group, preferring device originals whose names start with IMG. Continue?`,
     confirmBulkStrictDelete: (count) =>
-            `This will move ${count} strict duplicate files from the current page to the Recycle Bin. Only duplicate files will be processed; kept files will not be deleted. Continue?`,
+            `This will move ${count} strict duplicate files from the current page to the Recycle Bin. One file is kept in each group, preferring device originals whose names start with IMG. Continue?`,
     deleteSelected: "Delete",
     deleted: (path) => `Moved ${path} to the Recycle Bin`,
     deleting: (path) => `Moving ${path} to the Recycle Bin ...`,

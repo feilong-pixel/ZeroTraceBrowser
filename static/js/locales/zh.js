@@ -278,11 +278,11 @@ export default {
     bulkStrict100Title: "将从当前页开始的 100 组 strict 重复文件移入回收区",
     bulkStrictTitle: (count) => `将当前页 ${count} 个 strict 重复文件移入回收区`,
     confirmBulkCurrentPageDelete: (count, method) =>
-            `将把当前页 ${count} 个 ${method} 重复文件移入回收区。只会处理 duplicate 文件，不会删除 kept 保留文件。是否继续？`,
+            `将把当前页 ${count} 个 ${method} 重复文件移入回收区。每组会保留一个文件，并优先保留 IMG 开头的设备原图。是否继续？`,
     confirmBulkStrict100Delete: (count) =>
-            `将把从当前页开始最多 100 组中的 ${count} 个 strict 重复文件移入回收区。只会处理 duplicate 文件，不会删除 kept 保留文件。是否继续？`,
+            `将把从当前页开始最多 100 组中的 ${count} 个 strict 重复文件移入回收区。每组会保留一个文件，并优先保留 IMG 开头的设备原图。是否继续？`,
     confirmBulkStrictDelete: (count) =>
-            `将把当前页 ${count} 个 strict 重复文件移入回收区。只会处理 duplicate 文件，不会删除 kept 保留文件。是否继续？`,
+            `将把当前页 ${count} 个 strict 重复文件移入回收区。每组会保留一个文件，并优先保留 IMG 开头的设备原图。是否继续？`,
     deleteSelected: "删除",
     deleted: (path) => `已删除 ${path}`,
     deleting: (path) => `正在删除 ${path} ...`,
