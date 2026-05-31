@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from core.services.file_operations import move_file_preserve_times, resolve_under_root
-from core.services.import_write_service import invalidate_gallery_index
+from core.services.import_write_service import mark_gallery_item_missing
 from core.services.recycle_paths import build_deleted_path
 from core.services.thumbnail_service import thumbnail_path_for
 from core.storage.duplicates_repository import DuplicateResultRepository
@@ -73,14 +73,14 @@ class DeleteImageUseCase:
 
         # 2. File does not exist — clean up stale state and return "missing".
         if not image_path.exists() or not image_path.is_file():
-            invalidate_gallery_index(root)
+            gallery_summary = mark_gallery_item_missing(root, relative_path)
             database_path = getattr(self.ctx, "database_path", None)
             if database_path:
                 DuplicateResultRepository(database_path).mark_item_missing(relative_path)
             stale_thumb = thumbnail_path_for(self.thumbnails_dir, root, relative_path)
             if stale_thumb.exists():
                 stale_thumb.unlink()
-            return {"status": "missing", "relative_path": relative_path}
+            return {"status": "missing", "relative_path": relative_path, **gallery_summary}
 
         # 3. Build the target deleted path (timestamp + digest prefix).
         deleted_path = build_deleted_path(self.ctx.deleted_dir, root, relative_path)
@@ -91,7 +91,7 @@ class DeleteImageUseCase:
         move_file_preserve_times(image_path, deleted_path)
 
         # 5. Invalidate gallery index data so consumers do not repair stale entries.
-        invalidate_gallery_index(root)
+        gallery_summary = mark_gallery_item_missing(root, relative_path)
 
         # 6. Write delete log entry.
         self._write_log(root, relative_path, image_path, deleted_path, strict_hash)
@@ -101,7 +101,7 @@ class DeleteImageUseCase:
         if stale_thumb.exists():
             stale_thumb.unlink()
 
-        return {"status": "deleted", "deleted_to": str(deleted_path)}
+        return {"status": "deleted", "deleted_to": str(deleted_path), **gallery_summary}
 
     # ------------------------------------------------------------------
     # Internal helpers – easily replaceable with LogRepository in phase 2

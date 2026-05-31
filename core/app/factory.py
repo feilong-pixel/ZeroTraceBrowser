@@ -24,7 +24,7 @@ from core.routes.tasks_route import create_tasks_router
 def create_app() -> FastAPI:
     app = FastAPI(
         title="ZeroTraceBrowser",
-        version="0.5.0",
+        version="0.5.2",
         lifespan=lifespan,
     )
 

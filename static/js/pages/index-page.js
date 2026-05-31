@@ -1734,6 +1734,8 @@ async function deleteSelected(els, state) {
   }
 
   try {
+    let latestTotal = null;
+    let latestTotalGeneratedAt = "";
     for (let index = 0; index < selectedItems.length; index += 1) {
       const item = selectedItems[index];
       setStatus(
@@ -1742,7 +1744,13 @@ async function deleteSelected(els, state) {
           ? t("browser.actions.deletingMany", index + 1, selectedItems.length)
           : t("browser.actions.deleting", item.relative_path),
       );
-      await postJson("/api/delete", { relative_path: item.relative_path });
+      const result = await postJson("/api/delete", { relative_path: item.relative_path });
+      if (Number.isInteger(result?.total)) {
+        latestTotal = result.total;
+      }
+      if (typeof result?.total_generated_at === "string" && result.total_generated_at) {
+        latestTotalGeneratedAt = result.total_generated_at;
+      }
     }
 
     const deletedPath = selectedItems[0].relative_path;
@@ -1752,6 +1760,13 @@ async function deleteSelected(els, state) {
       state,
       selectedItems.map((item) => item.relative_path),
     );
+    if (Number.isInteger(latestTotal)) {
+      state.totalImageCount = latestTotal;
+    }
+    if (latestTotalGeneratedAt) {
+      state.totalImageCountUpdatedAt = latestTotalGeneratedAt;
+    }
+    applyFilter(els, state, { resetScroll: false });
     setStatus(
       els,
       deletedCount > 1

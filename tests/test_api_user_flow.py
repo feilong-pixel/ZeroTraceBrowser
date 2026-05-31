@@ -717,6 +717,8 @@ def test_delete_does_not_prune_timeline_index_entries(api_client) -> None:
 
     delete_response = client.post("/api/delete", json={"relative_path": "2024/01/photo.jpg"})
     assert delete_response.status_code == 200
+    assert delete_response.json()["total"] == 1
+    assert isinstance(delete_response.json()["total_generated_at"], str)
     assert not first_path.exists()
 
     timeline_after_delete_response = client.get("/api/timeline-index")
@@ -783,6 +785,8 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
 
     delete_response = client.post("/api/delete", json={"relative_path": "album/photo.jpg"})
     assert delete_response.status_code == 200
+    assert delete_response.json()["total"] == 0
+    assert isinstance(delete_response.json()["total_generated_at"], str)
     deleted_to = Path(delete_response.json()["deleted_to"])
     assert deleted_to.is_relative_to(ztb_context.root_deleted_dir(added_root))
     assert deleted_to.name == "photo.jpg"

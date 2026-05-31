@@ -216,6 +216,47 @@ def invalidate_gallery_index(
             pass
 
 
+def mark_gallery_item_missing(root: Path, relative_path: str) -> dict[str, object]:
+    clear_image_list_cache(root)
+    index_dir = root_image_index_dir(root)
+    cache_key = image_scan_cache_key(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    cache_digest = digest_for_cache_key(cache_key)
+    metadata = load_image_index_summary_metadata(index_dir, cache_key)
+    generated_at = datetime.now().isoformat()
+    repository = ImageIndexRepository(root_database_path(root))
+    existing_timeline_entries = repository.load_timeline_entries(cache_digest)
+    repository.mark_item_missing(cache_digest, relative_path)
+    remaining_items = repository.list_images(cache_digest)
+    updated_total = count_gallery_media(root)
+    save_image_index_summary_metadata(
+        index_dir,
+        root,
+        SUPPORTED_EXTENSIONS,
+        SKIP_SCAN_DIR_NAMES,
+        total=updated_total,
+        duplicate_group_count=metadata.get("duplicate_group_count"),
+        generated_at=generated_at,
+    )
+    if remaining_items and existing_timeline_entries:
+        repository.replace_timeline_entries(
+            cache_digest,
+            root=str(root),
+            entries=existing_timeline_entries,
+            generated_at=generated_at,
+            delete_missing=False,
+        )
+    for cache_path in (
+        image_index_cache_path(index_dir, cache_key),
+        image_index_summary_path(index_dir, cache_key),
+        timeline_index_cache_path(index_dir, cache_key),
+    ):
+        try:
+            cache_path.unlink()
+        except OSError:
+            pass
+    return {"total": updated_total, "total_generated_at": generated_at}
+
+
 def count_gallery_media(root: Path) -> int:
     return sum(
         1

@@ -69,7 +69,7 @@ class TestDeleteImageUseCase:
 
     Strategy: use real filesystem operations but mock the expensive/
     side-effect-heavy service functions (move_file_preserve_times,
-    copy_file_preserve_times, invalidate_gallery_index).
+    copy_file_preserve_times, mark_gallery_item_missing).
     """
 
     @pytest.fixture(autouse=True)
@@ -83,14 +83,15 @@ class TestDeleteImageUseCase:
             if Path(src).exists():
                 Path(src).rename(dst)
 
-        def fake_invalidate_gallery_index(root=None):
+        def fake_mark_gallery_item_missing(root=None, relative_path=""):
             self.cache_cleared.append(Path(root) if root else None)
+            return {"total": 0, "total_generated_at": "2026-05-31T00:00:00"}
 
         monkeypatch.setattr(
             "core.use_cases.delete_image.move_file_preserve_times", fake_move
         )
         monkeypatch.setattr(
-            "core.use_cases.delete_image.invalidate_gallery_index", fake_invalidate_gallery_index
+            "core.use_cases.delete_image.mark_gallery_item_missing", fake_mark_gallery_item_missing
         )
 
     @pytest.fixture()
@@ -178,7 +179,12 @@ class TestDeleteImageUseCase:
 
         result = use_case.execute(req)
 
-        assert result == {"status": "missing", "relative_path": "nonexistent.jpg"}
+        assert result == {
+            "status": "missing",
+            "relative_path": "nonexistent.jpg",
+            "total": 0,
+            "total_generated_at": "2026-05-31T00:00:00",
+        }
         # No file should have been moved.
         assert len(self.moved) == 0
         # Cache should still be cleared.

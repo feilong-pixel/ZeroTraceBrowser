@@ -498,7 +498,7 @@ If this project is useful to you, contributions are welcome:
 
 ## Status
 
-Current version: v0.5.0
+Current version: v0.5.2
 
 This is an early local-first release for technical users.
 A packaged desktop release may be considered later.
