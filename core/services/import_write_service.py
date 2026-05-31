@@ -217,6 +217,10 @@ def invalidate_gallery_index(
 
 
 def mark_gallery_item_missing(root: Path, relative_path: str) -> dict[str, object]:
+    return mark_gallery_items_missing(root, [relative_path])
+
+
+def mark_gallery_items_missing(root: Path, relative_paths: list[str]) -> dict[str, object]:
     clear_image_list_cache(root)
     index_dir = root_image_index_dir(root)
     cache_key = image_scan_cache_key(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
@@ -225,9 +229,15 @@ def mark_gallery_item_missing(root: Path, relative_path: str) -> dict[str, objec
     generated_at = datetime.now().isoformat()
     repository = ImageIndexRepository(root_database_path(root))
     existing_timeline_entries = repository.load_timeline_entries(cache_digest)
-    repository.mark_item_missing(cache_digest, relative_path)
-    remaining_items = repository.list_images(cache_digest)
-    updated_total = count_gallery_media(root)
+    removed_count = repository.mark_items_missing(cache_digest, relative_paths)
+    remaining_count = repository.count_images(cache_digest)
+    previous_total = metadata.get("total")
+    if isinstance(previous_total, int):
+        updated_total = max(0, previous_total - max(removed_count, 0))
+    elif removed_count > 0:
+        updated_total = remaining_count
+    else:
+        updated_total = count_gallery_media(root)
     save_image_index_summary_metadata(
         index_dir,
         root,
@@ -237,7 +247,7 @@ def mark_gallery_item_missing(root: Path, relative_path: str) -> dict[str, objec
         duplicate_group_count=metadata.get("duplicate_group_count"),
         generated_at=generated_at,
     )
-    if remaining_items and existing_timeline_entries:
+    if remaining_count > 0 and existing_timeline_entries:
         repository.replace_timeline_entries(
             cache_digest,
             root=str(root),

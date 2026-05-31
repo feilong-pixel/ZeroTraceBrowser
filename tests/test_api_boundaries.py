@@ -146,6 +146,21 @@ def test_delete_image_moves_file_to_local_recycle(api_client) -> None:
     assert not source.exists()
 
 
+def test_delete_batch_rejects_escaping_path_before_moving_any_file(api_client) -> None:
+    client, _, image_root, _ = api_client
+    kept = image_root / "safe.jpg"
+    kept.write_text("demo", encoding="utf-8")
+
+    response = client.post(
+        "/api/delete-batch",
+        json={"relative_paths": ["safe.jpg", "../outside.jpg"]},
+    )
+
+    assert response.status_code == 400
+    assert kept.exists()
+    assert not list(ztb_context.root_deleted_dir(image_root).rglob("safe.jpg"))
+
+
 def test_clear_recycle_bin_clears_active_root_recycle_items(api_client, monkeypatch: pytest.MonkeyPatch) -> None:
     client, _, image_root, _ = api_client
     source = image_root / "photo.jpg"
@@ -258,7 +273,8 @@ def test_delete_missing_image_clears_stale_gallery_entry(api_client) -> None:
     response = client.post("/api/delete", json={"relative_path": "missing.jpg"})
 
     assert response.status_code == 200
-    assert response.json() == {"status": "missing", "relative_path": "missing.jpg"}
+    assert response.json()["status"] == "missing"
+    assert response.json()["relative_path"] == "missing.jpg"
 
 
 def test_remove_root_can_clear_related_data(api_client, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -46,6 +46,7 @@ export default {
     },
     duplicates: {
       count: (count) => `Groups: ${count}`,
+      methodCounts: (strict, phash) => `Remaining Strict: ${strict} / pHash: ${phash}`,
       empty: "No available duplicate result was found.",
       generatedAt: (time) => `Generated: ${time}`,
       noMatchInGroup: "Files in the current duplicate group are no longer available.",

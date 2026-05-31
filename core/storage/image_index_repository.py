@@ -374,6 +374,38 @@ class ImageIndexRepository:
             connection.commit()
             return int(cursor.rowcount or 0)
 
+    def mark_items_missing(self, cache_digest: str, relative_paths: list[str]) -> int:
+        normalized_paths = sorted({str(path) for path in relative_paths if str(path).strip()})
+        if not normalized_paths:
+            return 0
+        with connect(self.database_path) as connection:
+            cursor = connection.executemany(
+                """
+                DELETE FROM image_items
+                WHERE cache_digest = ?
+                  AND relative_path = ?
+                """,
+                [(cache_digest, path) for path in normalized_paths],
+            )
+            row = connection.execute(
+                "SELECT COUNT(*) AS remaining_count FROM image_items WHERE cache_digest = ?",
+                (cache_digest,),
+            ).fetchone()
+            if row is not None and int(row["remaining_count"] or 0) == 0:
+                connection.execute("DELETE FROM timeline_entries WHERE cache_digest = ?", (cache_digest,))
+            connection.commit()
+            return int(cursor.rowcount or 0)
+
+    def count_images(self, cache_digest: str) -> int:
+        if not self.database_path.exists():
+            return 0
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS item_count FROM image_items WHERE cache_digest = ?",
+                (cache_digest,),
+            ).fetchone()
+        return int(row["item_count"] or 0) if row is not None else 0
+
     def next_image_position(self, cache_digest: str) -> int:
         if not self.database_path.exists():
             return 0

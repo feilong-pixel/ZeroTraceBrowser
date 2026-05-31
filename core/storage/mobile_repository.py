@@ -275,6 +275,43 @@ class MobileRepository:
             )
             connection.commit()
 
+    def mark_deleted_locally_many(self, records: list[dict[str, Any]]) -> None:
+        rows = []
+        for record in records:
+            strict_hash_value = str(record.get("strict_hash") or "").strip()
+            if not strict_hash_value:
+                continue
+            rows.append(
+                (
+                    strict_hash_value,
+                    str(record.get("relative_path") or ""),
+                    str(record.get("original_path") or ""),
+                    str(record.get("deleted_to") or ""),
+                    str(record.get("delete_source") or "local_gallery"),
+                    str(record.get("deleted_at") or ""),
+                    self._raw_json(record.get("raw_json") or {}),
+                )
+            )
+        if not rows:
+            return
+        with connect(self.database_path) as connection:
+            connection.executemany(
+                """
+                INSERT INTO local_deleted_markers (
+                    strict_hash, relative_path, original_path, deleted_to,
+                    delete_source, deleted_at, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(strict_hash, delete_source) DO UPDATE SET
+                    relative_path = excluded.relative_path,
+                    original_path = excluded.original_path,
+                    deleted_to = excluded.deleted_to,
+                    deleted_at = excluded.deleted_at,
+                    raw_json = excluded.raw_json
+                """,
+                rows,
+            )
+            connection.commit()
+
     def find_deleted_local_marker(self, strict_hash: str) -> dict[str, Any] | None:
         strict_hash_value = str(strict_hash or "").strip()
         if not strict_hash_value:

@@ -34,7 +34,8 @@ def create_settings_router(ctx: Any) -> APIRouter:
             "duplicate_results": {
                 "available": duplicates["available"],
                 "group_count": duplicates["group_count"] if duplicates["available"] else (root_summary["duplicate_group_count"] or 0),
-                "updated_at": root_summary["updated_at"],
+                "method_counts": duplicates.get("method_counts", {"phash": 0, "strict": 0}),
+                "updated_at": duplicates.get("generated_at") or root_summary["updated_at"],
             },
             "root_summary": root_summary,
             "active_root_exists": root.exists(),

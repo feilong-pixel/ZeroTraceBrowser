@@ -38,6 +38,35 @@ class RecycleRepository:
             )
             connection.commit()
 
+    def append_records(self, records: list[dict[str, str]]) -> None:
+        if not records:
+            return
+        with connect(self.database_path) as connection:
+            connection.executemany(
+                """
+                INSERT INTO recycle_records
+                    (timestamp, root, relative_path, deleted_to, action, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(deleted_to) DO UPDATE SET
+                    timestamp = excluded.timestamp,
+                    root = excluded.root,
+                    relative_path = excluded.relative_path,
+                    action = excluded.action,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                [
+                    (
+                        record["timestamp"],
+                        record["root"],
+                        record["relative_path"],
+                        record["deleted_to"],
+                        record.get("action", "deleted"),
+                    )
+                    for record in records
+                ],
+            )
+            connection.commit()
+
     def list_records(
         self,
         *,

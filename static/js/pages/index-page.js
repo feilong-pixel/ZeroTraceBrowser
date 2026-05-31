@@ -951,8 +951,20 @@ function renderDuplicates(els, state) {
   }
 
   const parts = [];
+  const methodCounts = payload.method_counts || {};
+  const hasMethodCounts =
+    Object.prototype.hasOwnProperty.call(methodCounts, "strict") ||
+    Object.prototype.hasOwnProperty.call(methodCounts, "phash");
 
-  if (payload.group_count > 0) {
+  if (hasMethodCounts) {
+    parts.push(
+      `<div class="duplicates-meta">${t(
+        "browser.duplicates.methodCounts",
+        Number(methodCounts.strict || 0),
+        Number(methodCounts.phash || 0),
+      )}</div>`,
+    );
+  } else if (payload.group_count > 0) {
     parts.push(
       `<div class="duplicates-meta">${t("browser.duplicates.count", payload.group_count)}</div>`,
     );

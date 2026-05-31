@@ -374,6 +374,20 @@ def load_duplicates_summary() -> dict[str, Any]:
     active_root = str(Path(settings["active_root"]).resolve())
     database_summary = RootReadService.from_root(active_root, ROOT_DATA_DIR).load_duplicate_summary()
     if database_summary.get("available"):
-        return {"available": True, "group_count": database_summary.get("group_count", 0)}
+        method_counts = {"phash": 0, "strict": 0}
+        if isinstance(database_summary.get("method_counts"), dict):
+            method_counts.update(
+                {
+                    str(key).strip().lower(): int(value)
+                    for key, value in database_summary["method_counts"].items()
+                    if str(key).strip().lower() in method_counts
+                }
+            )
+        return {
+            "available": True,
+            "group_count": method_counts["phash"] + method_counts["strict"],
+            "method_counts": method_counts,
+            "generated_at": database_summary.get("generated_at"),
+        }
 
-    return {"available": False, "group_count": 0}
+    return {"available": False, "group_count": 0, "method_counts": {"phash": 0, "strict": 0}}

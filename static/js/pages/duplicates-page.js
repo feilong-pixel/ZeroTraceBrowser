@@ -69,6 +69,10 @@ async function postJson(url, payload) {
   });
 }
 
+async function deletePathsBatch(paths) {
+  return postJson("/api/delete-batch", { relative_paths: paths });
+}
+
 function applyTranslations(els, state) {
   document.documentElement.lang = state.lang === "zh" ? "zh-CN" : state.lang;
 
@@ -679,12 +683,11 @@ async function bulkDeleteCurrentPageDuplicates(els, state) {
   setSummaryStatus(els, t("duplicates.bulkDeleting", items.length));
 
   try {
-    let deletedCount = 0;
+    const result = await deletePathsBatch(items.map((item) => item.path));
     for (const item of items) {
-      await postJson("/api/delete", { relative_path: item.path });
-      deletedCount += 1;
       markDeletedPathInState(state, item.groupId, item.path);
     }
+    const deletedCount = Number(result.deleted_count || 0);
 
     renderDuplicatesPage(els, state);
     setSummaryStatus(els, t("duplicates.bulkDeleted", deletedCount));
@@ -739,12 +742,11 @@ async function bulkDelete100StrictDuplicates(els, state) {
   setSummaryStatus(els, t("duplicates.bulkDeleting", items.length));
 
   try {
-    let deletedCount = 0;
+    const result = await deletePathsBatch(items.map((item) => item.path));
     for (const item of items) {
-      await postJson("/api/delete", { relative_path: item.path });
-      deletedCount += 1;
       markDeletedPathInState(state, item.groupId, item.path);
     }
+    const deletedCount = Number(result.deleted_count || 0);
 
     await loadDuplicatesPage(els, state);
     setSummaryStatus(els, t("duplicates.bulkDeleted", deletedCount));

@@ -384,7 +384,7 @@ class TestRestoreImageUseCase:
             if Path(src).exists():
                 Path(src).rename(dst)
 
-        def fake_invalidate_gallery_index(root=None):
+        def fake_invalidate_gallery_index(root=None, **kwargs):
             self.cache_cleared.append(Path(root) if root else None)
 
         monkeypatch.setattr(

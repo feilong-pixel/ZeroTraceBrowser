@@ -9,6 +9,10 @@ class FileActionRequest(BaseModel):
     relative_path: str = Field(..., min_length=1)
 
 
+class DeleteBatchRequest(BaseModel):
+    relative_paths: list[str] = Field(..., min_length=1, max_length=200)
+
+
 class CopyRequest(FileActionRequest):
     target_dir: str = Field(default="", min_length=0)
 

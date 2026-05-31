@@ -452,6 +452,116 @@ def test_duplicates_api_delete_updates_remaining_group_count(api_client) -> None
     assert [group["group_id"] for group in payload["groups"]] == ["still_remaining"]
 
 
+def test_delete_batch_updates_remaining_duplicate_group_count(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "remove_a.jpg")
+    create_test_image(archive_root / "remove_b.jpg", color=(80, 90, 100))
+    create_test_image(archive_root / "remove_c.jpg", color=(90, 100, 110))
+    create_test_image(archive_root / "remove_d.jpg", color=(100, 110, 120))
+    create_test_image(archive_root / "keep_a.jpg", color=(110, 120, 130))
+    create_test_image(archive_root / "keep_b.jpg", color=(120, 130, 140))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "removed_after_batch",
+                "reason": "strict",
+                "hash": "remove",
+                "items": [
+                    {"role": "kept", "path": "remove_a.jpg"},
+                    {"role": "duplicate", "path": "remove_b.jpg"},
+                ],
+            },
+            {
+                "group_id": "still_remaining",
+                "reason": "strict",
+                "hash": "keep",
+                "items": [
+                    {"role": "kept", "path": "keep_a.jpg"},
+                    {"role": "duplicate", "path": "keep_b.jpg"},
+                ],
+            },
+            {
+                "group_id": "second_removed_after_batch",
+                "reason": "strict",
+                "hash": "remove-second",
+                "items": [
+                    {"role": "kept", "path": "remove_c.jpg"},
+                    {"role": "duplicate", "path": "remove_d.jpg"},
+                ],
+            },
+        ],
+    )
+
+    delete_response = client.post("/api/delete-batch", json={"relative_paths": ["remove_b.jpg", "remove_d.jpg"]})
+    response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "strict"})
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["deleted_count"] == 2
+    assert delete_response.json()["missing_count"] == 0
+    assert RecycleRepository(ztb_context.root_database_path(archive_root)).count_records(include_terminal=False) == 2
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["group_count"] == 1
+    assert payload["method_counts"] == {"phash": 0, "strict": 1}
+    assert [group["group_id"] for group in payload["groups"]] == ["still_remaining"]
+
+
+def test_config_duplicate_summary_counts_only_remaining_strict_and_phash(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "strict_a.jpg")
+    create_test_image(archive_root / "strict_b.jpg", color=(80, 90, 100))
+    create_test_image(archive_root / "phash_a.jpg", color=(90, 100, 110))
+    create_test_image(archive_root / "phash_b.jpg", color=(100, 110, 120))
+    create_test_image(archive_root / "fuzzy_a.jpg", color=(110, 120, 130))
+    create_test_image(archive_root / "fuzzy_b.jpg", color=(120, 130, 140))
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "strict_remaining",
+                "reason": "strict",
+                "hash": "strict",
+                "items": [
+                    {"role": "kept", "path": "strict_a.jpg"},
+                    {"role": "duplicate", "path": "strict_b.jpg"},
+                ],
+            },
+            {
+                "group_id": "phash_remaining",
+                "reason": "phash",
+                "hash": "phash",
+                "items": [
+                    {"role": "kept", "path": "phash_a.jpg"},
+                    {"role": "duplicate", "path": "phash_b.jpg"},
+                ],
+            },
+            {
+                "group_id": "fuzzy_ignored",
+                "reason": "fuzzy",
+                "hash": "fuzzy",
+                "items": [
+                    {"role": "kept", "path": "fuzzy_a.jpg"},
+                    {"role": "duplicate", "path": "fuzzy_b.jpg"},
+                ],
+            },
+        ],
+    )
+
+    config_response = client.get("/api/config")
+
+    assert config_response.status_code == 200
+    duplicate_results = config_response.json()["duplicate_results"]
+    assert duplicate_results["group_count"] == 2
+    assert duplicate_results["method_counts"] == {"phash": 1, "strict": 1}
+    assert duplicate_results["method_counts"]["strict"] == 1
+    assert duplicate_results["method_counts"]["phash"] == 1
+
+
 def test_delete_missing_duplicate_item_marks_duplicate_missing(api_client) -> None:
     client, workspace, *_ = api_client
     archive_root = workspace / "archive"
@@ -480,7 +590,8 @@ def test_delete_missing_duplicate_item_marks_duplicate_missing(api_client) -> No
     )
 
     assert delete_response.status_code == 200
-    assert delete_response.json() == {"status": "missing", "relative_path": "already_missing.jpg"}
+    assert delete_response.json()["status"] == "missing"
+    assert delete_response.json()["relative_path"] == "already_missing.jpg"
     assert payload is not None
     assert payload["group_count"] == 0
 

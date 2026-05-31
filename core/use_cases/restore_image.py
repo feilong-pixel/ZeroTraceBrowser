@@ -101,8 +101,8 @@ class RestoreImageUseCase:
         restore_path.parent.mkdir(parents=True, exist_ok=True)
         move_file_preserve_times(deleted_path, restore_path)
 
-        # 5. Invalidate gallery index data for the affected root.
-        invalidate_gallery_index(restore_root)
+        # 5. Add the restored file back into the gallery index incrementally.
+        invalidate_gallery_index(restore_root, imported_path=restore_path, imported_count=1)
 
                 # 6. Remove stale thumbnails.
         # 6a. Remove the original-file thumbnail (if one was cached before deletion).

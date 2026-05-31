@@ -46,6 +46,7 @@ export default {
     },
     duplicates: {
       count: (count) => `グループ数：${count}`,
+      methodCounts: (strict, phash) => `残り Strict：${strict} / pHash：${phash}`,
       empty: "重複データがありません",
       generatedAt: (time) => `生成日時：${time}`,
       noMatchInGroup: "このグループに該当ファイルはありません",

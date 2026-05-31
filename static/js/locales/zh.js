@@ -46,6 +46,7 @@ export default {
     },
     duplicates: {
       count: (count) => `重复组：${count}`,
+      methodCounts: (strict, phash) => `剩余 Strict：${strict} 组 / pHash：${phash} 组`,
       empty: "尚未发现可用的重复结果。",
       generatedAt: (time) => `生成时间：${time}`,
       noMatchInGroup: "当前重复组中的文件已不存在。",

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import csv
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from core.services.file_operations import move_file_preserve_times, resolve_under_root
-from core.services.import_write_service import mark_gallery_item_missing
+from core.services.import_write_service import mark_gallery_item_missing, mark_gallery_items_missing
 from core.services.recycle_paths import build_deleted_path
 from core.services.thumbnail_service import thumbnail_path_for
 from core.storage.duplicates_repository import DuplicateResultRepository
@@ -103,6 +105,65 @@ class DeleteImageUseCase:
 
         return {"status": "deleted", "deleted_to": str(deleted_path), **gallery_summary}
 
+    def execute_batch(self, requests: list[DeleteImageRequest]) -> dict[str, Any]:
+        root: Path = self.ctx.root
+        relative_paths = list(dict.fromkeys(req.relative_path for req in requests))
+        results: list[dict[str, Any]] = []
+        deleted_records: list[dict[str, Any]] = []
+        affected_paths: list[str] = []
+
+        for relative_path in relative_paths:
+            image_path = resolve_under_root(root, relative_path)
+            affected_paths.append(relative_path)
+
+            if not image_path.exists() or not image_path.is_file():
+                stale_thumb = thumbnail_path_for(self.thumbnails_dir, root, relative_path)
+                if stale_thumb.exists():
+                    stale_thumb.unlink()
+                results.append({"status": "missing", "relative_path": relative_path})
+                continue
+
+            deleted_path = build_deleted_path(self.ctx.deleted_dir, root, relative_path)
+            deleted_path.parent.mkdir(parents=True, exist_ok=True)
+            strict_hash = self._sha256_file(image_path)
+            move_file_preserve_times(image_path, deleted_path)
+
+            timestamp = datetime.now().isoformat()
+            deleted_records.append(
+                {
+                    "timestamp": timestamp,
+                    "root": str(root),
+                    "relative_path": relative_path,
+                    "original_path": str(image_path),
+                    "deleted_to": str(deleted_path),
+                    "action": "deleted",
+                    "strict_hash": strict_hash,
+                }
+            )
+
+            stale_thumb = thumbnail_path_for(self.thumbnails_dir, root, relative_path)
+            if stale_thumb.exists():
+                stale_thumb.unlink()
+            results.append({"status": "deleted", "deleted_to": str(deleted_path)})
+
+        gallery_summary = mark_gallery_items_missing(root, affected_paths)
+        database_path = getattr(self.ctx, "database_path", None)
+        if database_path:
+            DuplicateResultRepository(database_path).mark_items_missing(affected_paths)
+
+        self._write_logs(deleted_records)
+        self._write_database_records(deleted_records)
+
+        return {
+            "status": "completed",
+            "requested_count": len(requests),
+            "processed_count": len(results),
+            "deleted_count": sum(1 for result in results if result.get("status") == "deleted"),
+            "missing_count": sum(1 for result in results if result.get("status") == "missing"),
+            "results": results,
+            **gallery_summary,
+        }
+
     # ------------------------------------------------------------------
     # Internal helpers – easily replaceable with LogRepository in phase 2
     # ------------------------------------------------------------------
@@ -118,8 +179,6 @@ class DeleteImageUseCase:
         """Append a row to the delete CSV log."""
         log_path = self.ctx.logs_dir / "delete_log.csv"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-
-        import csv
 
         # Ensure header exists if the file is new.
         if not log_path.exists():
@@ -156,6 +215,61 @@ class DeleteImageUseCase:
                 deleted_at=timestamp,
                 raw_json={"action": "deleted"},
             )
+
+    def _write_logs(self, records: list[dict[str, Any]]) -> None:
+        if not records:
+            return
+        log_path = self.ctx.logs_dir / "delete_log.csv"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if not log_path.exists():
+            with log_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["timestamp", "root", "relative_path", "deleted_to", "action"])
+
+        with log_path.open("a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerows(
+                [
+                    [
+                        record["timestamp"],
+                        record["root"],
+                        record["relative_path"],
+                        record["deleted_to"],
+                        record.get("action", "deleted"),
+                    ]
+                    for record in records
+                ]
+            )
+
+    def _write_database_records(self, records: list[dict[str, Any]]) -> None:
+        database_path = getattr(self.ctx, "database_path", None)
+        if not database_path or not records:
+            return
+        RecycleRepository(database_path).append_records(
+            [
+                {
+                    "timestamp": record["timestamp"],
+                    "root": record["root"],
+                    "relative_path": record["relative_path"],
+                    "deleted_to": record["deleted_to"],
+                    "action": record.get("action", "deleted"),
+                }
+                for record in records
+            ]
+        )
+        MobileRepository(database_path).mark_deleted_locally_many(
+            [
+                {
+                    "strict_hash": record["strict_hash"],
+                    "relative_path": record["relative_path"],
+                    "original_path": record["original_path"],
+                    "deleted_to": record["deleted_to"],
+                    "deleted_at": record["timestamp"],
+                    "raw_json": {"action": "deleted"},
+                }
+                for record in records
+            ]
+        )
 
     @staticmethod
     def _sha256_file(path: Path) -> str:

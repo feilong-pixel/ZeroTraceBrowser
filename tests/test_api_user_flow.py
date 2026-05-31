@@ -834,9 +834,12 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     assert_windows_creation_time(image_path, original_created_at)
     assert not deleted_to.exists()
     assert recycle_repository.list_records()[0]["action"] == "restored"
-    assert image_index_repository.list_images(cache_digest) == []
-    assert image_index_repository.load_timeline_entries(cache_digest) == []
-    assert image_index_repository.load_summary(cache_digest)["total"] == 1
+    assert any(
+        item["relative_path"] == "album/photo.jpg"
+        for item in image_index_repository.list_images(cache_digest)
+    )
+    assert image_index_repository.load_timeline_entries(cache_digest)
+    assert image_index_repository.load_summary(cache_digest)["total"] == 2
 
     images_after_restore_response = client.get("/api/images")
     assert images_after_restore_response.status_code == 200

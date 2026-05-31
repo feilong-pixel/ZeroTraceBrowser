@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from core.schemas import CopyRequest, FileActionRequest
+from core.schemas import CopyRequest, DeleteBatchRequest, FileActionRequest
 from core.domain.root_proxy import build_root_proxy
 from core.services.file_operations import resolve_under_root
 from core.storage.exif_repository import ExifRepository
@@ -162,6 +162,27 @@ def create_images_router(ctx: Any) -> APIRouter:
         )
         req = DeleteImageRequest(relative_path=payload.relative_path)
         return use_case.execute(req)
+
+    # POST /api/delete-batch
+    @router.post("/api/delete-batch")
+    def delete_images_batch(payload: DeleteBatchRequest) -> dict[str, Any]:
+        active_root = ctx.get_active_image_root()
+        relative_paths = list(dict.fromkeys(path.strip() for path in payload.relative_paths if path.strip()))
+        if not relative_paths:
+            raise HTTPException(status_code=400, detail="No paths provided")
+
+        for relative_path in relative_paths:
+            resolve_under_root(active_root, relative_path)
+
+        root_context = build_root_proxy(ctx, active_root)
+        use_case = DeleteImageUseCase(
+            root_context=root_context,
+            thumbnails_dir=root_context.thumbnails_dir,
+            thumbnail_size=ctx.THUMBNAIL_SIZE,
+        )
+        requests = [DeleteImageRequest(relative_path=relative_path) for relative_path in relative_paths]
+        result = use_case.execute_batch(requests)
+        return {**result, "requested_count": len(payload.relative_paths)}
 
     # POST /api/copy
     @router.post("/api/copy")

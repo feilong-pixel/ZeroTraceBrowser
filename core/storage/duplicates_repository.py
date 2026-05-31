@@ -355,6 +355,7 @@ class DuplicateResultRepository:
                             FROM duplicate_groups g
                             JOIN duplicate_items i ON i.group_row_id = g.id
                             WHERE g.result_id = 1
+                              AND g.reason IN ('strict', 'phash')
                               AND i.file_exists = 1
                             GROUP BY g.id
                             HAVING COUNT(i.id) >= 2
