@@ -37,6 +37,7 @@ settings.json
 # Local scratch/sample folders
 review*_src/
 review*_dst/
+docs/ZeroTracePhoto/
 
 # IDE/editor files
 .vscode/
