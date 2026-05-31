@@ -132,6 +132,60 @@ class HashDbRepository:
             )
             connection.commit()
 
+    def upsert_file_hash_cache(
+        self,
+        path: str | Path,
+        *,
+        strict_hash: str = "",
+        phash: str = "",
+        source_path: str | Path = "",
+    ) -> None:
+        path_value = Path(path).expanduser().resolve()
+        if not path_value.exists() or not path_value.is_file():
+            return
+        stat = path_value.stat()
+        source_value = str(Path(source_path).expanduser().resolve()) if str(source_path).strip() else ""
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO file_hash_cache
+                    (path, source_path, file_name, size, mtime_ns, strict_hash, phash, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(path) DO UPDATE SET
+                    source_path = excluded.source_path,
+                    file_name = excluded.file_name,
+                    size = excluded.size,
+                    mtime_ns = excluded.mtime_ns,
+                    strict_hash = COALESCE(
+                        NULLIF(excluded.strict_hash, ''),
+                        CASE
+                            WHEN file_hash_cache.size = excluded.size
+                             AND file_hash_cache.mtime_ns = excluded.mtime_ns
+                            THEN file_hash_cache.strict_hash
+                        END
+                    ),
+                    phash = COALESCE(
+                        NULLIF(excluded.phash, ''),
+                        CASE
+                            WHEN file_hash_cache.size = excluded.size
+                             AND file_hash_cache.mtime_ns = excluded.mtime_ns
+                            THEN file_hash_cache.phash
+                        END
+                    ),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    str(path_value),
+                    source_value,
+                    path_value.name,
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    strict_hash or None,
+                    phash or None,
+                ),
+            )
+            connection.commit()
+
     @staticmethod
     def _normalize_payload(payload: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
         if "phash" in payload or "strict" in payload:

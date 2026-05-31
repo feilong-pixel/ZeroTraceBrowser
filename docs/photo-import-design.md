@@ -256,6 +256,57 @@ verifiable, and compatible with the existing local-first safety rules: no
 automatic deletion, no hidden moving/renaming of originals, and no writes
 outside the active or registered root workspace.
 
+### Producer / Consumer / Completer Boundary
+
+The import architecture should treat every root-scoped table and cache as a
+contract between three roles:
+
+- Producers create or mutate authoritative state. Examples: Shortcut upload,
+  Phone Sync upload, MTP import, organizer tasks, hash DB rebuild, delete,
+  restore, purge, and explicit maintenance tasks.
+- Consumers render or answer page/API reads. Examples: gallery, viewer,
+  duplicates, recycle, similarity, settings summaries, thumbnails, and task
+  status pages.
+- Completers repair or derive missing secondary state from authoritative state.
+  Examples: hash DB rebuild, duplicate result rebuild, image index rebuild,
+  similarity cache build, EXIF cache fill, thumbnail generation, and root
+  workspace migration.
+
+Boundary rules:
+
+1. A consumer may write only small read-through caches that are cheap,
+   bounded, and specific to the read, such as EXIF cache or thumbnails. It must
+   not silently repair broad authoritative state.
+2. A producer must write a complete contract for the state it owns. If it adds
+   `hash_db_records`, it must also write the matching `file_hash_cache`
+   signature for the final file path. If it writes an imported image, it must
+   update import status, hash records, duplicate dirty state, and gallery index
+   invalidation through the shared import service.
+3. A completer may be lazy only when the cost is bounded and visible. Expensive
+   broad repairs belong in explicit tasks or scheduled maintenance, not hidden
+   page reads.
+4. Dirty markers are a contract, not a failure. A producer may mark duplicate
+   results dirty after changing hash state. The duplicate-result completer may
+   rebuild from complete hash/cache data. If that rebuild becomes slow, inspect
+   whether the producer wrote incomplete data before changing the duplicates
+   page.
+5. Derived data is replaceable. Duplicate results, image indexes, timeline
+   entries, similarity features, EXIF cache, and thumbnails can be rebuilt.
+   User originals, recycle records, import history, and task audit logs are not
+   disposable cache.
+6. A test for any import entry point should cover the full contract:
+   entry point -> root DB writes -> completer -> page API. Single-endpoint
+   tests are not enough when a producer can leave a later consumer without the
+   data it expects.
+
+The recent upload/duplicates slowdown came from a contract gap: imported files
+were appended to `hash_db_records`, but their final file signatures were not
+recorded in `file_hash_cache`. The duplicates page was allowed to trigger a
+dirty-result rebuild, but the rebuild could not fully trust the imported hash
+records without cache signatures. The fix belongs at the producer boundary:
+the shared import service now writes both hash records and file hash cache
+entries for the imported final file.
+
 ### Production Endpoint Direction
 
 Keep the existing Shortcut endpoint as compatibility, then add a generic mobile

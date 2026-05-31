@@ -100,6 +100,118 @@ contracts before deeper refactoring:
 - Import state: mobile/phone/organizer skipped-existing records should converge
   on a shared status vocabulary even if their protocol tables stay separate.
 
+## Producer / Consumer / Completer Matrix
+
+Use this matrix before changing page reads or import writes. A slow page is
+often a symptom that a producer left incomplete data, not proof that the page
+should become a broader repair path.
+
+| State | Producers | Consumers | Completers | Completer boundary |
+| --- | --- | --- | --- | --- |
+| Active-root media files | Organizer task, Shortcut upload, Phone Sync upload, MTP import, copy/delete/restore/purge use cases | Gallery, viewer, duplicates thumbnails, similarity, recycle restore/purge | None for originals | Original-file mutation must be explicit. No page read may move, delete, rename, or reorganize originals. |
+| `hash_db_records` | Organizer task, hash DB rebuild, shared import service, MTP import | Duplicate rebuild, similarity search, duplicate skip checks | Hash DB rebuild | Any producer adding records for a final file must also write the matching `file_hash_cache` row. |
+| `file_hash_cache` | Organizer/hash rebuild cache writes, shared import service | Hash DB rebuild and duplicate rebuild helpers | Hash DB rebuild backfill | Cache backfill is allowed in explicit rebuild/maintenance. Page reads should not scan the root to repair missing cache rows. |
+| `duplicate_results`, `duplicate_groups`, `duplicate_items` | Organizer/rebuild duplicate publish, duplicate dirty markers from import, delete/restore availability sync | Duplicates page, settings summary, similarity duplicate hints | Duplicate-result rebuild from hash DB; recycle availability reconciliation | Dirty rebuild may run only from complete hash/cache state or explicit maintenance. Missing source hash/cache data is a producer bug. |
+| `image_indexes`, `image_items`, `timeline_entries` | Gallery scan, image index rebuild, shared import service, delete/restore invalidation | Gallery, Timeline, Viewer return/hydration, settings summaries | Image index rebuild, controlled gallery scan | Page reads may use cached indexes and bounded scans. Broad index rebuilding belongs to explicit scan/rebuild paths. |
+| `mobile_photo_index`, `mobile_import_records`, `import_items` | MTP index/import, Shortcut upload, Phone Sync manifest/upload | Import page, sync status, duplicate/deleted-marker decisions | Protocol-specific resume/status repair | Import state is audit/authority for sync decisions, not disposable UI cache. |
+| `recycle_records` and delete logs | Delete, restore, purge, clear recycle | Recycle page, duplicate availability sync, deleted-marker checks | Log/archive maintenance | Safe-delete state is authoritative. Derived duplicate availability may sync from it, but recycle state must not be inferred from duplicate results. |
+| EXIF cache | Viewer EXIF read, metadata helpers | Viewer, image metadata consumers | Read-through EXIF cache | Safe as a bounded consumer-side cache because it is per-file and signature-checked. |
+| Thumbnails | Thumbnail endpoints, cleanup flows | Gallery, viewer, duplicates, recycle | Read-through thumbnail generation | Safe as derived cache. It must stay under root workspace thumbnails and be regenerable. |
+| Similarity features | Similarity cache build/search | Similarity page | Similarity cache build | Expensive feature completion should be explicit or bounded to requested candidates. |
+
+### Contract Checks
+
+Before adding or changing an endpoint, answer these questions in code review:
+
+1. Which state does this path produce?
+2. Which pages consume that state?
+3. Which fields must be written together for the consumer to trust it?
+4. Which missing pieces may be completed lazily, and what is the cost limit?
+5. Which test proves the full flow from producer through completer to page API?
+
+Concrete import contract:
+
+- Successful final-file imports must write `hash_db_records` for strict and
+  optional pHash.
+- The same import must write `file_hash_cache` for the final path with size,
+  `mtime_ns`, strict hash, and optional pHash.
+- Historical imports that can affect existing duplicate groups should mark
+  duplicate results dirty.
+- Imports must update or invalidate gallery index data through the shared
+  import service, not by each endpoint inventing its own partial rule.
+- The duplicates page may consume duplicate results and trigger the existing
+  dirty-result completer, but it should not compensate for missing import hash
+  cache data by scanning the whole root.
+
+### Page Read Responsibilities
+
+Page reads should be classified by what they are allowed to produce while
+serving a request:
+
+| Page/API | Primary role | Data it may read | Writes allowed during read | Writes that must stay outside the read path |
+| --- | --- | --- | --- | --- |
+| Index / gallery | Consumer | Active-root files, `image_items`, `timeline_entries`, thumbnails, EXIF cache. | Bounded image/index cache refresh, thumbnail generation, and signature-checked EXIF cache writes. | Hash DB repair, duplicate rebuild, broad recycle reconciliation, import-status repair. |
+| Viewer | Consumer | One media file, adjacent index context, EXIF cache, thumbnail/image bytes. | Signature-checked EXIF cache for the requested file. | Gallery index rebuild, duplicate rebuild, import/recycle mutation. |
+| Duplicates | Consumer of duplicate results; completer trigger only while legacy dirty-read behavior remains. | `duplicate_results`, `duplicate_groups`, `duplicate_items`, active file existence, thumbnails. | Thumbnail generation and bounded availability reconciliation from known recycle/delete state. | Hash DB cache backfill, root-wide scan, import repair, unbounded duplicate rebuild hidden behind page load. |
+| Recycle | Consumer of safe-delete state. | `recycle_records`, delete logs, deleted files, deleted thumbnails. | Thumbnail generation for deleted files and one-time legacy delete-log migration. | Inferring recycle state from duplicate results or moving/deleting originals outside explicit restore/purge/clear actions. |
+| Similarity | Consumer of similarity features and query image. | Similarity feature cache, image bytes, thumbnails, duplicate hints. | Bounded requested-candidate feature extraction if the feature path explicitly owns that cache. | Hash DB repair, duplicate result publication, import/recycle mutation. |
+| Maintenance / tasks | Explicit completer UI. | Task status, logs, root summaries. | Starts explicit completer tasks such as hash DB rebuild, duplicate rebuild, image index rebuild, timestamp repair. | Silent mutation without a user-triggered task. |
+
+Current boundary exceptions to remove over time:
+
+- `/api/duplicates` still runs the dirty duplicate-result completer when the
+  duplicate summary is marked dirty. This is compatibility behavior, not the
+  desired long-term page responsibility. The next safer shape is for producers
+  to mark dirty, maintenance/tasks to complete the rebuild, and duplicates to
+  show the dirty state without doing broad work on page load.
+- `/api/recycle-bin` can migrate legacy delete CSV rows into
+  `recycle_records`. That is a bounded compatibility migration. New recycle
+  writes must go through delete/restore/purge/clear producers, not page reads.
+
+Consumer read audit:
+
+| Consumer read path | Observed write during read | Boundary classification | Follow-up |
+| --- | --- | --- | --- |
+| `/api/images` with async scan | Starts or continues a bounded gallery index scan; may write preview/full `image_items` and `timeline_entries`. | Allowed consumer-owned cache/completer hybrid. It is bounded to gallery index state and does not repair hash, duplicates, import, or recycle authority. | Keep this path focused on image index only. If it becomes expensive, move broad rebuild to `/api/tasks/rebuild-image-index`. |
+| `/api/timeline-index` | If full image index exists but timeline entries are stale/missing, writes `timeline_entries` from that full index. | Allowed bounded completion inside the image-index domain. It does not scan root files or repair unrelated state. | Keep generation source restricted to full index, not summary items. |
+| `/api/exif` | Writes `image_exif_cache` for the requested file signature. | Allowed read-through cache. | Keep signature checks mandatory. |
+| `/api/thumbnail`, `/api/duplicates/thumbnail`, `/api/recycle-bin/thumbnail` | Writes thumbnail files under the root workspace thumbnail directory. | Allowed read-through derived cache. | Keep thumbnails disposable and root-scoped. |
+| `/api/duplicates` | May run dirty duplicate-result rebuild; may write duplicate item availability from file existence or recycle records. | Boundary exception. This crosses from consumer into duplicate completer/reconciler. | Do not expand this behavior. Later move dirty rebuild to explicit task/completer and keep page read to dirty-state display plus bounded display filtering. |
+| `/api/recycle-bin` and `/api/recycle-bin/logs` | May migrate legacy delete CSV rows into `recycle_records`. | Boundary exception for backward compatibility. | Keep one-time and bounded. New recycle state must be produced by delete/restore/purge/clear flows. |
+| `/api/similarity/*` | May write similarity file/feature cache for requested candidates. | Allowed domain-owned derived cache if bounded to requested similarity work. | Do not let similarity write hash DB, duplicate result publication, import state, or recycle state. |
+
+The important test for consumers is negative: page reads should not repair data
+owned by another producer. If a consumer needs missing data outside its own
+bounded cache, it should expose the state or invoke an explicit completer
+rather than silently mutating hash/import/duplicate/recycle authority.
+
+### Import Granularity
+
+Producer granularity should be explicit because each producer decides when a
+set of writes is complete enough for later consumers.
+
+| Entry point | Current granularity | Recommended contract |
+| --- | --- | --- |
+| Shortcut upload | One request, one selected media file. | Complete the full import contract before responding: final file, import record, strict/pHash records, file hash cache, duplicate dirty marker when needed, and gallery index update/invalidation. |
+| Phone Sync upload | Server advertises `batch_size = 10`; each upload request still handles one manifest item. | Persist each item independently before responding. The manifest batch is protocol flow control, not the DB transaction boundary. |
+| MTP fallback import | Frontend currently loops in batches of 5; backend accepts a request `limit` and can copy/import up to that many items. | Treat each `/api/mobile/index` or `/api/iphone/index` request as one slow-import mini-task. At the end of a request, if any item was imported, the producer must complete hash records, file hash cache, import records, duplicate dirty marker, and gallery index invalidation for the imported set. A larger UI batch such as 100 is acceptable only if the request remains cancellable/retryable and writes a complete contract before returning. |
+| Organizer task | One explicit background task over the selected source/destination. | The task may process many files, but task completion must publish complete hash/cache/duplicate/index summaries for the destination root. |
+| Hash DB rebuild | One explicit background task over the selected root. | Reconcile `hash_db_records` and `file_hash_cache` together, then publish duplicate results for the requested method. |
+| Image index rebuild | One explicit background task over the selected root. | Rebuild image/timeline index state only; do not mutate hash or duplicate authority. |
+
+Default guidance:
+
+- Use small protocol batches for phone sync, because the phone needs frequent
+  progress and retry points.
+- Use smaller batches for MTP than local disk tasks because MTP copy is slow and
+  less reliable. The current UI batch of 5 is conservative. Moving to 50 or 100
+  should be treated as a UI/operation choice, not a change to the producer
+  contract.
+- Regardless of batch size, the boundary is "request/task finished with imported
+  items", not "page later notices missing data". When that boundary is reached,
+  all consumer-facing data required by index, duplicates, and recycle must
+  either be written or explicitly marked dirty for the correct completer.
+
 ## First Refactor Boundary
 
 The safest first extraction is a shared media policy module, because it can be
@@ -115,4 +227,3 @@ After that, migrate one low-risk write entry point to a shared import/write
 service while keeping API responses unchanged. The best candidate is Shortcut
 upload or Phone Sync upload, because both already stage files and write into
 the active root through a narrow path.
-

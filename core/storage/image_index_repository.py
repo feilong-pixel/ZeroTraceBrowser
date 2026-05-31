@@ -72,6 +72,8 @@ class ImageIndexRepository:
             for position, item in enumerate(items):
                 if not isinstance(item, dict) or not item.get("relative_path"):
                     continue
+                item_position = item.get("position")
+                stored_position = item_position if isinstance(item_position, int) else position
                 relative_path = str(item["relative_path"])
                 current_paths.add(relative_path)
                 connection.execute(
@@ -114,7 +116,7 @@ class ImageIndexRepository:
                         str(item["hash"]) if item.get("hash") else None,
                         int(item["width"]) if item.get("width") else None,
                         int(item["height"]) if item.get("height") else None,
-                        position,
+                        stored_position,
                         json.dumps(item, ensure_ascii=False),
                     ),
                 )
@@ -351,6 +353,70 @@ class ImageIndexRepository:
     def clear_image_items(self, cache_digest: str) -> None:
         with connect(self.database_path) as connection:
             connection.execute("DELETE FROM image_items WHERE cache_digest = ?", (cache_digest,))
+            connection.commit()
+
+    def next_image_position(self, cache_digest: str) -> int:
+        if not self.database_path.exists():
+            return 0
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "SELECT MAX(position) AS max_position FROM image_items WHERE cache_digest = ?",
+                (cache_digest,),
+            ).fetchone()
+        value = row["max_position"] if row is not None else None
+        return int(value) + 1 if isinstance(value, int) else 0
+
+    def insertion_position_for_image(self, cache_digest: str, item: dict[str, Any]) -> int:
+        if not self.database_path.exists():
+            return 0
+        timeline_ts = item.get("timeline_ts")
+        relative_path = str(item.get("relative_path", ""))
+        if not isinstance(timeline_ts, int | float):
+            return self.next_image_position(cache_digest)
+
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS before_count
+                FROM image_items
+                WHERE cache_digest = ?
+                  AND (
+                    timeline_ts > ?
+                    OR (timeline_ts = ? AND lower(relative_path) < lower(?))
+                  )
+                """,
+                (cache_digest, timeline_ts, timeline_ts, relative_path),
+            ).fetchone()
+        value = row["before_count"] if row is not None else 0
+        return int(value) if isinstance(value, int) else 0
+
+    def max_timeline_ts(self, cache_digest: str) -> float | None:
+        if not self.database_path.exists():
+            return None
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT MAX(timeline_ts) AS max_timeline_ts
+                FROM image_items
+                WHERE cache_digest = ?
+                  AND timeline_ts IS NOT NULL
+                """,
+                (cache_digest,),
+            ).fetchone()
+        value = row["max_timeline_ts"] if row is not None else None
+        return float(value) if isinstance(value, int | float) else None
+
+    def shift_image_positions_from(self, cache_digest: str, start_position: int) -> None:
+        with connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE image_items
+                SET position = position + 1
+                WHERE cache_digest = ?
+                  AND position >= ?
+                """,
+                (cache_digest, max(0, start_position)),
+            )
             connection.commit()
 
     def replace_timeline_entries(

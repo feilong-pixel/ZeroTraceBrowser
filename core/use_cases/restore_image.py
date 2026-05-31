@@ -10,7 +10,7 @@ from typing import Any, Callable
 from pydantic import BaseModel, Field
 
 from core.services.file_operations import move_file_preserve_times, resolve_under_root
-from core.services.image_scan_service import clear_image_list_cache
+from core.services.import_write_service import invalidate_gallery_index
 from core.services.recycle_paths import remove_empty_deleted_parent
 from core.services.thumbnail_service import (
     deleted_thumbnail_path_for as deleted_thumb_fn,
@@ -101,8 +101,8 @@ class RestoreImageUseCase:
         restore_path.parent.mkdir(parents=True, exist_ok=True)
         move_file_preserve_times(deleted_path, restore_path)
 
-        # 5. Clear in-memory cache for the affected root.
-        clear_image_list_cache(restore_root)
+        # 5. Invalidate gallery index data for the affected root.
+        invalidate_gallery_index(restore_root)
 
                 # 6. Remove stale thumbnails.
         # 6a. Remove the original-file thumbnail (if one was cached before deletion).

@@ -750,6 +750,23 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     images_payload = images_response.json()
     assert images_payload["root"] == str(added_root)
     assert [item["relative_path"] for item in images_payload["items"]] == ["album/photo.jpg"]
+    cache_key = image_scan_cache_key(
+        added_root,
+        ztb_app.SUPPORTED_EXTENSIONS,
+        ztb_app.SKIP_SCAN_DIR_NAMES,
+    )
+    cache_digest = digest_for_cache_key(cache_key)
+    image_index_repository = ImageIndexRepository(ztb_context.root_database_path(added_root))
+    image_index_repository.save_index(
+        cache_digest,
+        root=str(added_root),
+        items=[indexed_image("album/photo.jpg", "2020-01-02T03:04:05")],
+        total=1,
+        generated_at="2026-05-31T00:00:00",
+        timeline_entries=build_timeline_index_entries(
+            [indexed_image("album/photo.jpg", "2020-01-02T03:04:05")]
+        ),
+    )
 
     thumbnail_response = client.get("/api/thumbnail", params={"relative_path": "album/photo.jpg"})
     assert thumbnail_response.status_code == 200
@@ -778,6 +795,9 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     images_after_delete_response = client.get("/api/images")
     assert images_after_delete_response.status_code == 200
     assert images_after_delete_response.json()["items"] == []
+    assert image_index_repository.list_images(cache_digest) == []
+    assert image_index_repository.load_timeline_entries(cache_digest) == []
+    assert image_index_repository.load_summary(cache_digest)["total"] == 0
 
     recycle_response = client.get("/api/recycle-bin")
     assert recycle_response.status_code == 200
@@ -792,6 +812,16 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     recycle_thumbnail_response = client.get("/api/recycle-bin/thumbnail", params={"deleted_to": str(deleted_to)})
     assert recycle_thumbnail_response.status_code == 200
     assert recycle_thumbnail_response.headers["content-type"].startswith("image/")
+    image_index_repository.save_index(
+        cache_digest,
+        root=str(added_root),
+        items=[indexed_image("stale.jpg", "2020-01-03T03:04:05")],
+        total=1,
+        generated_at="2026-05-31T00:01:00",
+        timeline_entries=build_timeline_index_entries(
+            [indexed_image("stale.jpg", "2020-01-03T03:04:05")]
+        ),
+    )
 
     restore_response = client.post("/api/recycle-bin/restore", json={"deleted_to": str(deleted_to)})
     assert restore_response.status_code == 200
@@ -800,6 +830,9 @@ def test_gallery_copy_delete_recycle_restore_flow(api_client) -> None:
     assert_windows_creation_time(image_path, original_created_at)
     assert not deleted_to.exists()
     assert recycle_repository.list_records()[0]["action"] == "restored"
+    assert image_index_repository.list_images(cache_digest) == []
+    assert image_index_repository.load_timeline_entries(cache_digest) == []
+    assert image_index_repository.load_summary(cache_digest)["total"] == 1
 
     images_after_restore_response = client.get("/api/images")
     assert images_after_restore_response.status_code == 200

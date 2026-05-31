@@ -4,6 +4,8 @@ import json
 import os
 import sqlite3
 
+from .media_policy import is_supported_media_filename
+
 
 DEFAULT_DB_PATH = os.path.join(
     os.path.dirname(__file__), "..", "data", "hash_db.json"
@@ -522,11 +524,13 @@ def prune_sqlite_hash_records(root_dir: str) -> int:
             FROM hash_db_records
             """
         ).fetchall()
-        stale_ids = [
-            row["id"]
-            for row in rows
-            if is_path_within_root(row["path"], root_abs) and not os.path.exists(row["path"])
-        ]
+        stale_ids = []
+        for row in rows:
+            path = row["path"]
+            if not is_path_within_root(path, root_abs):
+                continue
+            if not os.path.exists(path) or not is_supported_media_filename(path):
+                stale_ids.append(row["id"])
         if stale_ids:
             connection.executemany(
                 "DELETE FROM hash_db_records WHERE id = ?",

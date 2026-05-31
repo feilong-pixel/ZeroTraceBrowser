@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import hashlib
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -186,8 +187,34 @@ def test_iphone_shortcut_upload_imports_header_image(api_client, monkeypatch):
     assert records[0]["import_status"] == "imported"
 
 
-def test_iphone_shortcut_upload_marks_dirty_and_duplicates_api_rebuilds(api_client, monkeypatch):
+def test_iphone_shortcut_upload_marks_dirty_for_historical_image_and_duplicates_api_rebuilds(api_client, monkeypatch):
     client, _, image_root, _ = api_client
+    newer = image_root / "2026" / "06" / "01" / "newer.jpg"
+    newer.parent.mkdir(parents=True)
+    newer.write_text("newer-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    cache_digest = digest_for_cache_key(
+        image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    )
+    ImageIndexRepository(database_path).save_index(
+        cache_digest,
+        root=str(image_root),
+        items=[
+            {
+                "relative_path": "2026/06/01/newer.jpg",
+                "path": str(newer),
+                "name": "newer.jpg",
+                "size": newer.stat().st_size,
+                "timeline_time": "2026-06-01 09:00:00",
+                "timeline_ts": 1780290000,
+            }
+        ],
+        total=1,
+        generated_at="2026-05-18T00:00:00",
+        timeline_entries=[
+            {"key": "2026-06", "label": "2026-06", "index_label": "202606"},
+        ],
+    )
     monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-flow")
 
     upload_response = client.post(
@@ -203,13 +230,23 @@ def test_iphone_shortcut_upload_marks_dirty_and_duplicates_api_rebuilds(api_clie
     assert upload_response.status_code == 200
     upload_data = upload_response.json()
     assert upload_data["status"] == "success"
-    database_path = root_database_path(image_root)
+    assert upload_data["duplicate_dirty"] is True
     summary_before = DuplicateResultRepository(database_path).load_summary()
     assert summary_before["dirty"] is True
     assert summary_before["dirty_reason"] == "iphone_shortcut_upload"
     hash_db = HashDbRepository(database_path).load_hash_db()
     assert upload_data["local_path"] in next(iter(hash_db["strict"].values()))
     assert upload_data["local_path"] in hash_db["phash"]["phash-flow"]
+    with sqlite3.connect(database_path) as connection:
+        cache_row = connection.execute(
+            """
+            SELECT strict_hash, phash
+            FROM file_hash_cache
+            WHERE path = ?
+            """,
+            (upload_data["local_path"],),
+        ).fetchone()
+    assert cache_row == (next(iter(hash_db["strict"])), "phash-flow")
 
     duplicates_response = client.get("/api/duplicates")
 
@@ -219,6 +256,222 @@ def test_iphone_shortcut_upload_marks_dirty_and_duplicates_api_rebuilds(api_clie
     assert duplicates_payload["dirty"] is False
     assert duplicates_payload["groups"] == []
     assert DuplicateResultRepository(database_path).load_summary()["dirty"] is False
+
+
+def test_iphone_shortcut_upload_newest_image_does_not_mark_duplicates_dirty(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    existing = image_root / "2026" / "05" / "01" / "existing.jpg"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("existing-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    cache_digest = digest_for_cache_key(
+        image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    )
+    ImageIndexRepository(database_path).save_index(
+        cache_digest,
+        root=str(image_root),
+        items=[
+            {
+                "relative_path": "2026/05/01/existing.jpg",
+                "path": str(existing),
+                "name": "existing.jpg",
+                "size": existing.stat().st_size,
+                "timeline_time": "2026-05-01 09:00:00",
+                "timeline_ts": 1777597200,
+            }
+        ],
+        total=1,
+        generated_at="2026-05-18T00:00:00",
+        timeline_entries=[
+            {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+        ],
+    )
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-newest")
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"newest-upload",
+        headers={
+            "X-Original-Filename": "IMG_NEWEST.jpeg",
+            "X-Original-CreateDate": "2026/06/17 10:26:47 JST",
+            "X-Original-UpdateDate": "2026/06/17 11:42:31 JST",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["duplicate_dirty"] is False
+    assert DuplicateResultRepository(database_path).load_summary()["dirty"] is False
+
+
+def test_iphone_shortcut_upload_preserves_existing_timeline_index(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    indexed_path = image_root / "2026" / "04" / "01" / "old.jpg"
+    indexed_path.parent.mkdir(parents=True)
+    indexed_path.write_text("old-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    cache_digest = digest_for_cache_key(
+        image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    )
+    ImageIndexRepository(database_path).save_index(
+        cache_digest,
+        root=str(image_root),
+        items=[
+            {
+                "relative_path": "2026/04/01/old.jpg",
+                "path": str(indexed_path),
+                "name": "old.jpg",
+                "size": indexed_path.stat().st_size,
+                "timeline_time": "2026-04-01 09:00:00",
+                "timeline_ts": 1775005200,
+            }
+        ],
+        total=1,
+        generated_at="2026-05-18T00:00:00",
+        timeline_entries=[
+            {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+        ],
+    )
+    repository = ImageIndexRepository(database_path)
+    assert repository.load_metadata(cache_digest)["timeline_generated_at"] == "2026-05-18T00:00:00"
+
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-timeline-upload")
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"shortcut-timeline",
+        headers={
+            "X-Original-Filename": "IMG_TIMELINE.jpeg",
+            "X-Original-CreateDate": "2026/05/17 10:26:47 JST",
+            "X-Original-UpdateDate": "2026/05/17 11:42:31 JST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    metadata = repository.load_metadata(cache_digest)
+    assert metadata["generated_at"] != "2026-05-18T00:00:00"
+    assert metadata["timeline_generated_at"] == metadata["generated_at"]
+    assert [item["relative_path"] for item in repository.load_summary(cache_digest)["items"]] == [
+        "2026/05/17/IMG_TIMELINE.jpeg",
+        "2026/04/01/old.jpg",
+    ]
+    assert repository.load_timeline_entries(cache_digest) == [
+        {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+        {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
+    ]
+
+
+def test_iphone_shortcut_upload_rebuilds_timeline_when_entries_are_missing(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    old_path = image_root / "2024" / "12" / "31" / "old.jpg"
+    old_path.parent.mkdir(parents=True)
+    old_path.write_text("old-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    cache_digest = digest_for_cache_key(
+        image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    )
+    ImageIndexRepository(database_path).save_index(
+        cache_digest,
+        root=str(image_root),
+        items=[
+            {
+                "relative_path": "2024/12/31/old.jpg",
+                "path": str(old_path),
+                "name": "old.jpg",
+                "size": old_path.stat().st_size,
+                "timeline_time": "2024-12-31 09:00:00",
+                "timeline_ts": 1735616400,
+            }
+        ],
+        total=1,
+        generated_at="2026-05-18T00:00:00",
+        timeline_entries=[],
+    )
+    repository = ImageIndexRepository(database_path)
+    assert repository.load_summary(cache_digest)["items"]
+    assert repository.load_timeline_entries(cache_digest) == []
+
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-repair-timeline")
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"shortcut-repair-timeline",
+        headers={
+            "X-Original-Filename": "IMG_REPAIR.jpeg",
+            "X-Original-CreateDate": "2026/05/17 10:26:47 JST",
+            "X-Original-UpdateDate": "2026/05/17 11:42:31 JST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert repository.load_timeline_entries(cache_digest) == [
+        {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
+        {"key": "2024-12", "label": "2024-12", "index_label": "202412"},
+    ]
+
+
+def test_iphone_shortcut_upload_inserts_image_by_timeline_position(api_client, monkeypatch):
+    client, _, image_root, _ = api_client
+    newer_path = image_root / "2026" / "06" / "01" / "newer.jpg"
+    older_path = image_root / "2026" / "01" / "01" / "older.jpg"
+    newer_path.parent.mkdir(parents=True)
+    older_path.parent.mkdir(parents=True)
+    newer_path.write_text("newer-content", encoding="utf-8")
+    older_path.write_text("older-content", encoding="utf-8")
+    database_path = root_database_path(image_root)
+    cache_digest = digest_for_cache_key(
+        image_scan_cache_key(image_root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
+    )
+    ImageIndexRepository(database_path).save_index(
+        cache_digest,
+        root=str(image_root),
+        items=[
+            {
+                "relative_path": "2026/06/01/newer.jpg",
+                "path": str(newer_path),
+                "name": "newer.jpg",
+                "size": newer_path.stat().st_size,
+                "timeline_time": "2026-06-01 09:00:00",
+                "timeline_ts": 1780290000,
+            },
+            {
+                "relative_path": "2026/01/01/older.jpg",
+                "path": str(older_path),
+                "name": "older.jpg",
+                "size": older_path.stat().st_size,
+                "timeline_time": "2026-01-01 09:00:00",
+                "timeline_ts": 1767232800,
+            },
+        ],
+        total=2,
+        generated_at="2026-05-18T00:00:00",
+        timeline_entries=[
+            {"key": "2026-06", "label": "2026-06", "index_label": "202606"},
+            {"key": "2026-01", "label": "2026-01", "index_label": "202601"},
+        ],
+    )
+
+    monkeypatch.setattr(iphone_context, "compute_phash", lambda path: "phash-position")
+
+    response = client.post(
+        "/api/iphone/upload",
+        content=b"shortcut-position",
+        headers={
+            "X-Original-Filename": "IMG_POSITION.jpeg",
+            "X-Original-CreateDate": "2026/05/17 10:26:47 JST",
+            "X-Original-UpdateDate": "2026/05/17 11:42:31 JST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["relative_path"] for item in ImageIndexRepository(database_path).load_summary(cache_digest)["items"]] == [
+        "2026/06/01/newer.jpg",
+        "2026/05/17/IMG_POSITION.jpeg",
+        "2026/01/01/older.jpg",
+    ]
 
 
 def test_iphone_shortcut_upload_separates_people_with_same_device_name(api_client, monkeypatch):
@@ -631,13 +884,31 @@ def test_iphone_import_invalidates_gallery_index_items_and_updates_total(api_cli
     result = iphone_context.build_iphone_photo_index("Apple iPhone")
 
     assert result["status"] == "imported"
+    imported_path = Path(result["local_path"])
     summary = ImageIndexRepository(database_path).load_summary(cache_digest)
     assert summary is not None
-    assert summary["total"] == 1
-    assert summary["items"] == []
+    assert summary["total"] == 2
+    assert [item["relative_path"] for item in summary["items"]] == [
+        imported_path.relative_to(image_root).as_posix(),
+        "2026/04/01/old.jpg",
+    ]
     assert ImageIndexRepository(database_path).load_timeline_entries(cache_digest) == [
+        {"key": "2026-05", "label": "2026-05", "index_label": "202605"},
         {"key": "2026-04", "label": "2026-04", "index_label": "202604"},
     ]
+    hash_db = HashDbRepository(database_path).load_hash_db()
+    assert str(imported_path) in hash_db["strict"][hashlib.sha256(b"new-content").hexdigest()]
+    assert str(imported_path) in hash_db["phash"]["phash-demo"]
+    with sqlite3.connect(database_path) as connection:
+        cache_row = connection.execute(
+            """
+            SELECT strict_hash, phash
+            FROM file_hash_cache
+            WHERE path = ?
+            """,
+            (str(imported_path),),
+        ).fetchone()
+    assert cache_row == (hashlib.sha256(b"new-content").hexdigest(), "phash-demo")
 
 
 def test_iphone_import_recounts_total_when_index_total_is_null(api_client, monkeypatch):

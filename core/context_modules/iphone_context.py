@@ -18,13 +18,13 @@ from .root_workspace import root_database_path, root_image_index_dir
 from core.config.app_config import SKIP_SCAN_DIR_NAMES, SUPPORTED_EXTENSIONS
 from core.media_policy import is_supported_media_filename, phash_eligible
 from core.services.import_write_service import (
+    StagedMediaAnalysis,
     analyze_staged_media,
     count_gallery_media,
     import_staged_media,
     invalidate_gallery_index,
     sha256_file,
 )
-from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.mobile_repository import MobileRepository
 from media_engine.core.date_classifier import build_date_path, get_target_date
@@ -878,6 +878,7 @@ def import_iphone_shortcut_upload(headers: Mapping[str, str], body: bytes) -> di
         "uploader": uploader,
         "created_at": _local_time_text(created_at),
         "modified_at": _local_time_text(modified_at),
+        "duplicate_dirty": imported_media.duplicate_dirty,
         "database_path": str(database_path),
     }
 
@@ -1144,7 +1145,6 @@ def build_iphone_photo_index(
     imported_items: list[dict[str, str]] = []
     skipped_duplicate_items: list[dict[str, str]] = []
     already_imported_items: list[dict[str, str]] = []
-    imported_any = False
     with tempfile.TemporaryDirectory(prefix="ztb_iphone_index_") as temp_name:
         staging_dir = Path(temp_name) / "staging"
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -1271,16 +1271,25 @@ def build_iphone_photo_index(
                 )
             else:
                 staged_path = Path(str(record.get("temp_path", "")))
-                imported = _import_staged_iphone_media(
-                    staged_path,
-                    filename,
-                    active_root,
-                    str(record.get("created_at", "")),
-                    str(record.get("modified_at", "")),
+                imported_media = import_staged_media(
+                    staged_path=staged_path,
+                    filename=filename,
+                    gallery_root=active_root,
+                    duplicate_dirty_reason="iphone_import",
+                    created_at=str(record.get("created_at", "")),
+                    modified_at=str(record.get("modified_at", "")),
+                    database_path=database_path,
+                    analysis=StagedMediaAnalysis(
+                        strict_hash=strict_hash,
+                        phash=str(record.get("phash", "")),
+                        size=staged_path.stat().st_size,
+                    ),
+                    compute_phash_fn=compute_phash,
+                    apply_file_times_fn=_apply_iphone_file_times,
+                    repair_modified_time_fn=_repair_import_modified_time_text,
                 )
+                imported = imported_media.path
                 imported_path = str(imported)
-                hash_repository.add_hash_record("strict", strict_hash, imported_path)
-                DuplicateResultRepository(database_path).mark_dirty(active_root, "iphone_import")
                 imported_items.append(
                     {
                         "album": album,
@@ -1298,10 +1307,6 @@ def build_iphone_photo_index(
                     imported_at=imported_at,
                 )
                 imported_count += 1
-                imported_any = True
-
-        if imported_any:
-            _invalidate_gallery_index(active_root, imported_count=imported_count)
 
         if imported_count:
             import_status = "imported"

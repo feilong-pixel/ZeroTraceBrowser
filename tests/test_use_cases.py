@@ -69,7 +69,7 @@ class TestDeleteImageUseCase:
 
     Strategy: use real filesystem operations but mock the expensive/
     side-effect-heavy service functions (move_file_preserve_times,
-    copy_file_preserve_times, clear_image_list_cache).
+    copy_file_preserve_times, invalidate_gallery_index).
     """
 
     @pytest.fixture(autouse=True)
@@ -83,14 +83,14 @@ class TestDeleteImageUseCase:
             if Path(src).exists():
                 Path(src).rename(dst)
 
-        def fake_clear_cache(root=None):
+        def fake_invalidate_gallery_index(root=None):
             self.cache_cleared.append(Path(root) if root else None)
 
         monkeypatch.setattr(
             "core.use_cases.delete_image.move_file_preserve_times", fake_move
         )
         monkeypatch.setattr(
-            "core.use_cases.delete_image.clear_image_list_cache", fake_clear_cache
+            "core.use_cases.delete_image.invalidate_gallery_index", fake_invalidate_gallery_index
         )
 
     @pytest.fixture()
@@ -378,14 +378,14 @@ class TestRestoreImageUseCase:
             if Path(src).exists():
                 Path(src).rename(dst)
 
-        def fake_clear_cache(root=None):
+        def fake_invalidate_gallery_index(root=None):
             self.cache_cleared.append(Path(root) if root else None)
 
         monkeypatch.setattr(
             "core.use_cases.restore_image.move_file_preserve_times", fake_move
         )
         monkeypatch.setattr(
-            "core.use_cases.restore_image.clear_image_list_cache", fake_clear_cache
+            "core.use_cases.restore_image.invalidate_gallery_index", fake_invalidate_gallery_index
         )
 
     @pytest.fixture()

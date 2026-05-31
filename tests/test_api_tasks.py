@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.hash_db_repository import HashDbRepository
 from core.storage.image_index_repository import ImageIndexRepository
 from core.storage.task_repository import TaskRunRepository
-from tests.test_api_user_flow import create_test_image, create_test_image_with_exif_dates
+from tests.test_api_user_flow import create_test_image
 
 
 class ImmediateThread:
@@ -186,8 +187,12 @@ def test_run_organizer_failed_task_exposes_error_state(api_client, monkeypatch) 
 
 def test_rebuild_image_index_task_rebuilds_gallery_index_and_timeline(api_client, monkeypatch) -> None:
     client, _, image_root, _ = api_client
-    create_test_image_with_exif_dates(image_root / "2024" / "12" / "25" / "winter.jpg")
-    create_test_image_with_exif_dates(image_root / "2023" / "01" / "02" / "newyear.jpg")
+    winter = create_test_image(image_root / "2024" / "12" / "25" / "winter.jpg")
+    newyear = create_test_image(image_root / "2023" / "01" / "02" / "newyear.jpg")
+    winter_time = datetime(2024, 12, 25, 12, 0, 0).timestamp()
+    newyear_time = datetime(2023, 1, 2, 8, 0, 0).timestamp()
+    os.utime(winter, (winter_time, winter_time))
+    os.utime(newyear, (newyear_time, newyear_time))
     monkeypatch.setattr(tasks_routes.threading, "Thread", ImmediateThread)
 
     response = client.post("/api/tasks/rebuild-image-index", json=image_index_rebuild_payload(image_root))
@@ -205,7 +210,12 @@ def test_rebuild_image_index_task_rebuilds_gallery_index_and_timeline(api_client
     summary = repository.load_summary(digest)
     assert summary is not None
     assert summary["total"] == 2
-    assert [entry["key"] for entry in repository.load_timeline_entries(digest)] == ["2020-01"]
+    assert any("Sorted gallery index by timeline." in line for line in task["output_lines"])
+    assert [item["relative_path"] for item in repository.list_images(digest)] == [
+        "2024/12/25/winter.jpg",
+        "2023/01/02/newyear.jpg",
+    ]
+    assert [entry["key"] for entry in repository.load_timeline_entries(digest)] == ["2024-12", "2023-01"]
     saved_run = TaskRunRepository(task["outputs"]["database_path"]).load_task(task["task_id"])
     assert saved_run is not None
     assert saved_run["task_type"] == "rebuild_image_index"

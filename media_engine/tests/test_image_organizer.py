@@ -1267,6 +1267,43 @@ def test_rebuild_hash_db_does_not_trust_sqlite_records_without_matching_cache_si
     assert record_count == 4
 
 
+def test_rebuild_hash_db_replace_prunes_unsupported_sidecar_records(
+    work_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = work_dir / "organized"
+    sqlite_path = work_dir / "workspace.sqlite3"
+    image = create_media_file(root / "2026" / "04" / "16" / "photo.jpg", content="image")
+    sidecar = create_media_file(root / "2026" / "04" / "16" / "photo.AAE", content="sidecar")
+    monkeypatch.setenv("IMAGE_ORGANIZER_HASH_DB_SQLITE", str(sqlite_path))
+
+    with connect_sqlite_hash_db() as connection:
+        connection.execute(
+            "INSERT INTO hash_db_records (method, hash, path, position) VALUES ('strict', 'old-image', ?, 0)",
+            (str(image.resolve()),),
+        )
+        connection.execute(
+            "INSERT INTO hash_db_records (method, hash, path, position) VALUES ('strict', 'old-sidecar', ?, 1)",
+            (str(sidecar.resolve()),),
+        )
+        connection.commit()
+
+    stats = rebuild_hash_db(str(root), rebuild_mode="replace", hash_method="strict")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        paths = [
+            row[0]
+            for row in connection.execute(
+                "SELECT path FROM hash_db_records WHERE method = 'strict' ORDER BY path"
+            ).fetchall()
+        ]
+
+    assert stats["scanned_files"] == 1
+    assert stats["strict_indexed"] == 1
+    assert stats["stale_pruned"] == 1
+    assert paths == [str(image.resolve())]
+
+
 def test_rebuild_duplicate_results_json_from_existing_archive(work_dir: Path) -> None:
     root = work_dir / "organized"
     json_path = work_dir / "duplicates.json"

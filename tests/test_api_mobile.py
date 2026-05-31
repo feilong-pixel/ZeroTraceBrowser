@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from io import BytesIO
 from pathlib import Path
 
@@ -441,6 +442,16 @@ def test_mobile_sync_upload_imports_bytes_into_active_root(api_client):
     assert data["sha256"] == hashlib.sha256(body).hexdigest()
     assert imported_path.is_file()
     assert imported_path.resolve().is_relative_to(image_root.resolve())
+    with sqlite3.connect(root_database_path(image_root)) as connection:
+        cache_row = connection.execute(
+            """
+            SELECT strict_hash
+            FROM file_hash_cache
+            WHERE path = ?
+            """,
+            (str(imported_path),),
+        ).fetchone()
+    assert cache_row == (hashlib.sha256(body).hexdigest(),)
 
     status_response = client.get("/api/mobile/sync/status")
     assert status_response.status_code == 200

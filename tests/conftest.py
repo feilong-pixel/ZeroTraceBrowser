@@ -26,6 +26,7 @@ from core.context_modules import (
     similarity_context,
     task_context,
 )
+from core.services import import_write_service
 
 
 PATCH_MODULES = (
@@ -44,6 +45,7 @@ PATCH_MODULES = (
     settings_context,
     similarity_context,
     task_context,
+    import_write_service,
 )
 
 

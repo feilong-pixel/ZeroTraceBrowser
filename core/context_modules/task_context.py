@@ -4,7 +4,11 @@ from .root_workspace import ensure_root_workspace, root_task_log_dir, root_datab
 from .artifact_context import get_hash_db_path
 from .image_context import iter_image_files, clear_image_list_cache, list_images
 from core.domain.root_context import RootContext
-from core.services.image_index_service import image_scan_cache_key, save_image_index_cache
+from core.services.image_index_service import (
+    get_image_timestamp_for_sort,
+    image_scan_cache_key,
+    save_image_index_cache,
+)
 from core.services.timestamp_repair_service import repair_timestamps_from_exif
 from core.storage.duplicates_repository import DuplicateResultRepository
 from core.storage.database import init_root_database
@@ -156,6 +160,13 @@ def run_image_index_rebuild_task(task_id: str) -> None:
         append_output(f"Gallery index rebuild started: {root}")
         items = list_images(root)
         append_output(f"Scanned media files: {len(items)}")
+        items.sort(
+            key=lambda item: (
+                (get_image_timestamp_for_sort(item) or 0) * -1,
+                str(item.get("relative_path", "")).lower(),
+            )
+        )
+        append_output("Sorted gallery index by timeline.")
         cache_key = image_scan_cache_key(root, SUPPORTED_EXTENSIONS, SKIP_SCAN_DIR_NAMES)
         save_image_index_cache(root_image_index_dir(root), cache_key, items)
         generated_at = datetime.now().isoformat()

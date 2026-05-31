@@ -425,15 +425,64 @@ def test_duplicates_api_delete_updates_remaining_group_count(api_client) -> None
     )
 
     delete_response = client.post("/api/delete", json={"relative_path": "remove_b.jpg"})
+    config_response = client.get("/api/config")
+    images_response = client.get(
+        "/api/images",
+        params={
+            "offset": 0,
+            "limit": 48,
+            "include_exif": "false",
+            "async_scan": "true",
+            "refresh_scan": "false",
+            "include_total": "true",
+        },
+    )
     response = client.get("/api/duplicates", params={"offset": 0, "limit": 20, "method": "strict"})
 
     assert delete_response.status_code == 200
+    assert config_response.status_code == 200
+    assert config_response.json()["root_summary"]["image_count"] == 3
+    assert images_response.status_code == 200
+    assert images_response.json()["total"] == 3
     assert response.status_code == 200
     payload = response.json()
     assert payload["group_count"] == 1
     assert payload["has_more"] is False
     assert payload["method_counts"] == {"phash": 0, "strict": 1}
     assert [group["group_id"] for group in payload["groups"]] == ["still_remaining"]
+
+
+def test_delete_missing_duplicate_item_marks_duplicate_missing(api_client) -> None:
+    client, workspace, *_ = api_client
+    archive_root = workspace / "archive"
+    create_test_image(archive_root / "keep_a.jpg")
+    client.post("/api/settings/roots", json={"path": str(archive_root)})
+    database_path = save_duplicates_db(
+        archive_root,
+        [
+            {
+                "group_id": "stale_missing_group",
+                "reason": "strict",
+                "hash": "stale",
+                "items": [
+                    {"role": "kept", "path": "keep_a.jpg"},
+                    {"role": "duplicate", "path": "already_missing.jpg"},
+                ],
+            },
+        ],
+    )
+
+    delete_response = client.post("/api/delete", json={"relative_path": "already_missing.jpg"})
+    payload = DuplicateResultRepository(database_path).load_remaining_result_page(
+        offset=0,
+        limit=20,
+        method="strict",
+    )
+
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"status": "missing", "relative_path": "already_missing.jpg"}
+    assert payload is not None
+    assert payload["group_count"] == 0
 
 
 def test_duplicates_api_syncs_existing_recycle_records_to_remaining_count(api_client) -> None:
