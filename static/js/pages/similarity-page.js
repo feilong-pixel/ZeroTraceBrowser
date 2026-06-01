@@ -438,19 +438,17 @@ async function deleteSelectedResults(els, state) {
 
   try {
     setBusyState(els, state, true);
-    for (let index = 0; index < selectedItems.length; index += 1) {
-      const item = selectedItems[index];
-      setState(
-        els,
-        selectedItems.length > 1
-          ? t("browser.actions.deletingMany", index + 1, selectedItems.length)
-          : t("browser.actions.deleting", item.relative_path),
-        false,
-      );
-      await postJson("/api/delete", { relative_path: item.relative_path });
-    }
+    const selectedPaths = selectedItems.map((item) => item.relative_path);
+    setState(
+      els,
+      selectedItems.length > 1
+        ? t("browser.actions.deletingMany", 1, selectedItems.length)
+        : t("browser.actions.deleting", selectedPaths[0]),
+      false,
+    );
+    await postJson("/api/delete-batch", { relative_paths: selectedPaths });
 
-    const removedPaths = new Set(selectedItems.map((item) => item.relative_path));
+    const removedPaths = new Set(selectedPaths);
     state.items = state.items.filter((item) => !removedPaths.has(item.relative_path));
     state.selectedPaths.clear();
     document.querySelectorAll(".similarity-result-card").forEach((card) => {

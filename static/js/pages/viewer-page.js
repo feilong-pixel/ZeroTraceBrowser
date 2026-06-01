@@ -261,7 +261,7 @@ async function fetchImagesPage(offset) {
     limit: String(IMAGE_PAGE_SIZE),
     include_exif: "false",
     async_scan: "true",
-    refresh_scan: offset > 0 ? "true" : "false",
+    refresh_scan: "false",
     include_total: "false",
   });
 
@@ -312,6 +312,11 @@ function mergeImageItems(state, items) {
       knownPaths.add(item.relative_path);
     }
   }
+}
+
+function removeImageFromViewerState(state, relativePath) {
+  state.items = state.items.filter((item) => item.relative_path !== relativePath);
+  state.filtered = state.filtered.filter((item) => item.relative_path !== relativePath);
 }
 
 function updateImagePaginationState(state, data) {
@@ -603,6 +608,22 @@ function safeReturnTo(value) {
   }
 }
 
+function updateReturnToSelected(state, selectedPath = "") {
+  if (!state.returnTo) return;
+  try {
+    const url = new URL(state.returnTo, window.location.origin);
+    if (url.pathname !== "/index.html") return;
+    if (selectedPath) {
+      url.searchParams.set("selected", selectedPath);
+    } else {
+      url.searchParams.delete("selected");
+    }
+    state.returnTo = `${url.pathname}${url.search}`;
+  } catch {
+    state.returnTo = "";
+  }
+}
+
 function goBack(state) {
   if (state.returnTo) {
     window.location.href = state.returnTo;
@@ -712,15 +733,18 @@ async function deleteSelected(els, state) {
     });
 
     const deletedPath = item.relative_path;
-
-    await loadImages(els, state);
+    const nextIndex = Math.min(state.index, state.filtered.length - 2);
+    removeImageFromViewerState(state, deletedPath);
 
     if (!state.filtered.length) {
+      state.selected = "";
+      updateReturnToSelected(state, "");
       goBack(state);
       return;
     }
 
-    await openAt(els, state, Math.min(state.index, state.filtered.length - 1));
+    await openAt(els, state, Math.max(0, nextIndex));
+    updateReturnToSelected(state, state.selected);
     setStatus(els, t("viewer.action.deleted", deletedPath));
   } catch (error) {
     setStatus(els, error.message, true);
@@ -869,7 +893,11 @@ async function initializeViewerPage(els, state) {
     state.items = [initialItem];
     state.filtered = [initialItem];
     await openAt(els, state, 0);
-    hydrateViewerContext(els, state, path);
+    if (state.timelineGroup || state.timelineStartGroup) {
+      hydrateViewerContext(els, state, path);
+    } else {
+      setStatus(els, t("viewer.status.ready"));
+    }
     return;
   }
 

@@ -1056,13 +1056,14 @@ function openViewer(els, state, path) {
   saveGalleryViewState(els, state);
 
   const params = new URLSearchParams();
+  const item = state.items.find((candidate) => candidate.relative_path === path);
 
   params.set("path", path);
+  const currentGroupKey = item ? getTimelineGroupKey(item) : "";
+  if (currentGroupKey && currentGroupKey !== "unknown") {
+    params.set("timeline_group", currentGroupKey);
+  }
   if (state.isTimelineGroupMode) {
-    const groupKey = getTimelineGroupKey({ timeline_time: path.replace(/[\\/]/g, "-") });
-    if (groupKey !== "unknown") {
-      params.set("timeline_group", groupKey);
-    }
     const timelineGroups = state.virtual.groups.filter((group) =>
       state.loadedTimelineGroups.has(group.key),
     );
@@ -2069,6 +2070,9 @@ async function initializeIndexPage(els, state) {
   const endDate = params.get("to") || "";
   const selected = params.get("selected");
   const duplicateGroupId = params.get("dup_group");
+  const timelineGroup = params.get("timeline_group") || "";
+  const timelineStartGroup = params.get("timeline_start") || timelineGroup;
+  const timelineEndGroup = params.get("timeline_end") || timelineGroup;
 
   await loadConfig(els, state);
   state.activeDuplicateGroupId = duplicateGroupId;
@@ -2107,17 +2111,32 @@ async function initializeIndexPage(els, state) {
   await loadImages(els, state);
   loadDeferredIndexData(els, state);
 
-  if (
-    selected &&
-    canUseSavedViewState &&
-    savedViewState.timelineMode &&
-    savedViewState.timelineStartGroupKey
-  ) {
+  const restoreTimelineStartGroup =
+    timelineStartGroup ||
+    (
+      selected &&
+      canUseSavedViewState &&
+      savedViewState.timelineMode &&
+      savedViewState.timelineStartGroupKey
+        ? savedViewState.timelineStartGroupKey
+        : ""
+    );
+  const restoreTimelineEndGroup =
+    timelineEndGroup ||
+    (
+      restoreTimelineStartGroup &&
+      canUseSavedViewState &&
+      savedViewState.timelineMode
+        ? savedViewState.timelineEndGroupKey || savedViewState.timelineGroupKey || ""
+        : ""
+    );
+
+  if (restoreTimelineStartGroup) {
     await restoreTimelineGroupWindow(
       els,
       state,
-      savedViewState.timelineStartGroupKey,
-      savedViewState.timelineEndGroupKey || savedViewState.timelineGroupKey || "",
+      restoreTimelineStartGroup,
+      restoreTimelineEndGroup || restoreTimelineStartGroup,
       selected,
     );
   }
